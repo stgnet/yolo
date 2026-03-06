@@ -25,11 +25,11 @@ from urllib.request import Request, urlopen
 YOLO_DIR = ".yolo"
 HISTORY_FILE = os.path.join(YOLO_DIR, "history.json")
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-IDLE_THINK_DELAY = 300      # seconds of no input before autonomous thinking (5 min)
-THINK_LOOP_DELAY = 300      # seconds between autonomous think cycles
+IDLE_THINK_DELAY = 120      # seconds of no input before autonomous thinking (2 min)
+THINK_LOOP_DELAY = 120      # seconds between autonomous think cycles
 MAX_CONTEXT_MESSAGES = 40   # max messages to send to model
 MAX_TOOL_OUTPUT = 0         # 0 = no truncation; read_file uses line limits instead
-TOOL_NUDGE_AFTER = 3        # inject a "please respond" nudge after this many rounds
+TOOL_NUDGE_AFTER = 0        # 0 = disabled; n > 0 = nudge model to respond after n tool rounds
 SUBAGENT_DIR = os.path.join(YOLO_DIR, "subagents")
 COMMAND_TIMEOUT = 30        # shell command timeout in seconds
 
@@ -526,16 +526,20 @@ class YoloAgent:
             "You CAN and SHOULD read and modify your own source code to improve yourself.\n\n"
             "## Rules\n"
             f"1. All file paths are relative to: {self.base_dir}\n"
-            "2. Explain reasoning before making changes.\n"
-            "3. Be careful with destructive operations.\n"
-            "4. When in autonomous mode, focus on: code review, improvements, "
-            "tests, self-improvement, trying different models.\n"
-            "5. Use tools to take concrete action.\n"
-            "6. Keep the user informed of what you're doing and why.\n"
-            "7. You may call multiple tools per turn.\n"
-            "8. IMPORTANT: After receiving a tool result, respond to the user with "
-            "the information. Do NOT re-call the same tool with a different pattern. "
-            "Trust the tool output — it is complete and accurate."
+            "2. Be careful with destructive operations.\n"
+            "3. Use tools to take concrete action — do not just talk about what you would do.\n"
+            "4. You may call multiple tools per turn.\n"
+            "5. Trust tool output — it is complete and accurate. Do NOT re-call the "
+            "same tool with a different pattern.\n\n"
+            "## Autonomy\n"
+            "You are designed to work AUTONOMOUSLY. This is the core purpose of YOLO.\n"
+            "- Do NOT stop to ask the user for permission, confirmation, or input.\n"
+            "- Do NOT ask questions like 'Would you like me to...' or 'Shall I...'\n"
+            "- Just DO the work. Make decisions yourself. Act, don't ask.\n"
+            "- If something fails, try a different approach on your own.\n"
+            "- After completing one improvement, immediately move on to the next.\n"
+            "- Focus on: code quality, bug fixes, tests, self-improvement, documentation.\n"
+            "- Briefly state what you did and what you're doing next, then use tools."
         )
 
     # ── Setup ──
@@ -601,9 +605,11 @@ class YoloAgent:
         if autonomous:
             self.history.add_message("system",
                 "No new user input. You are in autonomous mode. "
-                "Continue making progress: review code, improve quality, "
-                "run tests, self-improve, or plan ahead. "
-                "Use tools to take concrete action."
+                "Continue making progress on your own — do NOT ask the user "
+                "for input or confirmation. Pick the most impactful next task "
+                "and execute it using tools. Focus on: code quality, bug fixes, "
+                "tests, self-improvement, or new features. "
+                "Act decisively. Do the work, then move to the next thing."
             )
 
         # Base context from persistent history
@@ -677,8 +683,8 @@ class YoloAgent:
                 round_msgs.append({"role": "tool", "content": result})
                 tool_log.append((name, args, result))
 
-            # After several rounds, gently nudge the model to wrap up
-            if round_num >= TOOL_NUDGE_AFTER:
+            # Optionally nudge the model to wrap up after many rounds
+            if TOOL_NUDGE_AFTER and round_num >= TOOL_NUDGE_AFTER:
                 round_msgs.append({
                     "role": "user",
                     "content": "[SYSTEM] You have used many tool rounds. "
@@ -741,6 +747,29 @@ class YoloAgent:
                         calls.append({"name": name, "args": args})
                     except json.JSONDecodeError:
                         pass
+
+        # Format 4: <tool_name>{"key": "value"}</tool_name> or with params
+        #   e.g. <write_file>{"path": "...", "content": "..."}</write_file>
+        #   e.g. <read_file><path>foo.py</path><offset>1</offset></read_file>
+        if not calls:
+            valid_pat = "|".join(self.tools.VALID_TOOLS)
+            for match in re.finditer(
+                rf'<({valid_pat})>(.*?)</\1>', text, re.DOTALL
+            ):
+                name = match.group(1)
+                body = match.group(2).strip()
+                args = {}
+                # Try JSON body first
+                try:
+                    args = json.loads(body)
+                except (json.JSONDecodeError, ValueError):
+                    # Try XML-style <key>value</key> params
+                    for param in re.finditer(
+                        r'<(\w+)>(.*?)</\1>', body, re.DOTALL
+                    ):
+                        args[param.group(1)] = param.group(2)
+                if args:
+                    calls.append({"name": name, "args": args})
 
         return calls
 
