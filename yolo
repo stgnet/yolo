@@ -14,6 +14,8 @@ import subprocess
 import signal
 import select
 import re
+import tty
+import termios
 from datetime import datetime
 from pathlib import Path
 from urllib.request import Request, urlopen
@@ -23,11 +25,11 @@ from urllib.request import Request, urlopen
 YOLO_DIR = ".yolo"
 HISTORY_FILE = os.path.join(YOLO_DIR, "history.json")
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-IDLE_THINK_DELAY = 30       # seconds of no input before autonomous thinking
-THINK_LOOP_DELAY = 60       # seconds between autonomous think cycles
+IDLE_THINK_DELAY = 300      # seconds of no input before autonomous thinking (5 min)
+THINK_LOOP_DELAY = 300      # seconds between autonomous think cycles
 MAX_CONTEXT_MESSAGES = 40   # max messages to send to model
 MAX_TOOL_OUTPUT = 4000      # truncate tool output beyond this
-MAX_TOOL_ROUNDS = 10        # max tool call rounds per interaction
+MAX_TOOL_ROUNDS = 5         # max tool call rounds per interaction
 SUBAGENT_DIR = os.path.join(YOLO_DIR, "subagents")
 COMMAND_TIMEOUT = 30        # shell command timeout in seconds
 
@@ -86,8 +88,25 @@ class Spinner:
 # ─── Ollama Tool Definitions ─────────────────────────────────────────
 # Native Ollama/OpenAI-style tool definitions for models that support them.
 
-def _tool_def(name, desc, props, required=None):
-    """Helper to build an Ollama tool definition."""
+def _tool_def(name: str, desc: str, props: dict, required: list | None = None) -> dict:
+    """Helper to build an Ollama tool definition.
+
+    Parameters
+    ----------
+    name: str
+        Name of the function.
+    desc: str
+        Human‑readable description.
+    props: dict
+        JSON schema properties.
+    required: list | None
+        List of required property names.
+
+    Returns
+    -------
+    dict
+        A dictionary in the format expected by Ollama/OpenAI.
+    """
     schema = {"type": "object", "properties": props}
     if required:
         schema["required"] = required
@@ -308,8 +327,13 @@ class ToolExecutor:
         results = []
         for p in sorted(Path(self.base_dir).glob(pattern)):
             rel = os.path.relpath(p, self.base_dir)
-            if not rel.startswith(".yolo"):
-                results.append(rel)
+            # Skip noise directories
+            if rel.startswith((".yolo", ".git", "__pycache__")):
+                continue
+            # Mark directories with trailing /
+            if p.is_dir():
+                rel += "/"
+            results.append(rel)
         return "\n".join(results[:200]) if results else "No files found"
 
     def _tool_search_files(self, query, pattern="**/*"):
@@ -564,9 +588,13 @@ class YoloAgent:
         for round_num in range(MAX_TOOL_ROUNDS):
             all_msgs = base_msgs + round_msgs
 
+            # After several tool rounds, stop offering tools so the model
+            # is forced to produce a final text response.
+            use_tools = OLLAMA_TOOLS if round_num < MAX_TOOL_ROUNDS - 1 else None
+
             try:
                 display_text, content_text, tool_calls = self.ollama.chat(
-                    self.history.model, all_msgs, tools=OLLAMA_TOOLS
+                    self.history.model, all_msgs, tools=use_tools
                 )
             except Exception as e:
                 cprint(C.RED, f"\nError: {e}")
@@ -755,6 +783,79 @@ class YoloAgent:
         else:
             cprint(C.RED, f"  Unknown command: {command}  (try /help)")
 
+    # ── Input handling (cbreak mode) ──
+
+    _SENTINEL_THINK = "__THINK__"
+
+    def _read_line(self):
+        """Read a line using cbreak mode so every keystroke resets the idle
+        timer.  Autonomous thinking only fires when the buffer is empty
+        (i.e. the user hasn't started typing).
+
+        Returns:
+            str  – the entered line
+            None – on EOF (Ctrl-D with empty buffer)
+            _SENTINEL_THINK – time to think autonomously
+        """
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setcbreak(fd)
+            buf = []
+            while self.running:
+                ready, _, _ = select.select([sys.stdin], [], [], 1.0)
+                if ready:
+                    ch = sys.stdin.read(1)
+                    self.last_activity = time.time()
+                    self.think_delay = IDLE_THINK_DELAY
+
+                    if ch in ("\n", "\r"):          # Enter
+                        sys.stdout.write("\n")
+                        sys.stdout.flush()
+                        return "".join(buf)
+                    elif ch in ("\x7f", "\x08"):    # Backspace
+                        if buf:
+                            buf.pop()
+                            sys.stdout.write("\b \b")
+                            sys.stdout.flush()
+                    elif ch == "\x03":              # Ctrl-C
+                        raise KeyboardInterrupt
+                    elif ch == "\x04":              # Ctrl-D
+                        if not buf:
+                            return None
+                    elif ch == "\x15":              # Ctrl-U  (kill line)
+                        if buf:
+                            sys.stdout.write("\b \b" * len(buf))
+                            sys.stdout.flush()
+                            buf.clear()
+                    elif ch == "\x17":              # Ctrl-W  (kill word)
+                        while buf and buf[-1] == " ":
+                            buf.pop()
+                            sys.stdout.write("\b \b")
+                        while buf and buf[-1] != " ":
+                            buf.pop()
+                            sys.stdout.write("\b \b")
+                        sys.stdout.flush()
+                    elif ch == "\x1b":              # Escape sequence (arrows etc.)
+                        # Consume remaining bytes of the sequence
+                        if select.select([sys.stdin], [], [], 0.05)[0]:
+                            sys.stdin.read(1)       # '['
+                            if select.select([sys.stdin], [], [], 0.05)[0]:
+                                sys.stdin.read(1)   # A/B/C/D
+                    elif ch >= " ":                 # Printable character
+                        buf.append(ch)
+                        sys.stdout.write(ch)
+                        sys.stdout.flush()
+                else:
+                    # select timed out — only think if buffer is empty
+                    if not buf:
+                        elapsed = time.time() - self.last_activity
+                        if elapsed >= self.think_delay:
+                            return self._SENTINEL_THINK
+            return None
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
     # ── Main loop ──
 
     def run(self):
@@ -778,43 +879,31 @@ class YoloAgent:
             sys.stdout.write(f"{C.GREEN}{C.BOLD}you> {C.RESET}")
             sys.stdout.flush()
 
-            while self.running:
-                elapsed = time.time() - self.last_activity
-                remaining = max(0, self.think_delay - elapsed)
-                timeout = min(remaining, 2.0) if remaining > 0 else 0.1
+            try:
+                line = self._read_line()
+            except KeyboardInterrupt:
+                self.running = False
+                break
 
-                try:
-                    readable, _, _ = select.select([sys.stdin], [], [], timeout)
-                except (OSError, ValueError):
+            if line is None:
+                self.running = False
+                break
+            elif line == self._SENTINEL_THINK:
+                # Clear the prompt line and think
+                sys.stdout.write("\r" + " " * 40 + "\r")
+                sys.stdout.flush()
+                cprint(C.GRAY, "  [autonomous thinking...]")
+                self.chat_with_agent(autonomous=True)
+                self.last_activity = time.time()
+                self.think_delay = THINK_LOOP_DELAY
+            else:
+                stripped = line.strip()
+                if stripped.lower() in ("exit", "quit"):
                     self.running = False
-                    break
-
-                if readable:
-                    line = sys.stdin.readline()
-                    if not line:  # EOF
-                        self.running = False
-                        break
-                    line = line.rstrip("\n")
-                    self.last_activity = time.time()
-                    self.think_delay = IDLE_THINK_DELAY
-
-                    stripped = line.strip()
-                    if stripped.lower() in ("exit", "quit"):
-                        self.running = False
-                    elif stripped.startswith("/"):
-                        self.handle_command(stripped)
-                    elif stripped:
-                        self.chat_with_agent(stripped)
-                    break
-
-                if time.time() - self.last_activity >= self.think_delay:
-                    sys.stdout.write("\r" + " " * 40 + "\r")
-                    sys.stdout.flush()
-                    cprint(C.GRAY, "  [autonomous thinking...]")
-                    self.chat_with_agent(autonomous=True)
-                    self.last_activity = time.time()
-                    self.think_delay = THINK_LOOP_DELAY
-                    break
+                elif stripped.startswith("/"):
+                    self.handle_command(stripped)
+                elif stripped:
+                    self.chat_with_agent(stripped)
 
         self.history.save()
         cprint(C.CYAN, "  Session saved. Goodbye!\n")
