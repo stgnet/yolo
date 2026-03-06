@@ -700,8 +700,10 @@ class YoloAgent:
             self.history.add_message("assistant", final_text)
 
     def _parse_text_tool_calls(self, text):
-        """Fallback: parse XML-style <tool_call> blocks from text."""
+        """Fallback: parse tool calls from text in various formats."""
         calls = []
+
+        # Format 1: <tool_call>{"name": ..., "args": ...}</tool_call>
         for match in re.finditer(
             r'<tool_call>\s*(\{.*?\})\s*</tool_call>', text, re.DOTALL
         ):
@@ -711,6 +713,35 @@ class YoloAgent:
                     calls.append({"name": obj["name"], "args": obj.get("args", {})})
             except json.JSONDecodeError:
                 pass
+
+        # Format 2: <tool_call><function=name><parameter=key>value</parameter>...</function></tool_call>
+        if not calls:
+            for match in re.finditer(
+                r'<tool_call>\s*<function=(\w+)>(.*?)</function>\s*</tool_call>',
+                text, re.DOTALL
+            ):
+                name = match.group(1)
+                body = match.group(2)
+                args = {}
+                for param in re.finditer(
+                    r'<parameter=(\w+)>\s*(.*?)\s*</parameter>', body, re.DOTALL
+                ):
+                    args[param.group(1)] = param.group(2)
+                calls.append({"name": name, "args": args})
+
+        # Format 3: [tool_name] {"key": "value", ...}  (inline bracket style)
+        if not calls:
+            for match in re.finditer(
+                r'^\s*\[(\w+)\]\s*(\{.*?\})\s*$', text, re.MULTILINE
+            ):
+                name = match.group(1)
+                if name in self.tools.VALID_TOOLS:
+                    try:
+                        args = json.loads(match.group(2))
+                        calls.append({"name": name, "args": args})
+                    except json.JSONDecodeError:
+                        pass
+
         return calls
 
     # ── Model switching ──
