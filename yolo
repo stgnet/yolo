@@ -28,8 +28,8 @@ OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 IDLE_THINK_DELAY = 300      # seconds of no input before autonomous thinking (5 min)
 THINK_LOOP_DELAY = 300      # seconds between autonomous think cycles
 MAX_CONTEXT_MESSAGES = 40   # max messages to send to model
-MAX_TOOL_OUTPUT = 4000      # truncate tool output beyond this
-MAX_TOOL_ROUNDS = 5         # max tool call rounds per interaction
+MAX_TOOL_OUTPUT = 0         # 0 = no truncation; read_file uses line limits instead
+TOOL_NUDGE_AFTER = 3        # inject a "please respond" nudge after this many rounds
 SUBAGENT_DIR = os.path.join(YOLO_DIR, "subagents")
 COMMAND_TIMEOUT = 30        # shell command timeout in seconds
 
@@ -116,8 +116,10 @@ def _tool_def(name: str, desc: str, props: dict, required: list | None = None) -
     }
 
 OLLAMA_TOOLS = [
-    _tool_def("read_file", "Read a file's contents",
-              {"path": {"type": "string", "description": "Relative path to file"}},
+    _tool_def("read_file", "Read a file's contents. For large files, use offset and limit to read in chunks.",
+              {"path": {"type": "string", "description": "Relative path to file"},
+               "offset": {"type": "integer", "description": "Starting line number (1-based, default: 1)"},
+               "limit": {"type": "integer", "description": "Max number of lines to read (default: 200)"}},
               ["path"]),
     _tool_def("write_file", "Create or overwrite a file",
               {"path": {"type": "string", "description": "Relative path"},
@@ -288,22 +290,42 @@ class ToolExecutor:
             raise PermissionError(f"Path '{path}' is outside working directory")
         return full
 
+    VALID_TOOLS = [
+        "read_file", "write_file", "edit_file", "list_files",
+        "search_files", "run_command", "spawn_subagent",
+        "list_models", "switch_model", "think",
+    ]
+
     def execute(self, name, args):
         method = getattr(self, f"_tool_{name}", None)
         if not method:
-            return f"Error: unknown tool '{name}'"
+            return (f"Error: unknown tool '{name}'. "
+                    f"Available tools: {', '.join(self.VALID_TOOLS)}")
         try:
-            result = method(**args)
-            result = str(result)
-            if len(result) > MAX_TOOL_OUTPUT:
+            result = str(method(**args))
+            if MAX_TOOL_OUTPUT and len(result) > MAX_TOOL_OUTPUT:
                 result = result[:MAX_TOOL_OUTPUT] + "\n... (truncated)"
             return result
         except Exception as e:
             return f"Error in {name}: {e}"
 
-    def _tool_read_file(self, path):
-        with open(self._safe_path(path), "r", errors="replace") as f:
-            return f.read()
+    def _tool_read_file(self, path, offset=1, limit=200):
+        full = self._safe_path(path)
+        with open(full, "r", errors="replace") as f:
+            all_lines = f.readlines()
+        total = len(all_lines)
+        start = max(0, int(offset) - 1)  # 1-based to 0-based
+        end = start + int(limit)
+        chunk = all_lines[start:end]
+        # Number the lines so the model knows where it is
+        numbered = []
+        for i, line in enumerate(chunk, start + 1):
+            numbered.append(f"{i:4d}  {line.rstrip()}")
+        body = "\n".join(numbered)
+        header = f"[{path}: lines {start+1}-{min(end, total)} of {total}]"
+        if end < total:
+            header += f"  (use offset={end+1} to read more)"
+        return header + "\n" + body
 
     def _tool_write_file(self, path, content):
         full = self._safe_path(path)
@@ -324,17 +346,22 @@ class ToolExecutor:
         return f"Edited {path}"
 
     def _tool_list_files(self, pattern="*"):
-        results = []
+        files = []
+        dirs = []
         for p in sorted(Path(self.base_dir).glob(pattern)):
             rel = os.path.relpath(p, self.base_dir)
-            # Skip noise directories
-            if rel.startswith((".yolo", ".git", "__pycache__")):
-                continue
-            # Mark directories with trailing /
+            if rel.startswith((".yolo", ".git", "__pycache__", ".")):
+                if not rel.startswith(".claude"):
+                    continue
             if p.is_dir():
-                rel += "/"
-            results.append(rel)
-        return "\n".join(results[:200]) if results else "No files found"
+                dirs.append(rel + "/")
+            else:
+                files.append(rel)
+        items = dirs + files
+        if not items:
+            return "(no matching files or directories)"
+        header = f"({len(files)} file(s), {len(dirs)} dir(s))"
+        return header + "\n" + "\n".join(items[:200])
 
     def _tool_search_files(self, query, pattern="**/*"):
         hits = []
@@ -505,7 +532,10 @@ class YoloAgent:
             "tests, self-improvement, trying different models.\n"
             "5. Use tools to take concrete action.\n"
             "6. Keep the user informed of what you're doing and why.\n"
-            "7. You may call multiple tools per turn."
+            "7. You may call multiple tools per turn.\n"
+            "8. IMPORTANT: After receiving a tool result, respond to the user with "
+            "the information. Do NOT re-call the same tool with a different pattern. "
+            "Trust the tool output — it is complete and accurate."
         )
 
     # ── Setup ──
@@ -585,16 +615,13 @@ class YoloAgent:
         tool_log = []          # [(name, args, result), ...]
         final_text = None
 
-        for round_num in range(MAX_TOOL_ROUNDS):
+        round_num = 0
+        while True:
             all_msgs = base_msgs + round_msgs
-
-            # After several tool rounds, stop offering tools so the model
-            # is forced to produce a final text response.
-            use_tools = OLLAMA_TOOLS if round_num < MAX_TOOL_ROUNDS - 1 else None
 
             try:
                 display_text, content_text, tool_calls = self.ollama.chat(
-                    self.history.model, all_msgs, tools=use_tools
+                    self.history.model, all_msgs, tools=OLLAMA_TOOLS
                 )
             except Exception as e:
                 cprint(C.RED, f"\nError: {e}")
@@ -650,9 +677,16 @@ class YoloAgent:
                 round_msgs.append({"role": "tool", "content": result})
                 tool_log.append((name, args, result))
 
-        else:
-            cprint(C.YELLOW, "  (max tool rounds reached)")
-            final_text = display_text
+            # After several rounds, gently nudge the model to wrap up
+            if round_num >= TOOL_NUDGE_AFTER:
+                round_msgs.append({
+                    "role": "user",
+                    "content": "[SYSTEM] You have used many tool rounds. "
+                    "Please respond to the user with what you have so far. "
+                    "You can always use more tools in the next interaction."
+                })
+
+            round_num += 1
 
         # --- Save to persistent history ---
         if tool_log:
