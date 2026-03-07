@@ -1222,21 +1222,22 @@ func (a *YoloAgent) parseTextToolCalls(text string) []ParsedToolCall {
 
 	// Format 4: <tool_name>{"key": "value"}</tool_name> or <tool_name><key>value</key></tool_name>
 	if len(calls) == 0 {
-		validPat := strings.Join(validTools, "|")
-		re4 := regexp.MustCompile(fmt.Sprintf(`(?s)<(%s)>(.*?)</\1>`, validPat))
-		reXMLParam := regexp.MustCompile(`(?s)<(\w+)>(.*?)</\1>`)
-		for _, match := range re4.FindAllStringSubmatch(text, -1) {
-			name := match[1]
-			body := strings.TrimSpace(match[2])
-			var args map[string]any
-			if err := json.Unmarshal([]byte(body), &args); err != nil {
-				args = map[string]any{}
-				for _, pm := range reXMLParam.FindAllStringSubmatch(body, -1) {
-					args[pm[1]] = pm[2]
+		for _, toolName := range validTools {
+			re4 := regexp.MustCompile(fmt.Sprintf(`(?s)<%s>(.*?)</%s>`, regexp.QuoteMeta(toolName), regexp.QuoteMeta(toolName)))
+			for _, match := range re4.FindAllStringSubmatch(text, -1) {
+				body := strings.TrimSpace(match[1])
+				var args map[string]any
+				if err := json.Unmarshal([]byte(body), &args); err != nil {
+					args = map[string]any{}
+					// Parse XML-style <key>value</key> params
+					reParam := regexp.MustCompile(`<(\w+)>(.*?)</\w+>`)
+					for _, pm := range reParam.FindAllStringSubmatch(body, -1) {
+						args[pm[1]] = pm[2]
+					}
 				}
-			}
-			if len(args) > 0 {
-				calls = append(calls, ParsedToolCall{Name: name, Args: args})
+				if len(args) > 0 {
+					calls = append(calls, ParsedToolCall{Name: toolName, Args: args})
+				}
 			}
 		}
 	}
