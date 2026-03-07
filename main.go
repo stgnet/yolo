@@ -963,7 +963,9 @@ type YoloAgent struct {
 	ollama          *OllamaClient
 	history         *HistoryManager
 	tools           *ToolExecutor
+	inputMgr        *InputManager
 	running         bool
+	busy            bool // true while agent is processing
 	subagentCounter int
 	lastActivity    time.Time
 	thinkDelay      int
@@ -1074,6 +1076,11 @@ func (a *YoloAgent) showHelpHint() {
 // ── Chat loop ──
 
 func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
+	// Clear the user's input line so agent output appears cleanly
+	if a.inputMgr != nil {
+		a.inputMgr.ClearLine()
+	}
+
 	if userMessage != "" {
 		a.history.AddMessage("user", userMessage, nil)
 	}
@@ -1444,111 +1451,219 @@ func (a *YoloAgent) handleCommand(cmd string) {
 	}
 }
 
-// ── Input handling (raw mode) ──
+// ── Input Manager (async input) ──
 
-const sentinelThink = "__THINK__"
+// InputLine represents a completed line from the user.
+type InputLine struct {
+	Text string
+	OK   bool // false means EOF/Ctrl-C
+}
 
-func (a *YoloAgent) readLine() (string, bool) {
-	fd := int(os.Stdin.Fd())
-	oldState, err := term.MakeRaw(fd)
-	if err != nil {
-		// Fallback to simple line reading
-		reader := bufio.NewReader(os.Stdin)
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			return "", false
-		}
-		return strings.TrimRight(line, "\r\n"), true
+// InputManager reads from stdin continuously, allowing the user to type
+// even while the agent is processing. Completed lines are sent to Lines.
+type InputManager struct {
+	Lines    chan InputLine
+	rawBytes chan byte    // raw bytes from stdin reader goroutine
+	rawErr   chan error   // errors from stdin reader goroutine
+	buf      []byte       // current line being edited
+	mu       sync.Mutex   // protects buf and prompt state
+	prompt   string       // current prompt prefix being displayed
+	agent    *YoloAgent
+	oldState *term.State
+	fd       int
+}
+
+func NewInputManager(agent *YoloAgent) *InputManager {
+	im := &InputManager{
+		Lines:    make(chan InputLine, 8),
+		rawBytes: make(chan byte, 64),
+		rawErr:   make(chan error, 1),
+		agent:    agent,
+		fd:       int(os.Stdin.Fd()),
 	}
-	defer term.Restore(fd, oldState)
+	return im
+}
 
-	var buf []byte
+// Start begins reading stdin in raw mode. Call once.
+func (im *InputManager) Start() {
+	oldState, err := term.MakeRaw(im.fd)
+	if err != nil {
+		// Fallback: line-buffered mode
+		go func() {
+			reader := bufio.NewReader(os.Stdin)
+			for {
+				line, err := reader.ReadString('\n')
+				if err != nil {
+					im.Lines <- InputLine{OK: false}
+					return
+				}
+				im.Lines <- InputLine{Text: strings.TrimRight(line, "\r\n"), OK: true}
+			}
+		}()
+		return
+	}
+	im.oldState = oldState
 
-	// Single persistent reader goroutine to avoid leaks
-	readCh := make(chan byte, 16)
-	errCh := make(chan error, 1)
+	// Raw byte reader goroutine
 	go func() {
 		b := make([]byte, 1)
 		for {
 			n, err := os.Stdin.Read(b)
 			if err != nil {
-				errCh <- err
+				im.rawErr <- err
 				return
 			}
 			if n > 0 {
-				readCh <- b[0]
+				im.rawBytes <- b[0]
 			}
 		}
 	}()
 
-	for a.running {
-		select {
-		case ch := <-readCh:
-			a.lastActivity = time.Now()
-			a.thinkDelay = IdleThinkDelay
+	// Character processing goroutine
+	go im.processLoop()
+}
 
+// Stop restores the terminal.
+func (im *InputManager) Stop() {
+	if im.oldState != nil {
+		term.Restore(im.fd, im.oldState)
+	}
+}
+
+// ShowPrompt displays a prompt and enables editing. Call from the main goroutine
+// or when ready for input. The prompt is redisplayed after agent output.
+func (im *InputManager) ShowPrompt(prompt string) {
+	im.mu.Lock()
+	im.prompt = prompt
+	im.mu.Unlock()
+	im.redraw()
+}
+
+// redraw clears the current line and redraws prompt + buffer contents.
+func (im *InputManager) redraw() {
+	im.mu.Lock()
+	prompt := im.prompt
+	buf := make([]byte, len(im.buf))
+	copy(buf, im.buf)
+	im.mu.Unlock()
+
+	// Clear line and redraw
+	fmt.Printf("\r\033[K%s%s", prompt, string(buf))
+}
+
+// clearLine removes the input line from the terminal so agent output appears cleanly.
+// Returns the current buffer contents for later redraw.
+func (im *InputManager) ClearLine() string {
+	im.mu.Lock()
+	text := string(im.buf)
+	im.mu.Unlock()
+	fmt.Printf("\r\033[K")
+	return text
+}
+
+// RedrawAfterOutput redraws the prompt and current buffer after agent output.
+func (im *InputManager) RedrawAfterOutput() {
+	im.redraw()
+}
+
+func (im *InputManager) processLoop() {
+	for {
+		select {
+		case ch := <-im.rawBytes:
+			im.agent.lastActivity = time.Now()
+			im.agent.thinkDelay = IdleThinkDelay
+
+			im.mu.Lock()
 			switch {
 			case ch == '\r' || ch == '\n': // Enter
+				line := string(im.buf)
+				im.buf = im.buf[:0]
+				im.mu.Unlock()
 				fmt.Print("\r\n")
-				return string(buf), true
+				// Show a queued indicator if the agent is busy
+				im.agent.mu.Lock()
+				busy := im.agent.busy
+				im.agent.mu.Unlock()
+				trimmed := strings.TrimSpace(line)
+				if busy && trimmed != "" {
+					fmt.Printf("%s  [queued: %s]%s\n", Gray, trimmed, Reset)
+				}
+				im.Lines <- InputLine{Text: line, OK: true}
 			case ch == 127 || ch == 8: // Backspace
-				if len(buf) > 0 {
-					buf = buf[:len(buf)-1]
+				if len(im.buf) > 0 {
+					im.buf = im.buf[:len(im.buf)-1]
+					im.mu.Unlock()
 					fmt.Print("\b \b")
+				} else {
+					im.mu.Unlock()
 				}
 			case ch == 3: // Ctrl-C
+				im.buf = im.buf[:0]
+				im.mu.Unlock()
 				fmt.Print("\r\n")
-				return "", false
+				// If agent is busy, cancel the current chat
+				im.agent.mu.Lock()
+				cancel := im.agent.cancelChat
+				im.agent.mu.Unlock()
+				if cancel != nil {
+					cancel()
+				} else {
+					im.Lines <- InputLine{OK: false}
+				}
 			case ch == 4: // Ctrl-D
-				if len(buf) == 0 {
-					return "", false
+				if len(im.buf) == 0 {
+					im.mu.Unlock()
+					im.Lines <- InputLine{OK: false}
+				} else {
+					im.mu.Unlock()
 				}
 			case ch == 21: // Ctrl-U (kill line)
-				for range buf {
+				for range im.buf {
 					fmt.Print("\b \b")
 				}
-				buf = buf[:0]
+				im.buf = im.buf[:0]
+				im.mu.Unlock()
 			case ch == 23: // Ctrl-W (kill word)
-				for len(buf) > 0 && buf[len(buf)-1] == ' ' {
-					buf = buf[:len(buf)-1]
+				for len(im.buf) > 0 && im.buf[len(im.buf)-1] == ' ' {
+					im.buf = im.buf[:len(im.buf)-1]
 					fmt.Print("\b \b")
 				}
-				for len(buf) > 0 && buf[len(buf)-1] != ' ' {
-					buf = buf[:len(buf)-1]
+				for len(im.buf) > 0 && im.buf[len(im.buf)-1] != ' ' {
+					im.buf = im.buf[:len(im.buf)-1]
 					fmt.Print("\b \b")
 				}
-			case ch == 27: // Escape sequence (arrows etc.)
-				// Consume remaining bytes of escape sequence
+				im.mu.Unlock()
+			case ch == 27: // Escape sequence
+				im.mu.Unlock()
 				for i := 0; i < 2; i++ {
 					select {
-					case <-readCh:
+					case <-im.rawBytes:
 					case <-time.After(50 * time.Millisecond):
 					}
 				}
 			default:
 				if ch >= 32 && unicode.IsPrint(rune(ch)) {
-					buf = append(buf, ch)
+					im.buf = append(im.buf, ch)
+					im.mu.Unlock()
 					fmt.Printf("%c", ch)
+				} else {
+					im.mu.Unlock()
 				}
 			}
 
-		case <-errCh:
-			return "", false
-
-		case <-time.After(1 * time.Second):
-			// Timeout — check for autonomous thinking
-			if len(buf) == 0 {
-				elapsed := time.Since(a.lastActivity)
-				if elapsed >= time.Duration(a.thinkDelay)*time.Second {
-					return sentinelThink, true
-				}
-			}
+		case <-im.rawErr:
+			im.Lines <- InputLine{OK: false}
+			return
 		}
 	}
-	return "", false
 }
 
 // ── Main loop ──
+
+func (a *YoloAgent) showPrompt() {
+	prompt := fmt.Sprintf("%s%syou> %s", Green, Bold, Reset)
+	a.inputMgr.ShowPrompt(prompt)
+}
 
 func (a *YoloAgent) Run() {
 	hasHistory := a.history.Load()
@@ -1561,6 +1676,11 @@ func (a *YoloAgent) Run() {
 
 	a.lastActivity = time.Now()
 	a.thinkDelay = IdleThinkDelay
+
+	// Start async input manager
+	a.inputMgr = NewInputManager(a)
+	a.inputMgr.Start()
+	defer a.inputMgr.Stop()
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT)
@@ -1579,37 +1699,107 @@ func (a *YoloAgent) Run() {
 		}
 	}()
 
+	a.showPrompt()
+
 	for a.running {
-		cprintNoNL(Green+Bold, "you> ")
+		select {
+		case line := <-a.inputMgr.Lines:
+			if !line.OK {
+				a.running = false
+				break
+			}
 
-		line, ok := a.readLine()
-		if !ok {
-			a.running = false
-			break
-		}
-
-		if line == sentinelThink {
-			// Clear the prompt line and think
-			fmt.Printf("\r%s\r", strings.Repeat(" ", 40))
-			cprint(Gray, "  [autonomous thinking...]")
-			a.chatWithAgent("", true)
-			a.lastActivity = time.Now()
-			a.thinkDelay = ThinkLoopDelay
-		} else {
-			stripped := strings.TrimSpace(line)
+			stripped := strings.TrimSpace(line.Text)
 			lower := strings.ToLower(stripped)
 			if lower == "exit" || lower == "quit" {
 				a.running = false
 			} else if strings.HasPrefix(stripped, "/") {
 				a.handleCommand(stripped)
+				a.showPrompt()
 			} else if stripped != "" {
+				a.mu.Lock()
+				a.busy = true
+				a.mu.Unlock()
+
 				a.chatWithAgent(stripped, false)
+
+				a.mu.Lock()
+				a.busy = false
+				a.mu.Unlock()
+
+				// Check for any lines queued while busy
+				a.drainQueuedInput()
+				a.showPrompt()
+			}
+
+		case <-time.After(1 * time.Second):
+			// Check for autonomous thinking
+			a.inputMgr.mu.Lock()
+			bufEmpty := len(a.inputMgr.buf) == 0
+			a.inputMgr.mu.Unlock()
+			if bufEmpty {
+				elapsed := time.Since(a.lastActivity)
+				if elapsed >= time.Duration(a.thinkDelay)*time.Second {
+					a.inputMgr.ClearLine()
+					cprint(Gray, "  [autonomous thinking...]")
+
+					a.mu.Lock()
+					a.busy = true
+					a.mu.Unlock()
+
+					a.chatWithAgent("", true)
+
+					a.mu.Lock()
+					a.busy = false
+					a.mu.Unlock()
+
+					a.lastActivity = time.Now()
+					a.thinkDelay = ThinkLoopDelay
+					a.drainQueuedInput()
+					a.showPrompt()
+				}
 			}
 		}
 	}
 
 	a.history.Save()
+	fmt.Print("\r\n")
 	cprint(Cyan, "  Session saved. Goodbye!\n")
+}
+
+// drainQueuedInput processes any lines that were typed while the agent was busy.
+func (a *YoloAgent) drainQueuedInput() {
+	for {
+		select {
+		case line := <-a.inputMgr.Lines:
+			if !line.OK {
+				a.running = false
+				return
+			}
+			stripped := strings.TrimSpace(line.Text)
+			lower := strings.ToLower(stripped)
+			if lower == "exit" || lower == "quit" {
+				a.running = false
+				return
+			} else if strings.HasPrefix(stripped, "/") {
+				a.handleCommand(stripped)
+			} else if stripped != "" {
+				cprint(Gray, fmt.Sprintf("  [queued] %s", stripped))
+
+				a.mu.Lock()
+				a.busy = true
+				a.mu.Unlock()
+
+				a.chatWithAgent(stripped, false)
+
+				a.mu.Lock()
+				a.busy = false
+				a.mu.Unlock()
+			}
+		default:
+			return
+		}
+	}
 }
 
 // ─── Entry Point ──────────────────────────────────────────────────────
