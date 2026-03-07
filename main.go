@@ -6,6 +6,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -301,7 +302,7 @@ type ParsedToolCall struct {
 	Args map[string]any
 }
 
-func (c *OllamaClient) Chat(model string, messages []ChatMessage, tools []ToolDef) (*ChatResult, error) {
+func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMessage, tools []ToolDef) (*ChatResult, error) {
 	payload := ChatRequest{
 		Model:    model,
 		Messages: messages,
@@ -317,7 +318,13 @@ func (c *OllamaClient) Chat(model string, messages []ChatMessage, tools []ToolDe
 		return nil, fmt.Errorf("marshal error: %w", err)
 	}
 
-	resp, err := c.client.Post(c.baseURL+"/api/chat", "application/json", strings.NewReader(string(body)))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/chat", strings.NewReader(string(body)))
+	if err != nil {
+		return nil, fmt.Errorf("request error: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request error: %w", err)
 	}
@@ -935,6 +942,7 @@ type YoloAgent struct {
 	lastActivity    time.Time
 	thinkDelay      int
 	mu              sync.Mutex
+	cancelChat      context.CancelFunc // cancels the current Chat HTTP request
 }
 
 func NewYoloAgent() *YoloAgent {
@@ -1074,8 +1082,22 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 	for {
 		allMsgs := append(baseMsgs, roundMsgs...)
 
-		result, err := a.ollama.Chat(a.history.GetModel(), allMsgs, ollamaTools)
+		ctx, cancel := context.WithCancel(context.Background())
+		a.mu.Lock()
+		a.cancelChat = cancel
+		a.mu.Unlock()
+
+		result, err := a.ollama.Chat(ctx, a.history.GetModel(), allMsgs, ollamaTools)
+		cancel()
+		a.mu.Lock()
+		a.cancelChat = nil
+		a.mu.Unlock()
+
 		if err != nil {
+			if ctx.Err() != nil {
+				cprint(Yellow, "\n  Interrupted.")
+				return
+			}
 			cprint(Red, fmt.Sprintf("\nError: %v", err))
 			return
 		}
@@ -1293,7 +1315,7 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 
 		status := "complete"
 		result := "done"
-		_, err := a.ollama.Chat(useModel, msgs, nil)
+		_, err := a.ollama.Chat(context.Background(), useModel, msgs, nil)
 		if err != nil {
 			result = err.Error()
 			status = "error"
@@ -1415,14 +1437,13 @@ func (a *YoloAgent) readLine() (string, bool) {
 	defer term.Restore(fd, oldState)
 
 	var buf []byte
-	b := make([]byte, 1)
 
-	for a.running {
-		// Use a goroutine with timeout for non-blocking read
-		readCh := make(chan byte, 1)
-		errCh := make(chan error, 1)
-
-		go func() {
+	// Single persistent reader goroutine to avoid leaks
+	readCh := make(chan byte, 16)
+	errCh := make(chan error, 1)
+	go func() {
+		b := make([]byte, 1)
+		for {
 			n, err := os.Stdin.Read(b)
 			if err != nil {
 				errCh <- err
@@ -1431,8 +1452,10 @@ func (a *YoloAgent) readLine() (string, bool) {
 			if n > 0 {
 				readCh <- b[0]
 			}
-		}()
+		}
+	}()
 
+	for a.running {
 		select {
 		case ch := <-readCh:
 			a.lastActivity = time.Now()
@@ -1469,9 +1492,13 @@ func (a *YoloAgent) readLine() (string, bool) {
 					fmt.Print("\b \b")
 				}
 			case ch == 27: // Escape sequence (arrows etc.)
-				// Consume remaining bytes
-				esc := make([]byte, 2)
-				os.Stdin.Read(esc)
+				// Consume remaining bytes of escape sequence
+				for i := 0; i < 2; i++ {
+					select {
+					case <-readCh:
+					case <-time.After(50 * time.Millisecond):
+					}
+				}
 			default:
 				if ch >= 32 && unicode.IsPrint(rune(ch)) {
 					buf = append(buf, ch)
@@ -1512,10 +1539,18 @@ func (a *YoloAgent) Run() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT)
 	go func() {
-		<-sigCh
-		a.running = false
-		fmt.Println()
-		cprint(Cyan, "\n  Interrupted — saving session...")
+		for range sigCh {
+			a.mu.Lock()
+			cancel := a.cancelChat
+			a.mu.Unlock()
+			if cancel != nil {
+				cancel()
+			} else {
+				a.running = false
+				fmt.Println()
+				cprint(Cyan, "\n  Interrupted — saving session...")
+			}
+		}
 	}()
 
 	for a.running {
