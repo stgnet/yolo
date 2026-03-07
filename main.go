@@ -16,6 +16,8 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -29,7 +31,7 @@ import (
 
 const (
 	YoloDir           = ".yolo"
-	IdleThinkDelay    = 120 // seconds of no input before autonomous thinking
+	IdleThinkDelay    = 30 // seconds of no input before autonomous thinking
 	ThinkLoopDelay    = 120 // seconds between autonomous think cycles
 	MaxContextMessages = 40
 	MaxToolOutput     = 0 // 0 = no truncation
@@ -85,6 +87,13 @@ func cprintNoNL(color, text string) {
 
 // globalUI is set once the split UI is active. Before that, output goes to stdout directly.
 var globalUI *TerminalUI
+
+// stripAnsiCodes removes ANSI escape sequences from text for cursor tracking purposes.
+// This ensures color codes don't mess up column/row calculations.
+func stripAnsiCodes(s string) string {
+	re := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+	return re.ReplaceAllString(s, "")
+}
 
 // TerminalUI manages a split terminal: a scrolling output region on top and
 // a fixed input line at the bottom, separated by a divider.
@@ -158,8 +167,9 @@ func (ui *TerminalUI) OutputPrint(text string) {
 	// Write the text
 	fmt.Print(text)
 	// Track where the cursor ended up.
-	// We need to estimate the new position based on what we wrote.
-	for _, ch := range text {
+	// Strip ANSI codes before counting to avoid off-by-several errors from color codes.
+	stripped := stripAnsiCodes(text)
+	for _, ch := range stripped {
 		switch ch {
 		case '\n':
 			ui.outRow++
@@ -193,7 +203,9 @@ func (ui *TerminalUI) OutputPrintInline(text string) {
 
 	fmt.Printf("\033[%d;%dH", ui.outRow, ui.outCol)
 	fmt.Print(text)
-	for _, ch := range text {
+	// Strip ANSI codes before counting to avoid off-by-several errors from color codes.
+	stripped := stripAnsiCodes(text)
+	for _, ch := range stripped {
 		switch ch {
 		case '\n':
 			ui.outRow++
@@ -419,6 +431,7 @@ var ollamaTools = []ToolDef{
 		map[string]ToolParam{
 			"thought": {Type: "string", Description: "Your reasoning"},
 		}, []string{"thought"}),
+	toolDef("restart", "Rebuild and restart the program", map[string]ToolParam{}, nil),
 }
 
 // ─── Ollama Client ────────────────────────────────────────────────────
@@ -660,7 +673,7 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 var validTools = []string{
 	"read_file", "write_file", "edit_file", "list_files",
 	"search_files", "run_command", "spawn_subagent",
-	"list_models", "switch_model", "think",
+	"list_models", "switch_model", "think", "restart",
 }
 
 type ToolExecutor struct {
@@ -702,6 +715,8 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 		return t.switchModel(args)
 	case "think":
 		return "Thought recorded."
+	case "restart":
+		return t.restart(args)
 	default:
 		return fmt.Sprintf("Error: unknown tool '%s'. Available tools: %s", name, strings.Join(validTools, ", "))
 	}
@@ -1046,6 +1061,59 @@ func (t *ToolExecutor) switchModel(args map[string]any) string {
 	return "Error: no agent context"
 }
 
+func (t *ToolExecutor) restart(args map[string]any) string {
+	// Get the current executable path
+	exePath, err := os.Executable()
+	if err != nil {
+		return fmt.Sprintf("Error getting executable path: %v", err)
+	}
+
+	// Get the directory containing main.go (current working directory)
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Sprintf("Error getting current directory: %v", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "[RESTART] Rebuilding YOLO from source...\n")
+
+	// Build command - build to the same executable name
+	buildCmd := exec.Command("go", "build", "-o", filepath.Base(exePath), cwd+"/main.go")
+	buildCmd.Dir = cwd
+
+	output, err := buildCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Sprintf("Build failed: %v\n%s", err, string(output))
+	}
+
+	fmt.Fprintf(os.Stderr, "[RESTART] Build successful. Replacing current process...\n")
+
+	// Get the full path to the new executable in cwd
+	newExePath := filepath.Join(cwd, filepath.Base(exePath))
+
+	// Filter out --restart flag to avoid double-compile on restart
+	var executableArgs []string
+	for _, arg := range os.Args[1:] {
+		if arg != "--restart" {
+			executableArgs = append(executableArgs, arg)
+		}
+	}
+
+	// Restore terminal state before exec so it's not left in raw mode
+	if t.agent != nil && t.agent.inputMgr != nil {
+		t.agent.inputMgr.Stop()
+	}
+
+	// Use syscall.Exec to replace current process with the new binary
+	// This properly replaces the process without spawning a child
+	err = syscall.Exec(newExePath, append([]string{filepath.Base(exePath)}, executableArgs...), os.Environ())
+	if err != nil {
+		return fmt.Sprintf("Failed to exec new process: %v", err)
+	}
+
+	// Should never reach here if exec succeeds
+	return "Process replaced"
+}
+
 // ─── History Manager ──────────────────────────────────────────────────
 
 type HistoryMessage struct {
@@ -1054,6 +1122,145 @@ type HistoryMessage struct {
 	TS      string         `json:"ts"`
 	Meta    map[string]any `json:"meta,omitempty"`
 }
+
+// ── Backward Compatibility ────────────────
+
+// MessageHistory is an alias for HistoryManager (for test compatibility)
+type MessageHistory struct {
+	SessionID        string
+	CurrentAssistant *MessageHistoryItem
+	CurrentUser      *MessageHistoryItem
+	Messages         []HistoryMessage
+}
+
+type MessageHistoryItem struct {
+	Type    string
+	Value   string
+	Message string // Added for test compatibility
+}
+
+// NewMessageHistory creates a new history with initial system message
+func NewMessageHistory(sessionID string) *MessageHistory {
+	return &MessageHistory{
+		SessionID: sessionID,
+		Messages: []HistoryMessage{
+			{Role: "system", Content: "You are a helpful assistant.", TS: time.Now().Format(time.RFC3339)},
+		},
+	}
+}
+
+func (h *MessageHistory) AddUserMessage(content string) {
+	h.Messages = append(h.Messages, HistoryMessage{
+		Role:    "user",
+		Content: content,
+		TS:      time.Now().Format(time.RFC3339),
+	})
+}
+
+func (h *MessageHistory) AddAssistantMessage(content string) {
+	h.Messages = append(h.Messages, HistoryMessage{
+		Role:    "assistant",
+		Content: content,
+		TS:      time.Now().Format(time.RFC3339),
+	})
+}
+
+func (h *MessageHistory) StartToolCall(name string, args map[string]any) {
+	argsJSON, _ := json.Marshal(args)
+	newMsg := fmt.Sprintf("%s(%s)", name, string(argsJSON))
+	
+	if h.CurrentAssistant != nil && h.CurrentAssistant.Message != "" {
+		h.CurrentAssistant.Value = name
+		h.CurrentAssistant.Message += " → " + newMsg
+	} else {
+		h.CurrentAssistant = &MessageHistoryItem{Type: "tool_call", Value: name, Message: newMsg}
+	}
+}
+
+func (h *MessageHistory) EndToolCall(result string) {
+	h.Messages = append(h.Messages, HistoryMessage{
+		Role:    "tool",
+		Content: result,
+		TS:      time.Now().Format(time.RFC3339),
+	})
+}
+
+func (h *MessageHistory) Save() string {
+	// Create temp file for this session's history
+	filename := filepath.Join(os.TempDir(), "yolo_history_"+h.SessionID+"_"+strconv.FormatInt(time.Now().UnixNano(), 10)+".json")
+	
+	data, err := json.MarshalIndent(h.Messages, "", "  ")
+	if err != nil {
+		return ""
+	}
+	
+	if err := os.WriteFile(filename, data, 0644); err != nil {
+		return ""
+	}
+	
+	return filename
+}
+
+// LoadMessageHistory loads a saved history by session ID
+func LoadMessageHistory(sessionID string, clearOnFailure bool) (*MessageHistory, error) {
+	// Find and load the most recent save file for this session
+	pattern := filepath.Join(os.TempDir(), "yolo_history_"+sessionID+"*.json")
+	matches, err := filepath.Glob(pattern)
+	if err != nil || len(matches) == 0 {
+		if clearOnFailure {
+			return &MessageHistory{SessionID: sessionID}, nil
+		}
+		return nil, os.ErrNotExist
+	}
+
+	// Sort to get the most recent file
+	sort.Strings(matches)
+	filename := matches[len(matches)-1]
+
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		if clearOnFailure {
+			return &MessageHistory{SessionID: sessionID}, nil
+		}
+		return nil, fmt.Errorf("failed to read file: %w", err)
+	}
+
+	var messages []HistoryMessage
+	if err := json.Unmarshal(data, &messages); err != nil {
+		return nil, fmt.Errorf("failed to decode JSON: %w", err)
+	}
+
+	h := &MessageHistory{SessionID: sessionID}
+	h.Messages = messages
+	return h, nil
+}
+
+// ── Color constants for tests ────────
+
+type Color int
+
+const (
+	ColorNone Color = iota
+	ColorBold
+	ColorRed
+	ColorGreen
+	ColorYellow
+	ColorBlue
+	ColorMagenta
+	ColorCyan
+	ColorGray
+	BGRed
+	BGGreen
+)
+
+// escapeMarkdown escapes markdown characters for display
+func escapeMarkdown(s string) string {
+	s = strings.ReplaceAll(s, "\n", "\\n")
+	s = strings.ReplaceAll(s, "\"", "\\\"")
+	return s
+}
+
+// ────────────────────────────────────────
 
 type EvolutionEntry struct {
 	TS     string `json:"ts"`
@@ -1299,7 +1506,7 @@ func (a *YoloAgent) resumeSession() {
 }
 
 func (a *YoloAgent) showHelpHint() {
-	cprint(Gray, "\n  Type a message, or /help for commands.")
+	cprint(Gray, "  Type a message, or /help for commands.")
 	cprint(Gray, fmt.Sprintf("  Agent thinks autonomously after %ds of idle.\n", IdleThinkDelay))
 }
 
@@ -1408,7 +1615,7 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 			if len(shortStr) > 80 {
 				shortStr = shortStr[:80] + "..."
 			}
-			cprint(Yellow, fmt.Sprintf("  [%s] %s", name, shortStr))
+			cprint(Yellow, fmt.Sprintf("  [%s] %s\n", name, shortStr))
 
 			resultStr := a.tools.Execute(name, args)
 
@@ -1417,7 +1624,7 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 				preview = preview[:200] + "..."
 			}
 			preview = strings.ReplaceAll(preview, "\n", " ")
-			cprint(Gray, fmt.Sprintf("  => %s", preview))
+			cprint(Gray, fmt.Sprintf("  => %s\n", preview))
 
 			roundMsgs = append(roundMsgs, ChatMessage{Role: "tool", Content: resultStr})
 			toolLog = append(toolLog, toolLogEntry{name: name, args: args, result: resultStr})
@@ -1450,6 +1657,8 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		a.history.AddMessage("assistant", "[tool activity]\n"+strings.Join(summaryLines, "\n"), nil)
 	}
 	if finalText != "" {
+		// Echo AI's response with blue color and prefix
+		cprint(Blue, fmt.Sprintf("  [%s] %s\n", "ai", finalText))
 		a.history.AddMessage("assistant", finalText, nil)
 	}
 }
@@ -1954,6 +2163,9 @@ func (a *YoloAgent) Run() {
 				a.mu.Lock()
 				a.busy = true
 				a.mu.Unlock()
+			
+				// Echo user's input with green color and prefix
+				cprint(Green, fmt.Sprintf("  [%s] %s\n", "you", stripped))
 
 				a.chatWithAgent(stripped, false)
 
@@ -1975,7 +2187,7 @@ func (a *YoloAgent) Run() {
 				elapsed := time.Since(a.lastActivity)
 				if elapsed >= time.Duration(a.thinkDelay)*time.Second {
 					a.inputMgr.ClearLine()
-					cprint(Gray, "  [autonomous thinking...]")
+					cprint(Gray, "  [autonomous thinking...]\n")
 
 					a.mu.Lock()
 					a.busy = true
@@ -2018,7 +2230,7 @@ func (a *YoloAgent) drainQueuedInput() {
 			} else if strings.HasPrefix(stripped, "/") {
 				a.handleCommand(stripped)
 			} else if stripped != "" {
-				cprint(Gray, fmt.Sprintf("  [queued] %s", stripped))
+				cprint(Green, fmt.Sprintf("  [%s] %s\n", "queued", stripped))
 
 				a.mu.Lock()
 				a.busy = true
