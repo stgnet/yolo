@@ -1,6 +1,6 @@
 {
-  "id": 1,
-  "model": "",
+  "id": 2,
+  "model": "gpt-4o-mini",
   "result": "request error: Post \"http://localhost:11434/api/chat\": dial tcp 127.0.0.1:11434: connect: connection refused",
   "status": "error",
   "task": "Test subagent prompt",
