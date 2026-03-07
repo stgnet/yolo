@@ -507,6 +507,28 @@ func getIntArg(args map[string]any, key string, fallback int) int {
 	return fallback
 }
 
+func isBinaryData(data []byte) bool {
+	// Check the first 8KB for null bytes or high ratio of non-text bytes
+	size := len(data)
+	if size > 8192 {
+		size = 8192
+	}
+	nonText := 0
+	for i := 0; i < size; i++ {
+		b := data[i]
+		if b == 0 {
+			return true
+		}
+		if b < 7 || (b > 14 && b < 32 && b != 27) {
+			nonText++
+		}
+	}
+	if size == 0 {
+		return false
+	}
+	return float64(nonText)/float64(size) > 0.1
+}
+
 func (t *ToolExecutor) readFile(args map[string]any) string {
 	path := getStringArg(args, "path", "")
 	if path == "" {
@@ -523,6 +545,10 @@ func (t *ToolExecutor) readFile(args map[string]any) string {
 	data, err := os.ReadFile(full)
 	if err != nil {
 		return fmt.Sprintf("Error reading %s: %v", path, err)
+	}
+
+	if isBinaryData(data) {
+		return fmt.Sprintf("Error: %s is a binary file, not a text file. Cannot read binary files as source code.", path)
 	}
 
 	allLines := strings.Split(string(data), "\n")
