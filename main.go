@@ -2207,6 +2207,52 @@ func (im *InputManager) RedrawAfterOutput() {
 	im.syncAndRedraw()
 }
 
+// consumeEscapeSequence reads and discards the remainder of an escape sequence
+// after the initial ESC (0x1B) byte has been received. It handles:
+//   - CSI sequences: ESC [ <params> <letter>  (arrow keys, function keys, etc.)
+//   - SS3 sequences: ESC O <letter>           (some function keys)
+//   - Simple sequences: ESC <letter>           (Alt+key combos)
+//
+// The previous implementation consumed a fixed 2 bytes, which was wrong for
+// variable-length CSI sequences (e.g., ESC[1;5C for Ctrl+Right is 6 bytes).
+// Leftover bytes would leak into the input buffer as garbage, and real user
+// keystrokes could be consumed as part of the sequence, causing input loss.
+func (im *InputManager) consumeEscapeSequence() {
+	const timeout = 50 * time.Millisecond
+
+	// Read the first byte after ESC
+	var b byte
+	select {
+	case b = <-im.rawBytes:
+	case <-time.After(timeout):
+		return // bare ESC press, nothing to consume
+	}
+
+	switch b {
+	case '[': // CSI sequence: ESC [ <params...> <final byte>
+		// Parameters are bytes in range 0x20-0x3F (digits, semicolons, etc.)
+		// Final byte is in range 0x40-0x7E (letters, @, ~, etc.)
+		for {
+			select {
+			case b = <-im.rawBytes:
+				if b >= 0x40 && b <= 0x7E {
+					return // final byte reached, sequence complete
+				}
+				// intermediate/parameter byte, keep consuming
+			case <-time.After(timeout):
+				return // incomplete sequence, give up
+			}
+		}
+	case 'O': // SS3 sequence: ESC O <letter>
+		select {
+		case <-im.rawBytes: // consume the final byte
+		case <-time.After(timeout):
+		}
+	default:
+		// Simple ESC + single char (e.g., Alt+key), already consumed
+	}
+}
+
 func (im *InputManager) processLoop() {
 	for {
 		select {
@@ -2272,12 +2318,7 @@ func (im *InputManager) processLoop() {
 				im.syncAndRedraw()
 			case ch == 27: // Escape sequence
 				im.mu.Unlock()
-				for i := 0; i < 2; i++ {
-					select {
-					case <-im.rawBytes:
-					case <-time.After(50 * time.Millisecond):
-					}
-				}
+				im.consumeEscapeSequence()
 			default:
 				if ch >= 32 && unicode.IsPrint(rune(ch)) {
 					im.buf = append(im.buf, ch)
