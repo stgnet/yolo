@@ -30,13 +30,13 @@ import (
 // ─── Configuration ────────────────────────────────────────────────────
 
 const (
-	YoloDir           = ".yolo"
-	IdleThinkDelay    = 30 // seconds of no input before autonomous thinking
-	ThinkLoopDelay    = 120 // seconds between autonomous think cycles
+	YoloDir            = ".yolo"
+	IdleThinkDelay     = 30  // seconds of no input before autonomous thinking
+	ThinkLoopDelay     = 120 // seconds between autonomous think cycles
 	MaxContextMessages = 40
-	MaxToolOutput     = 0 // 0 = no truncation
-	ToolNudgeAfter    = 0 // 0 = disabled
-	CommandTimeout    = 30 // shell command timeout in seconds
+	MaxToolOutput      = 0  // 0 = no truncation
+	ToolNudgeAfter     = 0  // 0 = disabled
+	CommandTimeout     = 30 // shell command timeout in seconds
 )
 
 var (
@@ -108,6 +108,92 @@ type TerminalUI struct {
 	outCol   int // tracked col of cursor in output region
 }
 
+// wrapText wraps text to the given width, inserting newlines at word boundaries.
+// It preserves existing newlines and handles both short and long words.
+func (ui *TerminalUI) wrapText(text string) string {
+	if ui.cols <= 0 {
+		return text
+	}
+
+	var result strings.Builder
+	lines := strings.Split(text, "\n")
+
+	for _, line := range lines {
+		if len(line) == 0 {
+			result.WriteString("\n")
+			continue
+		}
+
+		words := strings.Fields(line)
+		if len(words) == 0 {
+			result.WriteString("\n")
+			continue
+		}
+
+		var currentLine strings.Builder
+		currentLen := 0
+
+		for i, word := range words {
+			wordLen := len(word)
+			spaceNeeded := 0
+			if currentLen > 0 {
+				spaceNeeded = 1 // for space between words
+			}
+
+			if currentLen+spaceNeeded+wordLen > ui.cols {
+				// Current line is full, write it and start new one
+				if currentLine.Len() > 0 {
+					result.WriteString(currentLine.String())
+					result.WriteString("\n")
+					currentLine.Reset()
+					currentLen = 0
+				}
+
+				// If single word is longer than width, break it manually
+				if wordLen > ui.cols {
+					for wordLen > 0 {
+						chunkLen := min(wordLen, ui.cols)
+						result.WriteString(word[:chunkLen])
+						word = word[chunkLen:]
+						wordLen -= chunkLen
+						if wordLen > 0 {
+							result.WriteString("\n")
+						}
+					}
+				} else {
+					currentLine.WriteString(word)
+					currentLen = wordLen
+				}
+			} else {
+				// Add word to current line
+				if currentLen > 0 {
+					currentLine.WriteString(" ")
+					currentLen++
+				}
+				currentLine.WriteString(word)
+				currentLen += wordLen
+			}
+
+			// If this was the last word, write the remaining text
+			if i == len(words)-1 && currentLine.Len() > 0 {
+				result.WriteString(currentLine.String())
+			}
+		}
+
+		// Add newline between original lines (unless we're at the end)
+		if line != lines[len(lines)-1] || (line == lines[len(lines)-1] && strings.HasSuffix(text, "\n")) {
+			// Don't add extra newline if current line is empty
+			if currentLine.Len() > 0 {
+				result.WriteString("\n")
+			}
+		} else if result.Len() > 0 && !strings.HasSuffix(result.String(), "\n") && lines[len(lines)-1] != "" {
+			result.WriteString("\n")
+		}
+	}
+
+	return result.String()
+}
+
 func NewTerminalUI() *TerminalUI {
 	fd := int(os.Stdout.Fd())
 	cols, rows, err := term.GetSize(fd)
@@ -157,18 +243,7 @@ func (ui *TerminalUI) Teardown() {
 	fmt.Printf("\033[%d;1H\n", ui.rows)
 }
 
-// OutputPrint writes text to the output (scrolling) region.
-func (ui *TerminalUI) OutputPrint(text string) {
-	ui.mu.Lock()
-	defer ui.mu.Unlock()
-
-	// Move cursor to tracked output position within the scroll region
-	fmt.Printf("\033[%d;%dH", ui.outRow, ui.outCol)
-	// Write the text
-	fmt.Print(text)
-	// Track where the cursor ended up.
-	// Strip ANSI codes before counting to avoid off-by-several errors from color codes.
-	stripped := stripAnsiCodes(text)
+func (ui *TerminalUI) trackCursorMovement(stripped string) {
 	for _, ch := range stripped {
 		switch ch {
 		case '\n':
@@ -190,6 +265,24 @@ func (ui *TerminalUI) OutputPrint(text string) {
 			}
 		}
 	}
+}
+
+// OutputPrint writes text to the output (scrolling) region.
+func (ui *TerminalUI) OutputPrint(text string) {
+	ui.mu.Lock()
+	defer ui.mu.Unlock()
+
+	// Wrap text to terminal width before outputting
+	text = ui.wrapText(text)
+
+	// Move cursor to tracked output position within the scroll region
+	fmt.Printf("\033[%d;%dH", ui.outRow, ui.outCol)
+	// Write the text
+	fmt.Print(text)
+	// Track where the cursor ended up.
+	// Strip ANSI codes before counting to avoid off-by-several errors from color codes.
+	stripped := stripAnsiCodes(text)
+	ui.trackCursorMovement(stripped)
 	// Redraw input line (output may have scrolled and clobbered it)
 	ui.drawInputLocked()
 }
@@ -201,31 +294,14 @@ func (ui *TerminalUI) OutputPrintInline(text string) {
 	ui.mu.Lock()
 	defer ui.mu.Unlock()
 
+	// Wrap text to terminal width before outputting
+	text = ui.wrapText(text)
+
 	fmt.Printf("\033[%d;%dH", ui.outRow, ui.outCol)
 	fmt.Print(text)
 	// Strip ANSI codes before counting to avoid off-by-several errors from color codes.
 	stripped := stripAnsiCodes(text)
-	for _, ch := range stripped {
-		switch ch {
-		case '\n':
-			ui.outRow++
-			ui.outCol = 1
-			if ui.outRow > ui.rows-2 {
-				ui.outRow = ui.rows - 2
-			}
-		case '\r':
-			ui.outCol = 1
-		default:
-			ui.outCol++
-			if ui.outCol > ui.cols {
-				ui.outCol = 1
-				ui.outRow++
-				if ui.outRow > ui.rows-2 {
-					ui.outRow = ui.rows - 2
-				}
-			}
-		}
-	}
+	ui.trackCursorMovement(stripped)
 }
 
 // OutputFinishLine redraws the input line after inline output is done.
@@ -236,8 +312,34 @@ func (ui *TerminalUI) OutputFinishLine() {
 }
 
 func (ui *TerminalUI) drawInputLocked() {
-	// Move to input row, clear it, draw prompt + buffer, keep cursor there
-	fmt.Printf("\033[%d;1H\033[K%s%s", ui.rows, ui.prompt, string(ui.inputBuf))
+	// Move to input row and clear it
+	fmt.Printf("\033[%d;1H\033[2K", ui.rows) // Clear entire line
+
+	promptStr := ui.prompt
+	inputStr := string(ui.inputBuf)
+
+	// Calculate available space after prompt
+	promptWidth := len(stripAnsiCodes(promptStr))
+	availableWidth := ui.cols - promptWidth - 1 // -1 for cursor space
+
+	if availableWidth <= 0 {
+		availableWidth = ui.cols - 2
+	}
+
+	// If input fits on one line, show it all (current behavior)
+	var displayInput string
+	cursorCol := promptWidth + len(inputStr) + 1
+	if len(inputStr) <= availableWidth {
+		displayInput = inputStr
+	} else {
+		// Show rightmost portion that fits (horizontal scrolling)
+		startPos := len(inputStr) - availableWidth
+		displayInput = inputStr[startPos:]
+		cursorCol = promptWidth + len(displayInput) + 1
+	}
+
+	// Draw prompt and input, then position cursor
+	fmt.Printf("%s%s\033[%d;%dH", promptStr, displayInput, ui.rows, cursorCol)
 }
 
 // UpdateInput updates the UI's copy of the input state for redrawing.
@@ -260,10 +362,8 @@ func (ui *TerminalUI) RedrawInput() {
 func (ui *TerminalUI) WriteToInputLine(s string) {
 	ui.mu.Lock()
 	defer ui.mu.Unlock()
-	// Move to input row, position after prompt + current buf
-	promptLen := len(stripANSI(ui.prompt))
-	col := promptLen + len(ui.inputBuf) + 1
-	fmt.Printf("\033[%d;%dH%s", ui.rows, col, s)
+	// Just output the character - next redraw will handle positioning
+	fmt.Print(s)
 }
 
 // ClearInputLine clears the input line.
@@ -284,12 +384,6 @@ func (ui *TerminalUI) RefreshSize() {
 		ui.drawDividerLocked()
 		ui.drawInputLocked()
 	}
-}
-
-// stripANSI removes ANSI escape sequences for length calculation.
-func stripANSI(s string) string {
-	re := regexp.MustCompile(`\033\[[0-9;]*[a-zA-Z]`)
-	return re.ReplaceAllString(s, "")
 }
 
 // ─── Spinner ──────────────────────────────────────────────────────────
@@ -355,9 +449,9 @@ type ToolParam struct {
 }
 
 type ToolSchema struct {
-	Type       string                `json:"type"`
-	Properties map[string]ToolParam  `json:"properties"`
-	Required   []string              `json:"required,omitempty"`
+	Type       string               `json:"type"`
+	Properties map[string]ToolParam `json:"properties"`
+	Required   []string             `json:"required,omitempty"`
 }
 
 type ToolFunction struct {
@@ -477,9 +571,9 @@ func (c *OllamaClient) ListModels() []string {
 
 // Chat message types
 type ChatMessage struct {
-	Role      string      `json:"role"`
-	Content   string      `json:"content"`
-	ToolCalls []ToolCall  `json:"tool_calls,omitempty"`
+	Role      string     `json:"role"`
+	Content   string     `json:"content"`
+	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
 }
 
 type ToolCall struct {
@@ -493,10 +587,10 @@ type ToolCallFunc struct {
 }
 
 type ChatRequest struct {
-	Model    string        `json:"model"`
-	Messages []ChatMessage `json:"messages"`
-	Stream   bool          `json:"stream"`
-	Tools    []ToolDef     `json:"tools,omitempty"`
+	Model    string         `json:"model"`
+	Messages []ChatMessage  `json:"messages"`
+	Stream   bool           `json:"stream"`
+	Tools    []ToolDef      `json:"tools,omitempty"`
 	Options  map[string]any `json:"options,omitempty"`
 }
 
@@ -685,11 +779,24 @@ func NewToolExecutor(baseDir string, agent *YoloAgent) *ToolExecutor {
 	return &ToolExecutor{baseDir: baseDir, agent: agent}
 }
 
+// safePath resolves and validates that a relative path stays within baseDir.
+// It returns an absolute, clean path or an error if the path escapes the working directory.
 func (t *ToolExecutor) safePath(path string) (string, error) {
+	// Reject absolute paths - only relative paths are allowed
+	if filepath.IsAbs(path) {
+		return "", fmt.Errorf("path '%s' must be relative, not absolute", path)
+	}
+
+	// Clean and join with baseDir to get absolute path
 	full := filepath.Clean(filepath.Join(t.baseDir, path))
-	if !strings.HasPrefix(full, t.baseDir) {
+
+	// Ensure the resolved path is within baseDir using a strict prefix check
+	// We add a separator to prevent prefix attacks like /proj vs /projector
+	baseWithSep := t.baseDir + string(filepath.Separator)
+	if full != t.baseDir && !strings.HasPrefix(full, baseWithSep) {
 		return "", fmt.Errorf("path '%s' is outside working directory", path)
 	}
+
 	return full, nil
 }
 
@@ -875,7 +982,16 @@ func (t *ToolExecutor) editFile(args map[string]any) string {
 func (t *ToolExecutor) listFiles(args map[string]any) string {
 	pattern := getStringArg(args, "pattern", "*")
 
-	matches, err := filepath.Glob(filepath.Join(t.baseDir, pattern))
+	var matches []string
+	var err error
+
+	// Handle recursive glob patterns (**/)
+	if strings.Contains(pattern, "**") {
+		matches, err = t.globRecursive(pattern)
+	} else {
+		matches, err = filepath.Glob(filepath.Join(t.baseDir, pattern))
+	}
+
 	if err != nil {
 		return fmt.Sprintf("Error: %v", err)
 	}
@@ -911,6 +1027,80 @@ func (t *ToolExecutor) listFiles(args map[string]any) string {
 		items = items[:limit]
 	}
 	return header + "\n" + strings.Join(items, "\n")
+}
+
+// globRecursive handles recursive glob patterns with **/ wildcards
+func (t *ToolExecutor) globRecursive(pattern string) ([]string, error) {
+	var matches []string
+
+	// Handle patterns like **/*.txt or **/directory/*
+	if strings.HasPrefix(pattern, "**/") {
+		basePattern := pattern[3:]
+
+		err := filepath.Walk(t.baseDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return nil
+			}
+
+			relPath, _ := filepath.Rel(t.baseDir, path)
+			if relPath == "." {
+				relPath = ""
+			}
+
+			if !info.IsDir() {
+				// For **/*.txt, match against just the filename
+				name := filepath.Base(path)
+				matched, _ := filepath.Match(basePattern, name)
+				if matched {
+					matches = append(matches, path)
+				}
+			}
+			return nil
+		})
+
+		return matches, err
+	}
+
+	// For patterns like dir/**/*.txt
+	parts := strings.SplitN(pattern, "**", 2)
+	if len(parts) == 2 {
+		baseDir := t.baseDir
+		if parts[0] != "" {
+			baseDir = filepath.Join(t.baseDir, strings.TrimSuffix(parts[0], "/"))
+		}
+
+		err := filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return nil
+			}
+
+			if !info.IsDir() {
+				patternToMatch := parts[1]
+				if strings.HasPrefix(patternToMatch, "/") {
+					patternToMatch = patternToMatch[1:]
+				}
+
+				matched := false
+				if m, e := filepath.Match("*"+patternToMatch, filepath.Base(path)); e == nil {
+					matched = m
+				}
+				if !matched {
+					if m, e := filepath.Match(patternToMatch, filepath.Base(path)); e == nil {
+						matched = m
+					}
+				}
+
+				if matched {
+					matches = append(matches, path)
+				}
+			}
+			return nil
+		})
+
+		return matches, err
+	}
+
+	return filepath.Glob(filepath.Join(t.baseDir, pattern))
 }
 
 func (t *ToolExecutor) searchFiles(args map[string]any) string {
@@ -1034,12 +1224,35 @@ func (t *ToolExecutor) runCommand(args map[string]any) string {
 }
 
 func (t *ToolExecutor) spawnSubagent(args map[string]any) string {
-	task := getStringArg(args, "task", "")
-	model := getStringArg(args, "model", "")
-	if t.agent != nil {
-		return t.agent.spawnSubagent(task, model)
+	// Validate required parameters
+	if args["prompt"] == nil {
+		return "Error: required parameter 'prompt' is missing"
 	}
-	return "Error: no agent context"
+	prompt, ok := args["prompt"].(string)
+	if !ok || prompt == "" {
+		return "Error: 'prompt' cannot be empty"
+	}
+
+	name := getStringArg(args, "name", "subagent")
+	description := getStringArg(args, "description", "")
+	model := getStringArg(args, "model", "")
+
+	// Format the output message
+	result := fmt.Sprintf("Starting new agent '%s' with task: %s", name, prompt)
+	if description != "" {
+		result += fmt.Sprintf("\nDescription: %s", description)
+	}
+	if model != "" {
+		result += fmt.Sprintf("\nModel: %s", model)
+	}
+
+	// Actually spawn the subagent using the agent if available
+	if t.agent != nil {
+		subResult := t.agent.spawnSubagent(prompt, model)
+		return result + "\n" + subResult
+	}
+
+	return result + "\nError: no agent context"
 }
 
 func (t *ToolExecutor) listModels() string {
@@ -1168,7 +1381,7 @@ func (h *MessageHistory) AddAssistantMessage(content string) {
 func (h *MessageHistory) StartToolCall(name string, args map[string]any) {
 	argsJSON, _ := json.Marshal(args)
 	newMsg := fmt.Sprintf("%s(%s)", name, string(argsJSON))
-	
+
 	if h.CurrentAssistant != nil && h.CurrentAssistant.Message != "" {
 		h.CurrentAssistant.Value = name
 		h.CurrentAssistant.Message += " → " + newMsg
@@ -1188,16 +1401,16 @@ func (h *MessageHistory) EndToolCall(result string) {
 func (h *MessageHistory) Save() string {
 	// Create temp file for this session's history
 	filename := filepath.Join(os.TempDir(), "yolo_history_"+h.SessionID+"_"+strconv.FormatInt(time.Now().UnixNano(), 10)+".json")
-	
+
 	data, err := json.MarshalIndent(h.Messages, "", "  ")
 	if err != nil {
 		return ""
 	}
-	
+
 	if err := os.WriteFile(filename, data, 0644); err != nil {
 		return ""
 	}
-	
+
 	return filename
 }
 
@@ -1891,11 +2104,11 @@ type InputLine struct {
 // even while the agent is processing. Completed lines are sent to Lines.
 type InputManager struct {
 	Lines    chan InputLine
-	rawBytes chan byte    // raw bytes from stdin reader goroutine
-	rawErr   chan error   // errors from stdin reader goroutine
-	buf      []byte       // current line being edited
-	mu       sync.Mutex   // protects buf and prompt state
-	prompt   string       // current prompt prefix being displayed
+	rawBytes chan byte  // raw bytes from stdin reader goroutine
+	rawErr   chan error // errors from stdin reader goroutine
+	buf      []byte     // current line being edited
+	mu       sync.Mutex // protects buf and prompt state
+	prompt   string     // current prompt prefix being displayed
 	agent    *YoloAgent
 	oldState *term.State
 	fd       int
@@ -2163,7 +2376,7 @@ func (a *YoloAgent) Run() {
 				a.mu.Lock()
 				a.busy = true
 				a.mu.Unlock()
-			
+
 				// Echo user's input with green color and prefix
 				cprint(Green, fmt.Sprintf("  [%s] %s\n", "you", stripped))
 

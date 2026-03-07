@@ -51,13 +51,113 @@ func TestStripAnsiCodes(t *testing.T) {
 	}
 }
 
+// TestSpawnSubagent tests the spawnSubagent tool with basic parameters
+func TestSpawnSubagent(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a minimal agent for the executor
+	agent := NewYoloAgent()
+	agent.baseDir = tmpDir
+
+	executor := &ToolExecutor{baseDir: tmpDir, agent: agent}
+
+	// Test with minimal required parameters
+	params := map[string]any{
+		"prompt": "Test subagent prompt",
+		"name":   "test-agent",
+	}
+
+	result := executor.spawnSubagent(params)
+
+	if !strings.Contains(result, "Starting new agent") {
+		t.Errorf("Expected output to contain 'Starting new agent', got: %s", result)
+	}
+
+	if !strings.Contains(result, "Test subagent prompt") {
+		t.Errorf("Expected output to contain the prompt, got: %s", result)
+	}
+
+	if !strings.Contains(result, "test-agent") {
+		t.Errorf("Expected output to contain agent name, got: %s", result)
+	}
+
+	// Test with all parameters including constraints
+	paramsWithConstraints := map[string]any{
+		"prompt":      "Test subagent prompt",
+		"name":        "test-agent-2",
+		"description": "A test agent for testing purposes",
+		"model":       "gpt-4o-mini",
+		"mode":        "fast",
+		"group_id":    "group-123",
+	}
+
+	result2 := executor.spawnSubagent(paramsWithConstraints)
+
+	if !strings.Contains(result2, "Starting new agent") {
+		t.Errorf("Expected output to contain 'Starting new agent', got: %s", result2)
+	}
+
+	if !strings.Contains(result2, "A test agent for testing purposes") {
+		t.Errorf("Expected output to contain description, got: %s", result2)
+	}
+}
+
+// TestSpawnSubagentValidation tests parameter validation in spawnSubagent
+func TestSpawnSubagentValidation(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a minimal agent for the executor
+	agent := NewYoloAgent()
+
+	executor := &ToolExecutor{baseDir: tmpDir, agent: agent}
+
+	tests := []struct {
+		name    string
+		params  map[string]any
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "missing prompt",
+			params: map[string]any{
+				"name": "test-agent",
+			},
+			wantErr: true,
+			errMsg:  "required parameter 'prompt' is missing",
+		},
+		{
+			name: "empty string prompt",
+			params: map[string]any{
+				"prompt": "",
+				"name":   "test-agent",
+			},
+			wantErr: true,
+			errMsg:  "'prompt' cannot be empty",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := executor.spawnSubagent(tt.params)
+
+			if tt.wantErr && !strings.Contains(result, "Error:") {
+				t.Errorf("Expected error in result, got: %s", result)
+			}
+
+			if tt.wantErr && !strings.Contains(result, tt.errMsg) {
+				t.Errorf("Expected error message to contain %q, got: %s", tt.errMsg, result)
+			}
+		})
+	}
+}
+
 // TestStripANSI tests the alternative strip function
 func TestStripANSI(t *testing.T) {
 	input := "\x1b[32mGreen\x1b[0m"
 	expected := "Green"
-	result := stripANSI(input)
+	result := stripAnsiCodes(input)
 	if result != expected {
-		t.Errorf("stripANSI(%q) = %q; want %q", input, result, expected)
+		t.Errorf("stripAnsiCodes(%q) = %q; want %q", input, result, expected)
 	}
 }
 
@@ -235,6 +335,12 @@ func TestToolExecutorListFiles(t *testing.T) {
 	if !strings.Contains(result, "file1.txt") || !strings.Contains(result, "file3.txt") {
 		t.Errorf("Expected all .txt files recursively, got: %s", result)
 	}
+
+	// Test that **/*.txt matches by filename only (not full path)
+	// This ensures the fix for globRecursive matching correctly
+	if strings.Contains(result, "subdir/file1.txt") || strings.Contains(result, "file3.txt/subdir") {
+		t.Errorf("Pattern should match filenames only, not include path components in wrong places: %s", result)
+	}
 }
 
 // TestToolExecutorRunCommand tests the runCommand tool
@@ -245,5 +351,117 @@ func TestToolEchoCommand(t *testing.T) {
 	result := executor.runCommand(map[string]any{"command": "echo 'hello world'"})
 	if !strings.Contains(result, "hello world") {
 		t.Errorf("Expected output from echo command, got: %s", result)
+	}
+}
+
+// TestTerminalUIWrapText tests the word-wrapping functionality
+func TestTerminalUIWrapText(t *testing.T) {
+	ui := &TerminalUI{cols: 20}
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "simple short text",
+			input:    "Hello World",
+			expected: "Hello World\n",
+		},
+		{
+			name:     "text that fits exactly",
+			input:    "Hello World Test", // 16 chars, should fit in 20
+			expected: "Hello World Test\n",
+		},
+		{
+			name:     "text exceeding width with word wrap",
+			input:    "This is a longer line that should wrap at word boundaries when it exceeds the terminal width of twenty columns.",
+			expected: "This is a longer\nline that should\nwrap at word\nboundaries when it\nexceeds the terminal\nwidth of twenty\ncolumns.\n",
+		},
+		{
+			name:     "single word longer than width",
+			input:    "supercalifragilisticexpialidocious", // 34 chars
+			expected: "supercalifragilistic\nexpialidocious\n",
+		},
+		{
+			name:     "multiple newlines preserved",
+			input:    "Line1\n\nLine2",
+			expected: "Line1\n\nLine2\n",
+		},
+		{
+			name:     "empty string",
+			input:    "",
+			expected: "\n",
+		},
+		{
+			name:     "single word fits exactly at boundary",
+			input:    "abcdefghij klmnopqrst", // 10 + space + 10 = 21 > 20
+			expected: "abcdefghij\nklmnopqrst\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ui.wrapText(tt.input)
+			if result != tt.expected {
+				t.Errorf("wrapText(%q) = %q; want %q",
+					tt.input, result, tt.expected)
+				// Print line-by-line comparison for debugging
+				expectedLines := strings.Split(tt.expected, "\n")
+				resultLines := strings.Split(result, "\n")
+				for i := 0; i < max(len(expectedLines), len(resultLines)); i++ {
+					expLine := ""
+					resLine := ""
+					if i < len(expectedLines) {
+						expLine = expectedLines[i]
+					}
+					if i < len(resultLines) {
+						resLine = resultLines[i]
+					}
+					t.Logf("Line %d: got=%q want=%q", i, resLine, expLine)
+				}
+			}
+		})
+	}
+}
+
+// TestTerminalUIWrapTextVaryingWidths tests wrapping at different terminal widths
+func TestTerminalUIWrapTextVaryingWidths(t *testing.T) {
+	input := "The quick brown fox jumps over the lazy dog"
+
+	testCases := []struct {
+		width      int
+		maxLineLen int
+	}{
+		{80, len(input)}, // Should fit on one line
+		{40, 39},         // Should wrap: "The quick brown fox jumps over the" (39 chars)
+		{20, 20},         // Multiple lines
+		{10, 10},         // Many lines with short words
+	}
+
+	for _, tc := range testCases {
+		ui := &TerminalUI{cols: tc.width}
+		result := ui.wrapText(input)
+
+		lines := strings.Split(result, "\n")
+		// Remove last empty element if present
+		if len(lines) > 0 && lines[len(lines)-1] == "" {
+			lines = lines[:len(lines)-1]
+		}
+
+		maxLen := 0
+		for _, line := range lines {
+			if len(line) > maxLen {
+				maxLen = len(line)
+			}
+			if len(line) > tc.width {
+				t.Errorf("Line exceeds width: %q (len=%d, width=%d)", line, len(line), tc.width)
+			}
+		}
+
+		if maxLen > tc.maxLineLen {
+			t.Logf("Warning: max line length %d exceeds expected %d for width %d",
+				maxLen, tc.maxLineLen, tc.width)
+		}
 	}
 }

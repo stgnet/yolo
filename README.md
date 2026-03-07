@@ -10,6 +10,10 @@ A self-evolving AI agent for software development that continuously runs, thinks
 - **Tool Integration**: Built-in tools for file operations, command execution, and more
 - **Subagent System**: Creates specialized sub-agents for focused tasks
 - **Terminal UI**: Split-screen interface with scrolling output and input line
+  - Word wrapping for long messages (intelligent word boundaries)
+  - Horizontal scrolling for very long input lines (shows rightmost portion)
+  - Automatic terminal resize handling
+  - Clean ANSI escape sequence handling
 
 ## Installation
 
