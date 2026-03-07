@@ -366,37 +366,42 @@ func TestTerminalUIWrapText(t *testing.T) {
 		{
 			name:     "simple short text",
 			input:    "Hello World",
-			expected: "Hello World\n",
+			expected: "Hello World",
 		},
 		{
 			name:     "text that fits exactly",
 			input:    "Hello World Test", // 16 chars, should fit in 20
-			expected: "Hello World Test\n",
+			expected: "Hello World Test",
 		},
 		{
 			name:     "text exceeding width with word wrap",
 			input:    "This is a longer line that should wrap at word boundaries when it exceeds the terminal width of twenty columns.",
-			expected: "This is a longer\nline that should\nwrap at word\nboundaries when it\nexceeds the terminal\nwidth of twenty\ncolumns.\n",
+			expected: "This is a longer\nline that should\nwrap at word\nboundaries when it\nexceeds the terminal\nwidth of twenty\ncolumns.",
 		},
 		{
 			name:     "single word longer than width",
 			input:    "supercalifragilisticexpialidocious", // 34 chars
-			expected: "supercalifragilistic\nexpialidocious\n",
+			expected: "supercalifragilistic\nexpialidocious",
 		},
 		{
 			name:     "multiple newlines preserved",
 			input:    "Line1\n\nLine2",
-			expected: "Line1\n\nLine2\n",
+			expected: "Line1\n\nLine2",
 		},
 		{
 			name:     "empty string",
 			input:    "",
-			expected: "\n",
+			expected: "",
 		},
 		{
 			name:     "single word fits exactly at boundary",
 			input:    "abcdefghij klmnopqrst", // 10 + space + 10 = 21 > 20
-			expected: "abcdefghij\nklmnopqrst\n",
+			expected: "abcdefghij\nklmnopqrst",
+		},
+		{
+			name:     "trailing newline preserved",
+			input:    "Hello World\n",
+			expected: "Hello World\n",
 		},
 	}
 
