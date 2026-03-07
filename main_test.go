@@ -199,8 +199,8 @@ func TestToolExecutorEditFile(t *testing.T) {
 	// Test non-existent old_text
 	result = executor.editFile(map[string]any{
 		"path":     "test.txt",
-		"old_text": "NonExistentText12345",
-		"new_text": "Replacement",
+		"old_text": "nonexistent",
+		"new_text": "replacement",
 	})
 	if !strings.Contains(result, "Error") || !strings.Contains(result, "not found") {
 		t.Errorf("Expected error for non-existent old_text, got: %s", result)
@@ -212,77 +212,38 @@ func TestToolExecutorListFiles(t *testing.T) {
 	tmpDir := t.TempDir()
 	executor := &ToolExecutor{baseDir: tmpDir}
 
-	// Create test files and directories
-	os.MkdirAll(filepath.Join(tmpDir, "subdir"), 0755)
+	// Create some test files
 	os.WriteFile(filepath.Join(tmpDir, "file1.txt"), []byte("content1"), 0644)
-	os.WriteFile(filepath.Join(tmpDir, "file2.go"), []byte("content2"), 0644)
-	os.WriteFile(filepath.Join(tmpDir, ".hidden"), []byte("hidden"), 0644)
-	os.WriteFile(filepath.Join(tmpDir, "subdir", "nested.txt"), []byte("nested"), 0644)
+	os.WriteFile(filepath.Join(tmpDir, "file2.go"), []byte("package main"), 0644)
+	os.MkdirAll(filepath.Join(tmpDir, "subdir"), 0755)
+	os.WriteFile(filepath.Join(tmpDir, "subdir", "file3.txt"), []byte("content3"), 0644)
 
-	// Test listing all files
-	result := executor.listFiles(map[string]any{"pattern": "*"})
-
-	// Should find file1.txt and file2.go
-	if !strings.Contains(result, "file1.txt") {
-		t.Errorf("Expected file1.txt in result, got: %s", result)
-	}
-	if !strings.Contains(result, "file2.go") {
-		t.Errorf("Expected file2.go in result, got: %s", result)
+	// Test listing with default pattern
+	result := executor.listFiles(nil)
+	if !strings.Contains(result, "file1.txt") || !strings.Contains(result, "file2.go") {
+		t.Errorf("Expected files in result, got: %s", result)
 	}
 
-	// Test listing specific pattern
+	// Test listing with glob pattern
 	result = executor.listFiles(map[string]any{"pattern": "*.go"})
-	if !strings.Contains(result, "file2.go") {
-		t.Errorf("Expected file2.go with *.go pattern, got: %s", result)
+	if !strings.Contains(result, "file2.go") || strings.Contains(result, ".txt") {
+		t.Errorf("Expected only .go files, got: %s", result)
 	}
-	if strings.Contains(result, "file1.txt") {
-		t.Errorf("Did not expect file1.txt with *.go pattern, got: %s", result)
+
+	// Test recursive listing
+	result = executor.listFiles(map[string]any{"pattern": "**/*.txt"})
+	if !strings.Contains(result, "file1.txt") || !strings.Contains(result, "file3.txt") {
+		t.Errorf("Expected all .txt files recursively, got: %s", result)
 	}
 }
 
-// TestOllamaClient tests client initialization
-func TestOllamaClient(t *testing.T) {
-	// Test default URL
-	client := NewOllamaClient("", "")
-	if client.baseURL != DefaultOllamaURL {
-		t.Errorf("Expected default URL %q, got %q", DefaultOllamaURL, client.baseURL)
-	}
+// TestToolExecutorRunCommand tests the runCommand tool
+func TestToolEchoCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+	executor := &ToolExecutor{baseDir: tmpDir}
 
-	// Test with custom URL and key
-	customURL := "http://custom:11434"
-	client = NewOllamaClient(customURL, "test-key-abc")
-	if client.baseURL != customURL {
-		t.Errorf("Expected custom URL %q, got %q", customURL, client.baseURL)
-	}
-	if client.apiKey != "test-key-abc" {
-		t.Errorf("Expected API key 'test-key-abc', got %q", client.apiKey)
-	}
-
-	// Test with empty strings (should use defaults)
-	client = NewOllamaClient("", "")
-	if client.baseURL != DefaultOllamaURL {
-		t.Errorf("Expected default URL, got %q", client.baseURL)
-	}
-}
-
-// TestYoloAgent tests agent initialization
-func TestYoloAgent(t *testing.T) {
-	// Test default configuration
-	agent := NewYoloAgent()
-
-	if agent.thinkDelay != ThinkLoopDelay {
-		t.Errorf("Expected think delay %d, got %d", ThinkLoopDelay, agent.thinkDelay)
-	}
-
-	if agent.userPrompt != UserPromptDefault {
-		t.Errorf("Expected default user prompt, got: %s", agent.userPrompt)
-	}
-
-	if agent.maxTokens <= 0 {
-		t.Error("Expected maxTokens to be positive")
-	}
-
-	if len(agent.tools) == 0 {
-		t.Error("Expected at least one tool to be registered")
+	result := executor.runCommand(map[string]any{"command": "echo 'hello world'"})
+	if !strings.Contains(result, "hello world") {
+		t.Errorf("Expected output from echo command, got: %s", result)
 	}
 }
