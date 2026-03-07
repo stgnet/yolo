@@ -66,11 +66,218 @@ const (
 )
 
 func cprint(color, text string) {
-	fmt.Printf("%s%s%s\n", color, text, Reset)
+	if globalUI != nil {
+		globalUI.OutputPrint(fmt.Sprintf("%s%s%s\n", color, text, Reset))
+	} else {
+		fmt.Printf("%s%s%s\n", color, text, Reset)
+	}
 }
 
 func cprintNoNL(color, text string) {
-	fmt.Printf("%s%s%s", color, text, Reset)
+	if globalUI != nil {
+		globalUI.OutputPrint(fmt.Sprintf("%s%s%s", color, text, Reset))
+	} else {
+		fmt.Printf("%s%s%s", color, text, Reset)
+	}
+}
+
+// ─── Terminal UI (split output/input regions) ────────────────────────
+
+// globalUI is set once the split UI is active. Before that, output goes to stdout directly.
+var globalUI *TerminalUI
+
+// TerminalUI manages a split terminal: a scrolling output region on top and
+// a fixed input line at the bottom, separated by a divider.
+type TerminalUI struct {
+	mu       sync.Mutex
+	fd       int
+	rows     int
+	cols     int
+	inputBuf []byte // mirrors InputManager's buffer for redraw
+	prompt   string
+	outRow   int // tracked row of cursor in output region
+	outCol   int // tracked col of cursor in output region
+}
+
+func NewTerminalUI() *TerminalUI {
+	fd := int(os.Stdout.Fd())
+	cols, rows, err := term.GetSize(fd)
+	if err != nil {
+		rows = 24
+		cols = 80
+	}
+	return &TerminalUI{
+		fd:     fd,
+		rows:   rows,
+		cols:   cols,
+		outRow: 1,
+		outCol: 1,
+	}
+}
+
+// Setup initializes the scroll region and draws the divider.
+func (ui *TerminalUI) Setup() {
+	ui.mu.Lock()
+	defer ui.mu.Unlock()
+
+	// Refresh terminal size
+	if cols, rows, err := term.GetSize(ui.fd); err == nil {
+		ui.rows = rows
+		ui.cols = cols
+	}
+
+	// Clear screen, set scroll region, draw divider
+	fmt.Print("\033[2J")
+	fmt.Printf("\033[1;%dr", ui.rows-2)
+	ui.drawDividerLocked()
+	ui.outRow = 1
+	ui.outCol = 1
+	fmt.Printf("\033[%d;%dH", ui.outRow, ui.outCol)
+}
+
+func (ui *TerminalUI) drawDividerLocked() {
+	divider := strings.Repeat("─", ui.cols)
+	fmt.Printf("\033[%d;1H%s%s%s", ui.rows-1, Gray, divider, Reset)
+}
+
+// Teardown restores the full scroll region.
+func (ui *TerminalUI) Teardown() {
+	ui.mu.Lock()
+	defer ui.mu.Unlock()
+	fmt.Printf("\033[1;%dr", ui.rows)
+	fmt.Printf("\033[%d;1H\n", ui.rows)
+}
+
+// OutputPrint writes text to the output (scrolling) region.
+func (ui *TerminalUI) OutputPrint(text string) {
+	ui.mu.Lock()
+	defer ui.mu.Unlock()
+
+	// Move cursor to tracked output position within the scroll region
+	fmt.Printf("\033[%d;%dH", ui.outRow, ui.outCol)
+	// Write the text
+	fmt.Print(text)
+	// Track where the cursor ended up.
+	// We need to estimate the new position based on what we wrote.
+	for _, ch := range text {
+		switch ch {
+		case '\n':
+			ui.outRow++
+			ui.outCol = 1
+			if ui.outRow > ui.rows-2 {
+				ui.outRow = ui.rows - 2 // scroll region keeps cursor at bottom
+			}
+		case '\r':
+			ui.outCol = 1
+		default:
+			ui.outCol++
+			if ui.outCol > ui.cols {
+				ui.outCol = 1
+				ui.outRow++
+				if ui.outRow > ui.rows-2 {
+					ui.outRow = ui.rows - 2
+				}
+			}
+		}
+	}
+	// Redraw input line (output may have scrolled and clobbered it)
+	ui.drawInputLocked()
+}
+
+// OutputPrintInline writes text without moving cursor back to input line.
+// Used for streaming tokens within a single Chat response.
+// Call OutputFinishLine when done with a block of inline output.
+func (ui *TerminalUI) OutputPrintInline(text string) {
+	ui.mu.Lock()
+	defer ui.mu.Unlock()
+
+	fmt.Printf("\033[%d;%dH", ui.outRow, ui.outCol)
+	fmt.Print(text)
+	for _, ch := range text {
+		switch ch {
+		case '\n':
+			ui.outRow++
+			ui.outCol = 1
+			if ui.outRow > ui.rows-2 {
+				ui.outRow = ui.rows - 2
+			}
+		case '\r':
+			ui.outCol = 1
+		default:
+			ui.outCol++
+			if ui.outCol > ui.cols {
+				ui.outCol = 1
+				ui.outRow++
+				if ui.outRow > ui.rows-2 {
+					ui.outRow = ui.rows - 2
+				}
+			}
+		}
+	}
+}
+
+// OutputFinishLine redraws the input line after inline output is done.
+func (ui *TerminalUI) OutputFinishLine() {
+	ui.mu.Lock()
+	defer ui.mu.Unlock()
+	ui.drawInputLocked()
+}
+
+func (ui *TerminalUI) drawInputLocked() {
+	// Move to input row, clear it, draw prompt + buffer, keep cursor there
+	fmt.Printf("\033[%d;1H\033[K%s%s", ui.rows, ui.prompt, string(ui.inputBuf))
+}
+
+// UpdateInput updates the UI's copy of the input state for redrawing.
+func (ui *TerminalUI) UpdateInput(prompt string, buf []byte) {
+	ui.mu.Lock()
+	ui.prompt = prompt
+	ui.inputBuf = make([]byte, len(buf))
+	copy(ui.inputBuf, buf)
+	ui.mu.Unlock()
+}
+
+// RedrawInput redraws just the input line.
+func (ui *TerminalUI) RedrawInput() {
+	ui.mu.Lock()
+	ui.drawInputLocked()
+	ui.mu.Unlock()
+}
+
+// WriteToInputLine writes directly to the input line area (for character echo).
+func (ui *TerminalUI) WriteToInputLine(s string) {
+	ui.mu.Lock()
+	defer ui.mu.Unlock()
+	// Move to input row, position after prompt + current buf
+	promptLen := len(stripANSI(ui.prompt))
+	col := promptLen + len(ui.inputBuf) + 1
+	fmt.Printf("\033[%d;%dH%s", ui.rows, col, s)
+}
+
+// ClearInputLine clears the input line.
+func (ui *TerminalUI) ClearInputLine() {
+	ui.mu.Lock()
+	defer ui.mu.Unlock()
+	fmt.Printf("\033[%d;1H\033[K", ui.rows)
+}
+
+// RefreshSize updates terminal size and redraws layout.
+func (ui *TerminalUI) RefreshSize() {
+	ui.mu.Lock()
+	defer ui.mu.Unlock()
+	if cols, rows, err := term.GetSize(ui.fd); err == nil && (rows != ui.rows || cols != ui.cols) {
+		ui.rows = rows
+		ui.cols = cols
+		fmt.Printf("\033[1;%dr", ui.rows-2)
+		ui.drawDividerLocked()
+		ui.drawInputLocked()
+	}
+}
+
+// stripANSI removes ANSI escape sequences for length calculation.
+func stripANSI(s string) string {
+	re := regexp.MustCompile(`\033\[[0-9;]*[a-zA-Z]`)
+	return re.ReplaceAllString(s, "")
 }
 
 // ─── Spinner ──────────────────────────────────────────────────────────
@@ -103,7 +310,12 @@ func (s *Spinner) Start() {
 				return
 			default:
 				frame := spinnerFrames[i%len(spinnerFrames)]
-				fmt.Printf("\r%s%s%s thinking...%s", s.color, s.prefix, frame, Reset)
+				text := fmt.Sprintf("\r%s%s%s thinking...%s", s.color, s.prefix, frame, Reset)
+				if globalUI != nil {
+					globalUI.OutputPrintInline(text)
+				} else {
+					fmt.Print(text)
+				}
 				i++
 				time.Sleep(100 * time.Millisecond)
 			}
@@ -115,7 +327,12 @@ func (s *Spinner) Stop() {
 	close(s.stop)
 	<-s.done
 	clearLen := len(s.prefix) + 20
-	fmt.Printf("\r%s\r", strings.Repeat(" ", clearLen))
+	text := fmt.Sprintf("\r%s\r", strings.Repeat(" ", clearLen))
+	if globalUI != nil {
+		globalUI.OutputPrintInline(text)
+	} else {
+		fmt.Print(text)
+	}
 }
 
 // ─── Ollama Tool Definitions ─────────────────────────────────────────
@@ -333,6 +550,15 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 	spinner := NewSpinner("yolo> ", Blue)
 	spinner.Start()
 
+	// outPrint writes to the output region (inline, no input redraw per token)
+	outPrint := func(s string) {
+		if globalUI != nil {
+			globalUI.OutputPrintInline(s)
+		} else {
+			fmt.Print(s)
+		}
+	}
+
 	var thinkingParts, contentParts []string
 	var toolCalls []ParsedToolCall
 	inThinking := false
@@ -362,26 +588,26 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 		if !gotFirstOutput && (thinking != "" || content != "" || len(tcList) > 0) {
 			gotFirstOutput = true
 			spinner.Stop()
-			fmt.Printf("%s%syolo>%s ", Blue, Bold, Reset)
+			outPrint(fmt.Sprintf("%s%syolo>%s ", Blue, Bold, Reset))
 		}
 
 		// Handle thinking tokens
 		if thinking != "" {
 			if !inThinking {
-				fmt.Printf("%s[thinking] ", Gray)
+				outPrint(fmt.Sprintf("%s[thinking] ", Gray))
 				inThinking = true
 			}
-			fmt.Print(thinking)
+			outPrint(thinking)
 			thinkingParts = append(thinkingParts, thinking)
 		}
 
 		// Handle content tokens
 		if content != "" {
 			if inThinking {
-				fmt.Printf("%s\n", Reset)
+				outPrint(fmt.Sprintf("%s\n", Reset))
 				inThinking = false
 			}
-			fmt.Print(content)
+			outPrint(content)
 			contentParts = append(contentParts, content)
 		}
 
@@ -403,13 +629,17 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 	// Clean up spinner if model returned nothing
 	if !gotFirstOutput {
 		spinner.Stop()
-		fmt.Printf("%s%syolo>%s ", Blue, Bold, Reset)
+		outPrint(fmt.Sprintf("%s%syolo>%s ", Blue, Bold, Reset))
 	}
 
 	if inThinking {
-		fmt.Print(Reset)
+		outPrint(Reset)
 	}
-	fmt.Println()
+	outPrint("\n")
+	// Redraw input line after streaming output is done
+	if globalUI != nil {
+		globalUI.OutputFinishLine()
+	}
 
 	contentText := strings.Join(contentParts, "")
 	thinkingText := strings.Join(thinkingParts, "")
@@ -1381,17 +1611,15 @@ func (a *YoloAgent) handleCommand(cmd string) {
 
 	switch command {
 	case "/help", "/h":
-		fmt.Printf(`
-%sCommands:%s
-  /help            Show this help
-  /model           Current model
-  /models          List available models
-  /switch <name>   Switch model
-  /history         Message count
-  /clear           Clear conversation history
-  /status          Agent status
-  /exit, /quit     Exit YOLO
-`, Cyan, Reset)
+		cprint(Cyan, "Commands:")
+		cprint(Reset, "  /help            Show this help")
+		cprint(Reset, "  /model           Current model")
+		cprint(Reset, "  /models          List available models")
+		cprint(Reset, "  /switch <name>   Switch model")
+		cprint(Reset, "  /history         Message count")
+		cprint(Reset, "  /clear           Clear conversation history")
+		cprint(Reset, "  /status          Agent status")
+		cprint(Reset, "  /exit, /quit     Exit YOLO")
 
 	case "/model":
 		cprint(Cyan, fmt.Sprintf("  Model: %s", a.history.GetModel()))
@@ -1404,7 +1632,7 @@ func (a *YoloAgent) handleCommand(cmd string) {
 			if m == a.history.GetModel() {
 				marker = fmt.Sprintf(" %s<- current%s", Green, Reset)
 			}
-			fmt.Printf("    %s%s\n", m, marker)
+			cprint(Reset, fmt.Sprintf("    %s%s", m, marker))
 		}
 
 	case "/switch":
@@ -1425,23 +1653,14 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		cprint(Cyan, "  History cleared (config preserved)")
 
 	case "/status":
-		fmt.Printf(`
-%sStatus:%s
-  Model:       %s
-  Messages:    %d
-  Evolutions:  %d
-  Working dir: %s
-  Script:      %s
-  Idle delay:  %ds
-  Think delay: %ds
-`, Cyan, Reset,
-			a.history.GetModel(),
-			len(a.history.Data.Messages),
-			len(a.history.Data.EvolutionLog),
-			a.baseDir,
-			a.scriptPath,
-			IdleThinkDelay,
-			ThinkLoopDelay)
+		cprint(Cyan, "Status:")
+		cprint(Reset, fmt.Sprintf("  Model:       %s", a.history.GetModel()))
+		cprint(Reset, fmt.Sprintf("  Messages:    %d", len(a.history.Data.Messages)))
+		cprint(Reset, fmt.Sprintf("  Evolutions:  %d", len(a.history.Data.EvolutionLog)))
+		cprint(Reset, fmt.Sprintf("  Working dir: %s", a.baseDir))
+		cprint(Reset, fmt.Sprintf("  Script:      %s", a.scriptPath))
+		cprint(Reset, fmt.Sprintf("  Idle delay:  %ds", IdleThinkDelay))
+		cprint(Reset, fmt.Sprintf("  Think delay: %ds", ThinkLoopDelay))
 
 	case "/exit", "/quit":
 		a.running = false
@@ -1536,34 +1755,41 @@ func (im *InputManager) ShowPrompt(prompt string) {
 	im.mu.Lock()
 	im.prompt = prompt
 	im.mu.Unlock()
-	im.redraw()
+	im.syncAndRedraw()
 }
 
-// redraw clears the current line and redraws prompt + buffer contents.
-func (im *InputManager) redraw() {
+// syncAndRedraw updates the TerminalUI's copy and redraws the input line.
+func (im *InputManager) syncAndRedraw() {
 	im.mu.Lock()
 	prompt := im.prompt
 	buf := make([]byte, len(im.buf))
 	copy(buf, im.buf)
 	im.mu.Unlock()
 
-	// Clear line and redraw
-	fmt.Printf("\r\033[K%s%s", prompt, string(buf))
+	if globalUI != nil {
+		globalUI.UpdateInput(prompt, buf)
+		globalUI.RedrawInput()
+	} else {
+		fmt.Printf("\r\033[K%s%s", prompt, string(buf))
+	}
 }
 
-// clearLine removes the input line from the terminal so agent output appears cleanly.
-// Returns the current buffer contents for later redraw.
+// ClearLine clears the input line.
 func (im *InputManager) ClearLine() string {
 	im.mu.Lock()
 	text := string(im.buf)
 	im.mu.Unlock()
-	fmt.Printf("\r\033[K")
+	if globalUI != nil {
+		globalUI.ClearInputLine()
+	} else {
+		fmt.Printf("\r\033[K")
+	}
 	return text
 }
 
 // RedrawAfterOutput redraws the prompt and current buffer after agent output.
 func (im *InputManager) RedrawAfterOutput() {
-	im.redraw()
+	im.syncAndRedraw()
 }
 
 func (im *InputManager) processLoop() {
@@ -1579,28 +1805,27 @@ func (im *InputManager) processLoop() {
 				line := string(im.buf)
 				im.buf = im.buf[:0]
 				im.mu.Unlock()
-				fmt.Print("\r\n")
 				// Show a queued indicator if the agent is busy
 				im.agent.mu.Lock()
 				busy := im.agent.busy
 				im.agent.mu.Unlock()
 				trimmed := strings.TrimSpace(line)
 				if busy && trimmed != "" {
-					fmt.Printf("%s  [queued: %s]%s\n", Gray, trimmed, Reset)
+					cprint(Gray, fmt.Sprintf("  [queued: %s]", trimmed))
 				}
+				// Clear input line after submit
+				im.syncAndRedraw()
 				im.Lines <- InputLine{Text: line, OK: true}
 			case ch == 127 || ch == 8: // Backspace
 				if len(im.buf) > 0 {
 					im.buf = im.buf[:len(im.buf)-1]
-					im.mu.Unlock()
-					fmt.Print("\b \b")
-				} else {
-					im.mu.Unlock()
 				}
+				im.mu.Unlock()
+				im.syncAndRedraw()
 			case ch == 3: // Ctrl-C
 				im.buf = im.buf[:0]
 				im.mu.Unlock()
-				fmt.Print("\r\n")
+				im.syncAndRedraw()
 				// If agent is busy, cancel the current chat
 				im.agent.mu.Lock()
 				cancel := im.agent.cancelChat
@@ -1618,21 +1843,18 @@ func (im *InputManager) processLoop() {
 					im.mu.Unlock()
 				}
 			case ch == 21: // Ctrl-U (kill line)
-				for range im.buf {
-					fmt.Print("\b \b")
-				}
 				im.buf = im.buf[:0]
 				im.mu.Unlock()
+				im.syncAndRedraw()
 			case ch == 23: // Ctrl-W (kill word)
 				for len(im.buf) > 0 && im.buf[len(im.buf)-1] == ' ' {
 					im.buf = im.buf[:len(im.buf)-1]
-					fmt.Print("\b \b")
 				}
 				for len(im.buf) > 0 && im.buf[len(im.buf)-1] != ' ' {
 					im.buf = im.buf[:len(im.buf)-1]
-					fmt.Print("\b \b")
 				}
 				im.mu.Unlock()
+				im.syncAndRedraw()
 			case ch == 27: // Escape sequence
 				im.mu.Unlock()
 				for i := 0; i < 2; i++ {
@@ -1644,11 +1866,9 @@ func (im *InputManager) processLoop() {
 			default:
 				if ch >= 32 && unicode.IsPrint(rune(ch)) {
 					im.buf = append(im.buf, ch)
-					im.mu.Unlock()
-					fmt.Printf("%c", ch)
-				} else {
-					im.mu.Unlock()
 				}
+				im.mu.Unlock()
+				im.syncAndRedraw()
 			}
 
 		case <-im.rawErr:
@@ -1677,24 +1897,38 @@ func (a *YoloAgent) Run() {
 	a.lastActivity = time.Now()
 	a.thinkDelay = IdleThinkDelay
 
+	// Set up split terminal UI
+	globalUI = NewTerminalUI()
+	globalUI.Setup()
+	defer func() {
+		globalUI.Teardown()
+		globalUI = nil
+	}()
+
 	// Start async input manager
 	a.inputMgr = NewInputManager(a)
 	a.inputMgr.Start()
 	defer a.inputMgr.Stop()
 
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGWINCH)
 	go func() {
-		for range sigCh {
-			a.mu.Lock()
-			cancel := a.cancelChat
-			a.mu.Unlock()
-			if cancel != nil {
-				cancel()
-			} else {
-				a.running = false
-				fmt.Println()
-				cprint(Cyan, "\n  Interrupted — saving session...")
+		for sig := range sigCh {
+			switch sig {
+			case syscall.SIGWINCH:
+				if globalUI != nil {
+					globalUI.RefreshSize()
+				}
+			case syscall.SIGINT:
+				a.mu.Lock()
+				cancel := a.cancelChat
+				a.mu.Unlock()
+				if cancel != nil {
+					cancel()
+				} else {
+					a.running = false
+					cprint(Cyan, "\n  Interrupted — saving session...")
+				}
 			}
 		}
 	}()
