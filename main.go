@@ -67,11 +67,20 @@ const (
 	Gray    = "\033[90m"
 )
 
+// rawWrite writes text to stdout, converting lone \n to \r\n for raw terminal mode.
+// In raw mode, OPOST is disabled so \n only moves the cursor down without returning
+// to column 1. This function ensures proper carriage return + line feed behavior.
+func rawWrite(s string) {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\n", "\r\n")
+	fmt.Print(s)
+}
+
 func cprint(color, text string) {
 	if globalUI != nil {
 		globalUI.OutputPrint(fmt.Sprintf("%s%s%s\n", color, text, Reset))
 	} else {
-		fmt.Printf("%s%s%s\n", color, text, Reset)
+		rawWrite(fmt.Sprintf("%s%s%s\n", color, text, Reset))
 	}
 }
 
@@ -79,7 +88,7 @@ func cprintNoNL(color, text string) {
 	if globalUI != nil {
 		globalUI.OutputPrint(fmt.Sprintf("%s%s%s", color, text, Reset))
 	} else {
-		fmt.Printf("%s%s%s", color, text, Reset)
+		rawWrite(fmt.Sprintf("%s%s%s", color, text, Reset))
 	}
 }
 
@@ -109,89 +118,62 @@ type TerminalUI struct {
 }
 
 // wrapText wraps text to the given width, inserting newlines at word boundaries.
-// It preserves existing newlines and handles both short and long words.
+// It preserves existing newlines exactly (no adding or doubling) and handles
+// words longer than the terminal width by breaking them.
 func (ui *TerminalUI) wrapText(text string) string {
 	if ui.cols <= 0 {
 		return text
 	}
 
-	var result strings.Builder
 	lines := strings.Split(text, "\n")
+	var wrappedLines []string
 
 	for _, line := range lines {
 		if len(line) == 0 {
-			result.WriteString("\n")
+			wrappedLines = append(wrappedLines, "")
 			continue
 		}
 
 		words := strings.Fields(line)
 		if len(words) == 0 {
-			result.WriteString("\n")
+			wrappedLines = append(wrappedLines, "")
 			continue
 		}
 
-		var currentLine strings.Builder
+		var current strings.Builder
 		currentLen := 0
 
-		for i, word := range words {
+		for _, word := range words {
 			wordLen := len(word)
-			spaceNeeded := 0
+
+			if currentLen > 0 && currentLen+1+wordLen > ui.cols {
+				// Current line is full, start a new one
+				wrappedLines = append(wrappedLines, current.String())
+				current.Reset()
+				currentLen = 0
+			}
+
 			if currentLen > 0 {
-				spaceNeeded = 1 // for space between words
+				current.WriteString(" ")
+				currentLen++
 			}
 
-			if currentLen+spaceNeeded+wordLen > ui.cols {
-				// Current line is full, write it and start new one
-				if currentLine.Len() > 0 {
-					result.WriteString(currentLine.String())
-					result.WriteString("\n")
-					currentLine.Reset()
-					currentLen = 0
-				}
-
-				// If single word is longer than width, break it manually
-				if wordLen > ui.cols {
-					for wordLen > 0 {
-						chunkLen := min(wordLen, ui.cols)
-						result.WriteString(word[:chunkLen])
-						word = word[chunkLen:]
-						wordLen -= chunkLen
-						if wordLen > 0 {
-							result.WriteString("\n")
-						}
-					}
-				} else {
-					currentLine.WriteString(word)
-					currentLen = wordLen
-				}
-			} else {
-				// Add word to current line
-				if currentLen > 0 {
-					currentLine.WriteString(" ")
-					currentLen++
-				}
-				currentLine.WriteString(word)
-				currentLen += wordLen
+			// Break words longer than terminal width
+			for len(word) > ui.cols && currentLen == 0 {
+				wrappedLines = append(wrappedLines, word[:ui.cols])
+				word = word[ui.cols:]
 			}
 
-			// If this was the last word, write the remaining text
-			if i == len(words)-1 && currentLine.Len() > 0 {
-				result.WriteString(currentLine.String())
-			}
+			current.WriteString(word)
+			currentLen += len(word)
 		}
 
-		// Add newline between original lines (unless we're at the end)
-		if line != lines[len(lines)-1] || (line == lines[len(lines)-1] && strings.HasSuffix(text, "\n")) {
-			// Don't add extra newline if current line is empty
-			if currentLine.Len() > 0 {
-				result.WriteString("\n")
-			}
-		} else if result.Len() > 0 && !strings.HasSuffix(result.String(), "\n") && lines[len(lines)-1] != "" {
-			result.WriteString("\n")
+		if current.Len() > 0 {
+			wrappedLines = append(wrappedLines, current.String())
 		}
 	}
 
-	return result.String()
+	return strings.Join(wrappedLines, "\n")
 }
 
 func NewTerminalUI() *TerminalUI {
@@ -277,8 +259,8 @@ func (ui *TerminalUI) OutputPrint(text string) {
 
 	// Move cursor to tracked output position within the scroll region
 	fmt.Printf("\033[%d;%dH", ui.outRow, ui.outCol)
-	// Write the text
-	fmt.Print(text)
+	// Write the text (rawWrite converts \n to \r\n for raw terminal mode)
+	rawWrite(text)
 	// Track where the cursor ended up.
 	// Strip ANSI codes before counting to avoid off-by-several errors from color codes.
 	stripped := stripAnsiCodes(text)
@@ -294,11 +276,13 @@ func (ui *TerminalUI) OutputPrintInline(text string) {
 	ui.mu.Lock()
 	defer ui.mu.Unlock()
 
-	// Wrap text to terminal width before outputting
-	text = ui.wrapText(text)
+	// Do NOT wrap streaming tokens — they are fragments, not complete lines.
+	// The terminal handles character-level wrapping, and trackCursorMovement
+	// already accounts for it.
 
 	fmt.Printf("\033[%d;%dH", ui.outRow, ui.outCol)
-	fmt.Print(text)
+	// rawWrite converts \n to \r\n for raw terminal mode
+	rawWrite(text)
 	// Strip ANSI codes before counting to avoid off-by-several errors from color codes.
 	stripped := stripAnsiCodes(text)
 	ui.trackCursorMovement(stripped)
@@ -420,7 +404,7 @@ func (s *Spinner) Start() {
 				if globalUI != nil {
 					globalUI.OutputPrintInline(text)
 				} else {
-					fmt.Print(text)
+					rawWrite(text)
 				}
 				i++
 				time.Sleep(100 * time.Millisecond)
@@ -437,7 +421,7 @@ func (s *Spinner) Stop() {
 	if globalUI != nil {
 		globalUI.OutputPrintInline(text)
 	} else {
-		fmt.Print(text)
+		rawWrite(text)
 	}
 }
 
@@ -662,7 +646,7 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 		if globalUI != nil {
 			globalUI.OutputPrintInline(s)
 		} else {
-			fmt.Print(s)
+			rawWrite(s)
 		}
 	}
 
@@ -1175,6 +1159,15 @@ func (t *ToolExecutor) runCommand(args map[string]any) string {
 
 	cmd := exec.Command("sh", "-c", command)
 	cmd.Dir = t.baseDir
+
+	// Explicitly connect stdin to /dev/null so child processes that try to
+	// read input will get immediate EOF instead of hanging or stealing the
+	// terminal's stdin.
+	devNull, err := os.Open(os.DevNull)
+	if err == nil {
+		cmd.Stdin = devNull
+		defer devNull.Close()
+	}
 
 	done := make(chan struct{})
 	var stdout, stderr []byte
@@ -2214,6 +2207,52 @@ func (im *InputManager) RedrawAfterOutput() {
 	im.syncAndRedraw()
 }
 
+// consumeEscapeSequence reads and discards the remainder of an escape sequence
+// after the initial ESC (0x1B) byte has been received. It handles:
+//   - CSI sequences: ESC [ <params> <letter>  (arrow keys, function keys, etc.)
+//   - SS3 sequences: ESC O <letter>           (some function keys)
+//   - Simple sequences: ESC <letter>           (Alt+key combos)
+//
+// The previous implementation consumed a fixed 2 bytes, which was wrong for
+// variable-length CSI sequences (e.g., ESC[1;5C for Ctrl+Right is 6 bytes).
+// Leftover bytes would leak into the input buffer as garbage, and real user
+// keystrokes could be consumed as part of the sequence, causing input loss.
+func (im *InputManager) consumeEscapeSequence() {
+	const timeout = 50 * time.Millisecond
+
+	// Read the first byte after ESC
+	var b byte
+	select {
+	case b = <-im.rawBytes:
+	case <-time.After(timeout):
+		return // bare ESC press, nothing to consume
+	}
+
+	switch b {
+	case '[': // CSI sequence: ESC [ <params...> <final byte>
+		// Parameters are bytes in range 0x20-0x3F (digits, semicolons, etc.)
+		// Final byte is in range 0x40-0x7E (letters, @, ~, etc.)
+		for {
+			select {
+			case b = <-im.rawBytes:
+				if b >= 0x40 && b <= 0x7E {
+					return // final byte reached, sequence complete
+				}
+				// intermediate/parameter byte, keep consuming
+			case <-time.After(timeout):
+				return // incomplete sequence, give up
+			}
+		}
+	case 'O': // SS3 sequence: ESC O <letter>
+		select {
+		case <-im.rawBytes: // consume the final byte
+		case <-time.After(timeout):
+		}
+	default:
+		// Simple ESC + single char (e.g., Alt+key), already consumed
+	}
+}
+
 func (im *InputManager) processLoop() {
 	for {
 		select {
@@ -2279,12 +2318,7 @@ func (im *InputManager) processLoop() {
 				im.syncAndRedraw()
 			case ch == 27: // Escape sequence
 				im.mu.Unlock()
-				for i := 0; i < 2; i++ {
-					select {
-					case <-im.rawBytes:
-					case <-time.After(50 * time.Millisecond):
-					}
-				}
+				im.consumeEscapeSequence()
 			default:
 				if ch >= 32 && unicode.IsPrint(rune(ch)) {
 					im.buf = append(im.buf, ch)
