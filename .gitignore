@@ -2,3 +2,4 @@ yolo-go
 yolo
 .yolo
 coverage.out
+test_output/

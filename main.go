@@ -104,12 +104,13 @@ func stripAnsiCodes(s string) string {
 	return re.ReplaceAllString(s, "")
 }
 
-// truncateString truncates a string to maxLen characters, adding "..." if truncated.
+// truncateString truncates a string to maxLen runes, adding "..." if truncated.
 func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
 		return s
 	}
-	return s[:maxLen] + "..."
+	return string(runes[:maxLen]) + "..."
 }
 
 // TerminalUI manages a split terminal: a scrolling output region on top and
@@ -149,10 +150,10 @@ func (ui *TerminalUI) wrapText(text string) string {
 		}
 
 		var current strings.Builder
-		currentLen := 0
+		currentLen := 0 // visible length (excluding ANSI codes)
 
 		for _, word := range words {
-			wordLen := len(word)
+			wordLen := len(stripAnsiCodes(word)) // visible length only
 
 			if currentLen > 0 && currentLen+1+wordLen > ui.cols {
 				// Current line is full, start a new one
@@ -166,14 +167,16 @@ func (ui *TerminalUI) wrapText(text string) string {
 				currentLen++
 			}
 
-			// Break words longer than terminal width
-			for len(word) > ui.cols && currentLen == 0 {
+			// Break words longer than terminal width (using visible length)
+			for len(stripAnsiCodes(word)) > ui.cols && currentLen == 0 {
+				// For oversized words, we need to be careful not to break
+				// in the middle of an ANSI escape sequence
 				wrappedLines = append(wrappedLines, word[:ui.cols])
 				word = word[ui.cols:]
 			}
 
 			current.WriteString(word)
-			currentLen += len(word)
+			currentLen += wordLen
 		}
 
 		if current.Len() > 0 {
@@ -1039,11 +1042,10 @@ func (t *ToolExecutor) listFiles(args map[string]any) string {
 	var files, dirs []string
 	for _, m := range matches {
 		rel, _ := filepath.Rel(t.baseDir, m)
-		// Skip hidden directories except .claude*
-		if strings.HasPrefix(rel, ".yolo") || strings.HasPrefix(rel, ".git") || strings.HasPrefix(rel, "__pycache__") {
-			if !strings.HasPrefix(rel, ".claude") {
-				continue
-			}
+		// Skip noise directories
+		topDir := strings.SplitN(rel, string(filepath.Separator), 2)[0]
+		if topDir == ".yolo" || topDir == ".git" || topDir == "__pycache__" || topDir == "node_modules" {
+			continue
 		}
 		info, err := os.Stat(m)
 		if err != nil {
@@ -1082,6 +1084,13 @@ func (t *ToolExecutor) globRecursive(pattern string) ([]string, error) {
 				return nil
 			}
 
+			if info.IsDir() {
+				name := filepath.Base(path)
+				if name == ".yolo" || name == ".git" || name == "__pycache__" || name == "node_modules" {
+					return filepath.SkipDir
+				}
+			}
+
 			relPath, _ := filepath.Rel(t.baseDir, path)
 			if relPath == "." {
 				relPath = ""
@@ -1112,6 +1121,13 @@ func (t *ToolExecutor) globRecursive(pattern string) ([]string, error) {
 		err := filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return nil
+			}
+
+			if info.IsDir() {
+				name := filepath.Base(path)
+				if name == ".yolo" || name == ".git" || name == "__pycache__" || name == "node_modules" {
+					return filepath.SkipDir
+				}
 			}
 
 			if !info.IsDir() {
@@ -1161,7 +1177,8 @@ func (t *ToolExecutor) searchFiles(args map[string]any) string {
 			return nil
 		}
 		if info.IsDir() {
-			if strings.Contains(path, ".yolo") || strings.Contains(path, ".git") {
+			name := filepath.Base(path)
+			if name == ".yolo" || name == ".git" || name == "__pycache__" || name == "node_modules" {
 				return filepath.SkipDir
 			}
 			return nil
@@ -1364,35 +1381,20 @@ func (t *ToolExecutor) summarizeSubagents(args map[string]any) string {
 }
 
 func (t *ToolExecutor) spawnSubagent(args map[string]any) string {
-	// Validate required parameters
-	if args["prompt"] == nil {
-		return "Error: required parameter 'prompt' is missing"
-	}
-	prompt, ok := args["prompt"].(string)
-	if !ok || prompt == "" {
-		return "Error: 'prompt' cannot be empty"
+	// The tool definition uses "task" as the parameter name
+	task := getStringArg(args, "task", "")
+	if task == "" {
+		return "Error: 'task' parameter is required"
 	}
 
-	name := getStringArg(args, "name", "subagent")
-	description := getStringArg(args, "description", "")
 	model := getStringArg(args, "model", "")
-
-	// Format the output message
-	result := fmt.Sprintf("Starting new agent '%s' with task: %s", name, prompt)
-	if description != "" {
-		result += fmt.Sprintf("\nDescription: %s", description)
-	}
-	if model != "" {
-		result += fmt.Sprintf("\nModel: %s", model)
-	}
 
 	// Actually spawn the subagent using the agent if available
 	if t.agent != nil {
-		subResult := t.agent.spawnSubagent(prompt, model)
-		return result + "\n" + subResult
+		return t.agent.spawnSubagent(task, model)
 	}
 
-	return result + "\nError: no agent context"
+	return "Error: no agent context"
 }
 
 func (t *ToolExecutor) listModels() string {
@@ -1429,8 +1431,8 @@ func (t *ToolExecutor) restart(args map[string]any) string {
 
 	fmt.Fprintf(os.Stderr, "[RESTART] Rebuilding YOLO from source...\n")
 
-	// Build command - build to the same executable name
-	buildCmd := exec.Command("go", "build", "-o", filepath.Base(exePath), cwd+"/main.go")
+	// Build command - build the whole package (not just main.go) to the same executable name
+	buildCmd := exec.Command("go", "build", "-o", filepath.Base(exePath), ".")
 	buildCmd.Dir = cwd
 
 	output, err := buildCmd.CombinedOutput()
@@ -1837,7 +1839,7 @@ func (a *YoloAgent) restart() {
 
 func (a *YoloAgent) setupFirstRun() {
 	cprint(Cyan+Bold, "\n  YOLO - Your Own Living Operator")
-	cprint(Gray, "  A self-evolving AI agent for software development\n")
+	cprint(Gray, "  A self-evolving AI agent for software development")
 	cprint(Gray, fmt.Sprintf("  Working directory: %s", a.baseDir))
 	fmt.Println()
 
@@ -1849,7 +1851,7 @@ func (a *YoloAgent) setupFirstRun() {
 		os.Exit(1)
 	}
 
-	cprint(Green, fmt.Sprintf("  Found %d model(s):\n", len(models)))
+	cprint(Green, fmt.Sprintf("  Found %d model(s):", len(models)))
 	for i, m := range models {
 		fmt.Printf("    %s%2d%s. %s\n", Bold, i+1, Reset, m)
 	}
@@ -2013,7 +2015,7 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 			if len(shortStr) > 80 {
 				shortStr = shortStr[:80] + "..."
 			}
-			cprint(Yellow, fmt.Sprintf("  [%s] %s\n", name, shortStr))
+			cprint(Yellow, fmt.Sprintf("  [%s] %s", name, shortStr))
 
 			resultStr := a.tools.Execute(name, args)
 
@@ -2022,7 +2024,7 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 				preview = preview[:200] + "..."
 			}
 			preview = strings.ReplaceAll(preview, "\n", " ")
-			cprint(Gray, fmt.Sprintf("  => %s\n", preview))
+			cprint(Gray, fmt.Sprintf("  => %s", preview))
 
 			roundMsgs = append(roundMsgs, ChatMessage{Role: "tool", Content: resultStr})
 			toolLog = append(toolLog, toolLogEntry{name: name, args: args, result: resultStr})
@@ -2055,8 +2057,7 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		a.history.AddMessage("assistant", "[tool activity]\n"+strings.Join(summaryLines, "\n"), nil)
 	}
 	if finalText != "" {
-		// Echo AI's response with blue color and prefix
-		cprint(Blue, fmt.Sprintf("  [%s] %s\n", "ai", finalText))
+		// Response was already streamed to the terminal by Chat(), just save to history
 		a.history.AddMessage("assistant", finalText, nil)
 	}
 }
@@ -2184,11 +2185,16 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 		}
 
 		status := "complete"
-		result := "done"
-		_, err := a.ollama.Chat(context.Background(), useModel, msgs, nil)
+		result := ""
+		chatResult, err := a.ollama.Chat(context.Background(), useModel, msgs, nil)
 		if err != nil {
 			result = err.Error()
 			status = "error"
+		} else if chatResult != nil {
+			result = chatResult.DisplayText
+		}
+		if result == "" {
+			result = "(no output)"
 		}
 
 		data, _ := json.MarshalIndent(map[string]any{
@@ -2615,7 +2621,7 @@ func (a *YoloAgent) Run() {
 				a.mu.Unlock()
 
 				// Echo user's input with green color and prefix
-				cprint(Green, fmt.Sprintf("  [%s] %s\n", "you", stripped))
+				cprint(Green, fmt.Sprintf("  [%s] %s", "you", stripped))
 
 				a.chatWithAgent(stripped, false)
 
@@ -2637,7 +2643,7 @@ func (a *YoloAgent) Run() {
 				elapsed := time.Since(a.lastActivity)
 				if elapsed >= time.Duration(a.thinkDelay)*time.Second {
 					a.inputMgr.ClearLine()
-					cprint(Gray, "  [autonomous thinking...]\n")
+					cprint(Gray, "  [autonomous thinking...]")
 
 					a.mu.Lock()
 					a.busy = true
@@ -2680,7 +2686,7 @@ func (a *YoloAgent) drainQueuedInput() {
 			} else if strings.HasPrefix(stripped, "/") {
 				a.handleCommand(stripped)
 			} else if stripped != "" {
-				cprint(Green, fmt.Sprintf("  [%s] %s\n", "queued", stripped))
+				cprint(Green, fmt.Sprintf("  [%s] %s", "queued", stripped))
 
 				a.mu.Lock()
 				a.busy = true
