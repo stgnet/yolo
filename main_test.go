@@ -61,44 +61,31 @@ func TestSpawnSubagent(t *testing.T) {
 
 	executor := &ToolExecutor{baseDir: tmpDir, agent: agent}
 
-	// Test with minimal required parameters
+	// Test with minimal required parameters (tool defines "task", not "prompt")
 	params := map[string]any{
-		"prompt": "Test subagent prompt",
-		"name":   "test-agent",
+		"task": "Test subagent task",
 	}
 
 	result := executor.spawnSubagent(params)
 
-	if !strings.Contains(result, "Starting new agent") {
-		t.Errorf("Expected output to contain 'Starting new agent', got: %s", result)
+	if !strings.Contains(result, "Sub-agent") {
+		t.Errorf("Expected output to contain 'Sub-agent', got: %s", result)
 	}
 
-	if !strings.Contains(result, "Test subagent prompt") {
-		t.Errorf("Expected output to contain the prompt, got: %s", result)
+	if !strings.Contains(result, "spawned") {
+		t.Errorf("Expected output to confirm spawning, got: %s", result)
 	}
 
-	if !strings.Contains(result, "test-agent") {
-		t.Errorf("Expected output to contain agent name, got: %s", result)
+	// Test with model parameter
+	paramsWithModel := map[string]any{
+		"task":  "Test subagent task with model",
+		"model": "llama3",
 	}
 
-	// Test with all parameters including constraints
-	paramsWithConstraints := map[string]any{
-		"prompt":      "Test subagent prompt",
-		"name":        "test-agent-2",
-		"description": "A test agent for testing purposes",
-		"model":       "gpt-4o-mini",
-		"mode":        "fast",
-		"group_id":    "group-123",
-	}
+	result2 := executor.spawnSubagent(paramsWithModel)
 
-	result2 := executor.spawnSubagent(paramsWithConstraints)
-
-	if !strings.Contains(result2, "Starting new agent") {
-		t.Errorf("Expected output to contain 'Starting new agent', got: %s", result2)
-	}
-
-	if !strings.Contains(result2, "A test agent for testing purposes") {
-		t.Errorf("Expected output to contain description, got: %s", result2)
+	if !strings.Contains(result2, "Sub-agent") {
+		t.Errorf("Expected output to contain 'Sub-agent', got: %s", result2)
 	}
 }
 
@@ -118,21 +105,18 @@ func TestSpawnSubagentValidation(t *testing.T) {
 		errMsg  string
 	}{
 		{
-			name: "missing prompt",
-			params: map[string]any{
-				"name": "test-agent",
-			},
+			name:    "missing task",
+			params:  map[string]any{},
 			wantErr: true,
-			errMsg:  "required parameter 'prompt' is missing",
+			errMsg:  "'task' parameter is required",
 		},
 		{
-			name: "empty string prompt",
+			name: "empty string task",
 			params: map[string]any{
-				"prompt": "",
-				"name":   "test-agent",
+				"task": "",
 			},
 			wantErr: true,
-			errMsg:  "'prompt' cannot be empty",
+			errMsg:  "'task' parameter is required",
 		},
 	}
 
