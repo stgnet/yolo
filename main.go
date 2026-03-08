@@ -1882,24 +1882,55 @@ func (a *YoloAgent) resumeSession() {
 	n := len(a.history.Data.Messages)
 	cprint(Gray, fmt.Sprintf("  History: %d messages loaded", n))
 
-	// Show last few messages for context
+	// Find and display the last assistant message
+	var lastAssistantMsg *HistoryMessage
+	for i := len(a.history.Data.Messages) - 1; i >= 0; i-- {
+		if a.history.Data.Messages[i].Role == "assistant" && a.history.Data.Messages[i].Content != "" {
+			lastAssistantMsg = &a.history.Data.Messages[i]
+			break
+		}
+	}
+
+	if lastAssistantMsg != nil {
+		cprint(Yellow+Bold, "\n  🔄 RESUMING FROM LAST ACTIVITY:")
+		cprint(Gray, fmt.Sprintf("    Role: %s", lastAssistantMsg.Role))
+		
+		// Show full content if it's a tool result or short message, otherwise truncate with indicator
+		content := lastAssistantMsg.Content
+		if len(content) > 200 {
+			content = content[:200] + "..."
+		}
+		cprint(Gray, fmt.Sprintf("    Content: %s", content))
+		
+		// Check if it was a tool call from metadata
+		if lastAssistantMsg.Meta != nil && lastAssistantMsg.Meta["tool_name"] != nil {
+			toolName := fmt.Sprintf("%v", lastAssistantMsg.Meta["tool_name"])
+			cprint(Yellow, fmt.Sprintf("    Tool: %s%s%s", Bold, toolName, Reset))
+		}
+		fmt.Println()
+	} else {
+		cprint(Yellow, "  ⚠️ No recent activity found in history")
+		fmt.Println()
+	}
+	
+	// Also show last few messages for context
 	lastMsgs := a.history.GetLastN(3)
 	if len(lastMsgs) > 0 {
-		cprint(Yellow, "  Last activity:")
+		cprint(Gray, "  Recent context:")
 		for _, m := range lastMsgs {
 			prefix := ""
 			switch m.Role {
 			case "user":
-				prefix = "You:"
+				prefix = "You"
 			case "assistant":
-				prefix = "Agent:"
+				prefix = "Agent"
 			case "tool":
-				prefix = "Tool:"
+				prefix = "Tool"
 			default:
-				prefix = m.Role + ":"
+				prefix = m.Role
 			}
-			content := truncateString(m.Content, 60)
-			cprint(Gray, fmt.Sprintf("    %s %s", prefix, content))
+			content := truncateString(m.Content, 50)
+			cprint(Gray, fmt.Sprintf("    [%s] %s", prefix, content))
 		}
 		fmt.Println()
 	}
@@ -2267,7 +2298,7 @@ func (a *YoloAgent) handleCommand(cmd string) {
 
 	case "/restart":
 		cprint(Yellow, "  Restarting YOLO...")
-		a.running = false
+		// a.running = false
 		go func() {
 			time.Sleep(1 * time.Second)
 			a.restart()
