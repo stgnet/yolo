@@ -64,7 +64,7 @@ func TestServerHandleListTools(t *testing.T) {
 	
 	req := &Request{
 		Method: "tools/list",
-		ID:     1,
+		ID:     json.RawMessage(`1`),
 		Params: json.RawMessage(`{}`),
 	}
 	
@@ -104,7 +104,7 @@ func TestServerHandleInitialize(t *testing.T) {
 	
 	req := &Request{
 		Method: "initialize",
-		ID:     1,
+		ID:     json.RawMessage(`1`),
 		Params: paramsJSON,
 	}
 	
@@ -141,7 +141,7 @@ func TestServerHandlePing(t *testing.T) {
 	
 	req := &Request{
 		Method: "ping",
-		ID:     1,
+		ID:     json.RawMessage(`1`),
 		Params: json.RawMessage(`{}`),
 	}
 	
@@ -166,7 +166,7 @@ func TestServerHandleSetLevel(t *testing.T) {
 	
 	req := &Request{
 		Method: "logging/setLevel",
-		ID:     1,
+		ID:     json.RawMessage(`1`),
 		Params: paramsJSON,
 	}
 	
@@ -185,7 +185,7 @@ func TestServerHandleUnknownMethod(t *testing.T) {
 	
 	req := &Request{
 		Method: "unknown/method",
-		ID:     1,
+		ID:     json.RawMessage(`1`),
 		Params: json.RawMessage(`{}`),
 	}
 	
@@ -202,8 +202,8 @@ func TestServerHandleUnknownMethod(t *testing.T) {
 		t.Errorf("Expected error code %d, got %d", MethodNotFound, resp.Error.Code)
 	}
 	
-	if !strings.Contains(resp.Error.Message(), "Method not found") {
-		t.Errorf("Expected 'Method not found' message, got '%s'", resp.Error.Message())
+	if !strings.Contains(resp.Error.Message, "Method not found") {
+		t.Errorf("Expected 'Method not found' message, got '%s'", resp.Error.Message)
 	}
 }
 

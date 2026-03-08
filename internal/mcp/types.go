@@ -7,6 +7,40 @@ import (
 // ProtocolVersion is the current MCP protocol version
 const ProtocolVersion = "2024-11-05"
 
+// JSON-RPC error codes
+const (
+	ParseError     = -32700
+	InvalidRequest = -32600
+	MethodNotFound = -32601
+	InvalidParams  = -32602
+	InternalError  = -32603
+)
+
+// RequestID is an alias for json.RawMessage to represent JSON-RPC request IDs
+type RequestID = json.RawMessage
+
+// ErrorData represents a JSON-RPC error in a response
+type ErrorData struct {
+	Code    int         `json:"code"`
+	Message string      `json:"message"`
+	Data    interface{} `json:"data,omitempty"`
+}
+
+// Error is an alias for ErrorData
+type Error = ErrorData
+
+// TextContent represents text content in tool results
+type TextContent struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
+// Root represents a filesystem root
+type Root struct {
+	URI  string `json:"uri"`
+	Name string `json:"name,omitempty"`
+}
+
 // Request represents an MCP request
 type Request struct {
 	JSONRPC string          `json:"jsonrpc"`
@@ -20,7 +54,7 @@ type Response struct {
 	JSONRPC string          `json:"jsonrpc"`
 	ID      json.RawMessage `json:"id,omitempty"`
 	Result  json.RawMessage `json:"result,omitempty"`
-	Error   *JSONRPCError   `json:"error,omitempty"`
+	Error   *ErrorData      `json:"error,omitempty"`
 }
 
 // Notification is an MCP notification (no response expected)
@@ -100,11 +134,14 @@ type RootsCapability struct {
 }
 
 // MCPTool defines a tool that can be called
-type Tool struct {
-	Name        string             `json:"name"`
-	Description string             `json:"description"`
-	InputSchema json.RawMessage    `json:"inputSchema"`
+type MCPTool struct {
+	Name        string      `json:"name"`
+	Description string      `json:"description"`
+	InputSchema interface{} `json:"inputSchema"`
 }
+
+// Tool is an alias for MCPTool
+type Tool = MCPTool
 
 // Resource represents a read-only data source
 type Resource struct {
@@ -173,8 +210,8 @@ type CallToolRequest struct {
 
 // CallToolResult contains the result of a tool call
 type CallToolResult struct {
-	Content []Content `json:"content"`
-	IsError bool      `json:"isError,omitempty"`
+	Content []interface{} `json:"content"`
+	IsError bool          `json:"isError,omitempty"`
 }
 
 // ListPromptsResult contains list of prompts
@@ -195,9 +232,9 @@ type GetPromptResult struct {
 
 // Message represents a message in a conversation
 type Message struct {
-	Role    RoleType        `json:"role"`
-	Content Content         `json:"content"`
-	Model   string          `json:"model,omitempty"`
+	Role    RoleType    `json:"role"`
+	Content interface{} `json:"content"`
+	Model   string      `json:"model,omitempty"`
 }
 
 // RoleType defines the role of a message sender
@@ -218,14 +255,7 @@ type SetLevelResult struct{}
 
 // ListRootsResult contains list of roots
 type ListRootsResult struct {
-	Roots []URI `json:"roots"`
-}
-
-// URI represents a URI string
-type URI string
-
-func (u URI) String() string {
-	return string(u)
+	Roots []Root `json:"roots"`
 }
 
 // Level represents log levels
@@ -265,7 +295,7 @@ func (l *Level) UnmarshalJSON(data []byte) error {
 	
 	switch s {
 	case "debug":
-		*l = LogLevel
+		*l = LevelDebug
 	case "info":
 		*l = LevelInfo
 	case "warn":
