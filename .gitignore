@@ -3,3 +3,4 @@ yolo
 .yolo
 coverage.out
 test_output/
+*.patch
