@@ -72,6 +72,7 @@ const (
 // to column 1. This function ensures proper carriage return + line feed behavior.
 func rawWrite(s string) {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
 	s = strings.ReplaceAll(s, "\n", "\r\n")
 	fmt.Print(s)
 }
