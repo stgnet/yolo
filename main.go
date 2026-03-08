@@ -2043,19 +2043,7 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		roundNum++
 	}
 
-	// Save to persistent history
-	if len(toolLog) > 0 {
-		var summaryLines []string
-		for _, entry := range toolLog {
-			shortResult := entry.result
-			if len(shortResult) > 150 {
-				shortResult = shortResult[:150]
-			}
-			shortResult = strings.ReplaceAll(shortResult, "\n", " ")
-			summaryLines = append(summaryLines, fmt.Sprintf("[%s] => %s", entry.name, shortResult))
-		}
-		a.history.AddMessage("assistant", "[tool activity]\n"+strings.Join(summaryLines, "\n"), nil)
-	}
+	// Save to persistent history (only final assistant text, not internal tracking)
 	if finalText != "" {
 		// Response was already streamed to the terminal by Chat(), just save to history
 		a.history.AddMessage("assistant", finalText, nil)
