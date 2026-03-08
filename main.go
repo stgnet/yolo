@@ -505,9 +505,18 @@ var ollamaTools = []ToolDef{
 		}, []string{"command"}),
 	toolDef("spawn_subagent", "Spawn a background sub-agent for a parallel task",
 		map[string]ToolParam{
-			"task":  {Type: "string", Description: "Task description"},
-			"model": {Type: "string", Description: "Ollama model name (optional)"},
-		}, []string{"task"}),
+			"prompt":      {Type: "string", Description: "Task description/prompt for the sub-agent"},
+			"name":        {Type: "string", Description: "Name for the sub-agent (optional)"},
+			"description": {Type: "string", Description: "Optional description of the sub-agent"},
+		}, []string{"prompt"}),
+	toolDef("list_subagents", "List all active/background sub-agents with their status and progress",
+		map[string]ToolParam{}, nil),
+	toolDef("read_subagent_result", "Read the result from a specific sub-agent by ID",
+		map[string]ToolParam{
+			"id": {Type: "string", Description: "Sub-agent ID to retrieve result for"},
+		}, []string{"id"}),
+	toolDef("summarize_subagents", "Get summary statistics of all sub-agents (completed/errors)",
+		map[string]ToolParam{}, nil),
 	toolDef("list_models", "List available Ollama models", map[string]ToolParam{}, nil),
 	toolDef("switch_model", "Switch to a different Ollama model",
 		map[string]ToolParam{
@@ -759,6 +768,7 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 var validTools = []string{
 	"read_file", "write_file", "edit_file", "list_files",
 	"search_files", "run_command", "spawn_subagent",
+	"list_subagents", "read_subagent_result", "summarize_subagents",
 	"list_models", "switch_model", "think", "restart",
 }
 
@@ -808,6 +818,12 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 		return t.runCommand(args)
 	case "spawn_subagent":
 		return t.spawnSubagent(args)
+	case "list_subagents":
+		return t.listSubagents(args)
+	case "read_subagent_result":
+		return t.readSubagentResult(args)
+	case "summarize_subagents":
+		return t.summarizeSubagents(args)
 	case "list_models":
 		return t.listModels()
 	case "switch_model":
@@ -849,6 +865,37 @@ func getIntArg(args map[string]any, key string, fallback int) int {
 		}
 	}
 	return fallback
+}
+
+func getStringValue(m map[string]any, key string) string {
+	if v, ok := m[key]; ok {
+		switch val := v.(type) {
+		case string:
+			return val
+		default:
+			return fmt.Sprintf("%v", val)
+		}
+	}
+	return ""
+}
+
+func getIntValue(m map[string]any, key string, fallback int) int {
+	if v, ok := m[key]; ok {
+		switch val := v.(type) {
+		case float64:
+			return int(val)
+		case int:
+			return val
+		}
+	}
+	return fallback
+}
+
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }
 
 func isBinaryData(data []byte) bool {
@@ -1223,6 +1270,97 @@ func (t *ToolExecutor) runCommand(args map[string]any) string {
 		return "(no output)"
 	}
 	return result
+}
+
+func (t *ToolExecutor) listSubagents(args map[string]any) string {
+	files, err := filepath.Glob(filepath.Join(SubagentDir, "agent_*.json"))
+	if err != nil {
+		return fmt.Sprintf("Error reading subagent directory: %v", err)
+	}
+
+	if len(files) == 0 {
+		return "No subagents found"
+	}
+
+	var results []string
+	for _, file := range files {
+		info, _ := os.Stat(file)
+		results = append(results, fmt.Sprintf("%s (modified: %s)", filepath.Base(file), info.ModTime().Format(time.RFC3339)))
+	}
+
+	return "Active subagents:\n" + strings.Join(results, "\n")
+}
+
+func (t *ToolExecutor) readSubagentResult(args map[string]any) string {
+	agentID := getIntArg(args, "id", 0)
+	if agentID == 0 {
+		return "Error: required parameter 'id' is missing"
+	}
+
+	resultFile := filepath.Join(SubagentDir, fmt.Sprintf("agent_%d.json", agentID))
+	data, err := os.ReadFile(resultFile)
+	if err != nil {
+		return fmt.Sprintf("Error reading subagent result: %v", err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(data, &result); err != nil {
+		return fmt.Sprintf("Error parsing result: %v", err)
+	}
+
+	output := fmt.Sprintf("Sub-agent #%d Result:\n", agentID)
+	output += fmt.Sprintf("  Task: %s\n", getStringValue(result, "task"))
+	output += fmt.Sprintf("  Model: %s\n", getStringValue(result, "model"))
+	output += fmt.Sprintf("  Status: %s\n", getStringValue(result, "status"))
+	output += fmt.Sprintf("  Result: %s\n", getStringValue(result, "result"))
+
+	return output
+}
+
+func (t *ToolExecutor) summarizeSubagents(args map[string]any) string {
+	files, err := filepath.Glob(filepath.Join(SubagentDir, "agent_*.json"))
+	if err != nil {
+		return fmt.Sprintf("Error reading subagent directory: %v", err)
+	}
+
+	if len(files) == 0 {
+		return "No subagents found"
+	}
+
+	completed := 0
+	errors := 0
+	var summaries []string
+
+	for _, file := range files {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			continue
+		}
+
+		var result map[string]any
+		if err := json.Unmarshal(data, &result); err != nil {
+			continue
+		}
+
+		id := getIntValue(result, "id", 0)
+		status := getStringValue(result, "status")
+		task := getStringValue(result, "task")
+
+		if status == "complete" {
+			completed++
+		} else if status == "error" {
+			errors++
+		}
+
+		summaries = append(summaries, fmt.Sprintf("  #%d [%s]: %s", id, status, truncate(task, 50)))
+	}
+
+	output := fmt.Sprintf("Subagent Summary (%d total):\n", len(files))
+	output += fmt.Sprintf("  Completed: %d\n", completed)
+	output += fmt.Sprintf("  Errors: %d\n", errors)
+	output += "\nRecent subagents:\n" + strings.Join(summaries, "\n")
+
+	return output
 }
 
 func (t *ToolExecutor) spawnSubagent(args map[string]any) string {
