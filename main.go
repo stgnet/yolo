@@ -2194,6 +2194,10 @@ func (a *YoloAgent) parseTextToolCalls(text string) []ParsedToolCall {
 					reBracketTool := regexp.MustCompile(`^\[([^\]]+)\]\s*(?:\([^)]*\))?\s*(?:=>.*)?$`)
 					if match5 := reBracketTool.FindStringSubmatch(line); len(match5) >= 2 {
 						toolName := strings.TrimSpace(match5[1])
+						// Strip parentheses and arguments if present: spawn_subagent() -> spawn_subagent
+						if idx := strings.Index(toolName, "("); idx >= 0 {
+							toolName = toolName[:idx]
+						}
 						validToolSet := map[string]bool{}
 						for _, t := range validTools {
 							validToolSet[t] = true
