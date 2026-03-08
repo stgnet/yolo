@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -327,6 +326,21 @@ func (s *Server) RegisterPrompt(prompt Prompt, handler PromptHandlerFunc) error 
 	return nil
 }
 
+// AddTool is a convenience wrapper around RegisterTool that ignores errors
+func (s *Server) AddTool(tool MCPTool, handler ToolHandlerFunc) {
+	s.RegisterTool(tool, handler)
+}
+
+// AddResource is a convenience wrapper around RegisterResource that ignores errors
+func (s *Server) AddResource(resource Resource, reader ResourceReaderFunc) {
+	s.RegisterResource(resource, reader)
+}
+
+// AddPrompt is a convenience wrapper around RegisterPrompt that ignores errors
+func (s *Server) AddPrompt(prompt Prompt, handler PromptHandlerFunc) {
+	s.RegisterPrompt(prompt, handler)
+}
+
 // Helper to create text content
 func newTextContent(text string) TextContent {
 	return TextContent{Type: "text", Text: text}
@@ -335,7 +349,7 @@ func newTextContent(text string) TextContent {
 // Helper to create error tool result
 func newErrorToolResult(message string) CallToolResult {
 	return CallToolResult{
-		Content: []Content{newTextContent("Error: " + message)},
+		Content: []interface{}{newTextContent("Error: " + message)},
 		IsError: true,
 	}
 }
@@ -343,7 +357,7 @@ func newErrorToolResult(message string) CallToolResult {
 // Helper to create success tool result
 func newTextToolResult(text string) CallToolResult {
 	return CallToolResult{
-		Content:   []Content{newTextContent(text)},
+		Content:   []interface{}{newTextContent(text)},
 		IsError:   false,
 	}
 }
