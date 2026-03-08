@@ -114,6 +114,21 @@ func truncateString(s string, maxLen int) string {
 	return string(runes[:maxLen]) + "..."
 }
 
+// filterToolActivityMarkers removes [tool activity]...[/tool activity] markers from text
+// to avoid confusing the model with its own previous tool call indicators
+func filterToolActivityMarkers(text string) string {
+	lines := strings.Split(text, "\n")
+	var filtered []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "[tool activity]") && 
+		   !strings.HasPrefix(trimmed, "[/tool activity]") {
+			filtered = append(filtered, line)
+		}
+	}
+	return strings.Join(filtered, "\n")
+}
+
 // TerminalUI manages a split terminal: a scrolling output region on top and
 // a fixed input line at the bottom, separated by a divider.
 type TerminalUI struct {
@@ -2065,8 +2080,9 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 			preview = strings.ReplaceAll(preview, "\n", " ")
 			cprint(Gray, fmt.Sprintf("  => %s", preview))
 
-			roundMsgs = append(roundMsgs, ChatMessage{Role: "tool", Content: resultStr})
-			toolLog = append(toolLog, toolLogEntry{name: name, args: args, result: resultStr})
+			cleanResult := filterToolActivityMarkers(resultStr)
+			roundMsgs = append(roundMsgs, ChatMessage{Role: "tool", Content: cleanResult})
+			toolLog = append(toolLog, toolLogEntry{name: name, args: args, result: cleanResult})
 		}
 
 		// Optionally nudge the model to wrap up after many rounds
@@ -2122,9 +2138,9 @@ func (a *YoloAgent) parseTextToolCalls(text string) []ParsedToolCall {
 		}
 	}
 
-	// Format 3: [tool_name] {"key": "value", ...}
+	// Format 3: [tool_name] {"key": "value", ...} or [tool_name] => result
 	if len(calls) == 0 {
-		re3 := regexp.MustCompile(`(?m)^\s*\[(\w+)\]\s*(\{.*?\})\s*$`)
+		re3 := regexp.MustCompile(`(?m)\[(\w+)\]\s*(?:=>[^{]*)?\s*(\{.*?\})`)
 		validToolSet := map[string]bool{}
 		for _, t := range validTools {
 			validToolSet[t] = true
@@ -2157,6 +2173,35 @@ func (a *YoloAgent) parseTextToolCalls(text string) []ParsedToolCall {
 				}
 				if len(args) > 0 {
 					calls = append(calls, ParsedToolCall{Name: toolName, Args: args})
+				}
+			}
+		}
+	}
+
+	// Format 5: [tool activity] blocks with tool calls on following lines
+	if len(calls) == 0 {
+		reFormat5 := regexp.MustCompile(`\[tool activity\]\s*\n([^\[]+)`)
+		for _, match := range reFormat5.FindAllStringSubmatch(text, -1) {
+			if len(match) >= 2 {
+				activityBlock := strings.TrimSpace(match[1])
+				lines := strings.Split(activityBlock, "\n")
+				for _, line := range lines {
+					line = strings.TrimSpace(line)
+					if line == "" {
+						continue
+					}
+					// Try [tool] format
+					reBracketTool := regexp.MustCompile(`^\[([^\]]+)\]\s*(?:\([^)]*\))?\s*(?:=>.*)?$`)
+					if match5 := reBracketTool.FindStringSubmatch(line); len(match5) >= 2 {
+						toolName := strings.TrimSpace(match5[1])
+						validToolSet := map[string]bool{}
+						for _, t := range validTools {
+							validToolSet[t] = true
+						}
+						if validToolSet[toolName] {
+							calls = append(calls, ParsedToolCall{Name: toolName, Args: map[string]any{}})
+						}
+					}
 				}
 			}
 		}
