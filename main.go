@@ -1876,7 +1876,14 @@ func (a *YoloAgent) setupFirstRun() {
 	a.showHelpHint()
 }
 
+// resumeSession loads history for session resumption (silent, no output)
 func (a *YoloAgent) resumeSession() {
+	// This method is called before terminal setup to ensure history is loaded.
+	// Display happens separately via displaySessionResumption() after terminal is ready.
+}
+
+// displaySessionResumption shows the resuming message with formatting
+func (a *YoloAgent) displaySessionResumption() {
 	cprint(Cyan+Bold, "\n  YOLO - Your Own Living Operator")
 	cprint(Green, fmt.Sprintf("  Resuming — model: %s%s%s", Bold, a.history.GetModel(), Reset))
 	n := len(a.history.Data.Messages)
@@ -1938,8 +1945,64 @@ func (a *YoloAgent) resumeSession() {
 }
 
 func (a *YoloAgent) showHelpHint() {
-	cprint(Gray, "  Type a message, or /help for commands.")
-	cprint(Gray, fmt.Sprintf("  Agent thinks autonomously after %ds of idle.\n", IdleThinkDelay))
+	cprint(Cyan+Bold, "\n  YOLO - Your Own Living Operator")
+	cprint(Green, fmt.Sprintf("  Resuming — model: %s%s%s", Bold, a.history.GetModel(), Reset))
+	n := len(a.history.Data.Messages)
+	cprint(Gray, fmt.Sprintf("  History: %d messages loaded", n))
+
+	// Find and display the last assistant message
+	var lastAssistantMsg *HistoryMessage
+	for i := len(a.history.Data.Messages) - 1; i >= 0; i-- {
+		if a.history.Data.Messages[i].Role == "assistant" && a.history.Data.Messages[i].Content != "" {
+			lastAssistantMsg = &a.history.Data.Messages[i]
+			break
+		}
+	}
+
+	if lastAssistantMsg != nil {
+		cprint(Yellow+Bold, "\n  🔄 RESUMING FROM LAST ACTIVITY:")
+		cprint(Gray, fmt.Sprintf("    Role: %s", lastAssistantMsg.Role))
+		
+		// Show full content if it's a tool result or short message, otherwise truncate with indicator
+		content := lastAssistantMsg.Content
+		if len(content) > 200 {
+			content = content[:200] + "..."
+		}
+		cprint(Gray, fmt.Sprintf("    Content: %s", content))
+		
+		// Check if it was a tool call from metadata
+		if lastAssistantMsg.Meta != nil && lastAssistantMsg.Meta["tool_name"] != nil {
+			toolName := fmt.Sprintf("%v", lastAssistantMsg.Meta["tool_name"])
+			cprint(Yellow, fmt.Sprintf("    Tool: %s%s%s", Bold, toolName, Reset))
+		}
+		fmt.Println()
+	} else {
+		cprint(Yellow, "  ⚠️ No recent activity found in history")
+		fmt.Println()
+	}
+	
+	// Also show last few messages for context
+	lastMsgs := a.history.GetLastN(3)
+	if len(lastMsgs) > 0 {
+		cprint(Gray, "  Recent context:")
+		for _, m := range lastMsgs {
+			prefix := ""
+			switch m.Role {
+			case "user":
+				prefix = "You"
+			case "assistant":
+				prefix = "Agent"
+			case "tool":
+				prefix = "Tool"
+			default:
+				prefix = m.Role
+			}
+			content := truncateString(m.Content, 50)
+			cprint(Gray, fmt.Sprintf("    [%s] %s", prefix, content))
+		}
+		fmt.Println()
+	}
+	a.showHelpHint()
 }
 
 // ── Chat loop ──
@@ -2582,13 +2645,18 @@ func (a *YoloAgent) Run() {
 	a.lastActivity = time.Now()
 	a.thinkDelay = IdleThinkDelay
 
-	// Set up split terminal UI
+	// Set up split terminal UI (MUST be done before ANY output)
 	globalUI = NewTerminalUI()
 	globalUI.Setup()
 	defer func() {
 		globalUI.Teardown()
 		globalUI = nil
 	}()
+
+	// Display session resumption message AFTER terminal is set up
+	if hasHistory && a.history.GetModel() != "" {
+		a.displaySessionResumption()
+	}
 
 	// Start async input manager
 	a.inputMgr = NewInputManager(a)
