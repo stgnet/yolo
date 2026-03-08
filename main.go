@@ -789,6 +789,7 @@ var validTools = []string{
 	"search_files", "run_command", "spawn_subagent",
 	"list_subagents", "read_subagent_result", "summarize_subagents",
 	"list_models", "switch_model", "think", "restart",
+	"send_email",
 }
 
 type ToolExecutor struct {
@@ -851,6 +852,8 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 		return "Thought recorded."
 	case "restart":
 		return t.restart(args)
+	case "send_email":
+		return t.sendEmail(args)
 	default:
 		return fmt.Sprintf("Error: unknown tool '%s'. Available tools: %s", name, strings.Join(validTools, ", "))
 	}
@@ -1305,6 +1308,12 @@ func (t *ToolExecutor) runCommand(args map[string]any) string {
 	return result
 }
 
+// runCommandWithOutput runs a command with arguments and returns the output and error
+func runCommandWithOutput(command string, args ...string) ([]byte, error) {
+	cmd := exec.Command(command, args...)
+	return cmd.CombinedOutput()
+}
+
 func (t *ToolExecutor) listSubagents(args map[string]any) string {
 	files, err := filepath.Glob(filepath.Join(SubagentDir, "agent_*.json"))
 	if err != nil {
@@ -1483,6 +1492,32 @@ func (t *ToolExecutor) restart(args map[string]any) string {
 
 	// Should never reach here if exec succeeds
 	return "Process replaced"
+}
+
+func (t *ToolExecutor) sendEmail(args map[string]any) string {
+	subject := getStringArg(args, "subject", "")
+	body := getStringArg(args, "body", "")
+	recipientsStr := getStringArg(args, "recipients", "")
+	
+	if subject == "" || body == "" || recipientsStr == "" {
+		return "Error: all of subject, body, and recipients must be provided"
+	}
+	
+	recipients := strings.Split(recipientsStr, ",")
+	for i := range recipients {
+		recipients[i] = strings.TrimSpace(recipients[i])
+	}
+	
+	if len(recipients) == 0 {
+		return "Error: at least one recipient must be provided"
+	}
+	
+	output, err := runCommandWithOutput("send_email.sh", subject, body, recipientsStr)
+	if err != nil {
+		return fmt.Sprintf("Error: %v\n%s", err, string(output))
+	}
+	
+	return "Email sent successfully"
 }
 
 // ─── History Manager ──────────────────────────────────────────────────
