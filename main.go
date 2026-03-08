@@ -104,6 +104,14 @@ func stripAnsiCodes(s string) string {
 	return re.ReplaceAllString(s, "")
 }
 
+// truncateString truncates a string to maxLen characters, adding "..." if truncated.
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}
+
 // TerminalUI manages a split terminal: a scrolling output region on top and
 // a fixed input line at the bottom, separated by a divider.
 type TerminalUI struct {
@@ -960,6 +968,7 @@ func (t *ToolExecutor) editFile(args map[string]any) string {
 	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
 		return fmt.Sprintf("Error writing %s: %v", path, err)
 	}
+
 	return fmt.Sprintf("Edited %s", path)
 }
 
@@ -1598,6 +1607,17 @@ func (h *HistoryManager) SetModel(model string) {
 	h.Save()
 }
 
+// GetLastN returns the last n history messages
+func (h *HistoryManager) GetLastN(n int) []HistoryMessage {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	msgs := h.Data.Messages
+	if len(msgs) <= n {
+		return msgs
+	}
+	return msgs[len(msgs)-n:]
+}
+
 // ─── Main Agent ───────────────────────────────────────────────────────
 
 type YoloAgent struct {
@@ -1634,6 +1654,13 @@ func NewYoloAgent() *YoloAgent {
 }
 
 func (a *YoloAgent) getSystemPrompt() string {
+	// Load knowledge base if it exists
+	var kbSection string
+	kbPath := filepath.Join(a.baseDir, ".yolo", "knowledge.md")
+	if content, err := os.ReadFile(kbPath); err == nil {
+		kbSection = "\n## Knowledge Base\n" + string(content)
+	}
+
 	return fmt.Sprintf(`You are YOLO (Your Own Living Operator), a self-evolving AI agent for software development.
 
 Working directory: %s
@@ -1658,9 +1685,14 @@ You are designed to work AUTONOMOUSLY. This is the core purpose of YOLO.
 - If something fails, try a different approach on your own.
 - After completing one improvement, immediately move on to the next.
 - Focus on: code quality, bug fixes, tests, self-improvement, documentation.
-- Briefly state what you did and what you're doing next, then use tools.`,
+- Briefly state what you did and what you're doing next, then use tools.%s`,
 		a.baseDir, a.scriptPath, a.history.GetModel(), time.Now().Format(time.RFC3339),
-		a.baseDir)
+		a.baseDir, kbSection)
+}
+
+func (a *YoloAgent) restart() {
+	// Use the tool executor's restart functionality
+	a.tools.restart(make(map[string]any))
 }
 
 // ── Setup ──
@@ -1708,6 +1740,28 @@ func (a *YoloAgent) resumeSession() {
 	cprint(Green, fmt.Sprintf("  Resuming — model: %s%s%s", Bold, a.history.GetModel(), Reset))
 	n := len(a.history.Data.Messages)
 	cprint(Gray, fmt.Sprintf("  History: %d messages loaded", n))
+
+	// Show last few messages for context
+	lastMsgs := a.history.GetLastN(3)
+	if len(lastMsgs) > 0 {
+		cprint(Yellow, "  Last activity:")
+		for _, m := range lastMsgs {
+			prefix := ""
+			switch m.Role {
+			case "user":
+				prefix = "You:"
+			case "assistant":
+				prefix = "Agent:"
+			case "tool":
+				prefix = "Tool:"
+			default:
+				prefix = m.Role + ":"
+			}
+			content := truncateString(m.Content, 60)
+			cprint(Gray, fmt.Sprintf("    %s %s", prefix, content))
+		}
+		fmt.Println()
+	}
 	a.showHelpHint()
 }
 
@@ -2034,6 +2088,7 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		cprint(Reset, "  /history         Message count")
 		cprint(Reset, "  /clear           Clear conversation history")
 		cprint(Reset, "  /status          Agent status")
+		cprint(Reset, "  /restart         Restart YOLO")
 		cprint(Reset, "  /exit, /quit     Exit YOLO")
 
 	case "/model":
@@ -2077,8 +2132,18 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		cprint(Reset, fmt.Sprintf("  Idle delay:  %ds", IdleThinkDelay))
 		cprint(Reset, fmt.Sprintf("  Think delay: %ds", ThinkLoopDelay))
 
+	case "/restart":
+		cprint(Yellow, "  Restarting YOLO...")
+		a.running = false
+		go func() {
+			time.Sleep(1 * time.Second)
+			a.restart()
+		}()
+		return // Let the goroutine handle restart
+
 	case "/exit", "/quit":
 		a.running = false
+		return // Exit the function to stop processing further input
 
 	default:
 		cprint(Red, fmt.Sprintf("  Unknown command: %s  (try /help)", command))
