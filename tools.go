@@ -562,9 +562,19 @@ func (t *ToolExecutor) moveFile(args map[string]any) string {
 		return fmt.Sprintf("Error creating destination directory: %v", err)
 	}
 
-	// Use os.Rename which handles both rename and move across filesystems
+	// Try os.Rename first (fast, works within same filesystem)
 	if err := os.Rename(fullSource, fullDest); err != nil {
-		return fmt.Sprintf("Error moving file: %v", err)
+		// Rename fails across filesystems; fall back to copy+delete
+		data, readErr := os.ReadFile(fullSource)
+		if readErr != nil {
+			return fmt.Sprintf("Error reading source file: %v", readErr)
+		}
+		if writeErr := os.WriteFile(fullDest, data, info.Mode()); writeErr != nil {
+			return fmt.Sprintf("Error writing destination file: %v", writeErr)
+		}
+		if removeErr := os.Remove(fullSource); removeErr != nil {
+			return fmt.Sprintf("Warning: copied to %s but failed to remove source: %v", dest, removeErr)
+		}
 	}
 
 	return fmt.Sprintf("File moved successfully from %s to %s", source, dest)
