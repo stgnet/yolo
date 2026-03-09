@@ -14,7 +14,6 @@ const (
 	ThinkLoopDelay     = 120 // seconds between autonomous think cycles
 	MaxContextMessages = 40
 	MaxToolOutput      = 0  // 0 = no truncation
-	ToolNudgeAfter     = 0  // 0 = disabled
 	CommandTimeout     = 30   // shell command timeout in seconds
 	DefaultNumCtx      = 8192 // default context window size for Ollama models
 )
