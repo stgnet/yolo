@@ -454,3 +454,65 @@ func TestTerminalUIWrapTextVaryingWidths(t *testing.T) {
 		}
 	}
 }
+
+// TestParseParamString tests the parseParamString function
+func TestParseParamString(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected map[string]any
+	}{
+		{
+			name:     "simple key-value",
+			input:    "path=main.go",
+			expected: map[string]any{"path": "main.go"},
+		},
+		{
+			name:  "multiple parameters",
+			input: "path=main.go, offset=100, limit=50",
+			expected: map[string]any{
+				"path":   "main.go",
+				"offset": int64(100),
+				"limit":  int64(50),
+			},
+		},
+		{
+			name:  "mixed types",
+			input: "path=main.go, count=10, debug=true, ratio=3.14",
+			expected: map[string]any{
+				"path":   "main.go",
+				"count":  int64(10),
+				"debug":  true,
+				"ratio":  float64(3.14),
+			},
+		},
+		{
+			name:     "empty string",
+			input:    "",
+			expected: map[string]any{},
+		},
+		{
+			name:     "spaces around separator",
+			input:    "key = value",
+			expected: map[string]any{"key": "value"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := parseParamString(tt.input)
+			if len(result) != len(tt.expected) {
+				t.Errorf("Expected %d keys, got %d. Expected: %v, Got: %v",
+					len(tt.expected), len(result), tt.expected, result)
+				return
+			}
+			for k, v := range tt.expected {
+				if val, ok := result[k]; !ok {
+					t.Errorf("Missing key: %s", k)
+				} else if val != v {
+					t.Errorf("Key %s: expected %v (%T), got %v (%T)", k, v, v, val, val)
+				}
+			}
+		})
+	}
+}

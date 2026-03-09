@@ -2225,8 +2225,8 @@ func (a *YoloAgent) parseTextToolCalls(text string) []ParsedToolCall {
 					if line == "" {
 						continue
 					}
-					// Try [tool] or [tool()] format
-					reBracketTool := regexp.MustCompile(`^\[([^\]]+)\]\s*(?:=>.*)?$`)
+					// Try [tool] or [tool()] format, optionally with parameters after =>
+					reBracketTool := regexp.MustCompile(`^\[([^\]]+)\]\s*(?:=>\s*(.*))?$`)
 					if match5 := reBracketTool.FindStringSubmatch(line); len(match5) >= 2 {
 						toolName := strings.TrimSpace(match5[1])
 						// Strip parentheses and arguments if present: spawn_subagent() -> spawn_subagent
@@ -2238,7 +2238,11 @@ func (a *YoloAgent) parseTextToolCalls(text string) []ParsedToolCall {
 							validToolSet[t] = true
 						}
 						if validToolSet[toolName] {
-							calls = append(calls, ParsedToolCall{Name: toolName, Args: map[string]any{}})
+							args := map[string]any{}
+							if len(match5) >= 3 && strings.TrimSpace(match5[2]) != "" {
+								args = parseParamString(match5[2])
+							}
+							calls = append(calls, ParsedToolCall{Name: toolName, Args: args})
 						}
 					}
 				}
@@ -2247,6 +2251,39 @@ func (a *YoloAgent) parseTextToolCalls(text string) []ParsedToolCall {
 	}
 
 	return calls
+}
+
+// parseParamString converts "key=value, key2=value2" into a JSON-serializable map
+func parseParamString(paramStr string) map[string]any {
+	result := make(map[string]any)
+	pairs := strings.Split(paramStr, ",")
+	for _, pair := range pairs {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		eqIdx := strings.Index(pair, "=")
+		if eqIdx < 0 {
+			continue
+		}
+		key := strings.TrimSpace(pair[:eqIdx])
+		value := strings.TrimSpace(pair[eqIdx+1:])
+		if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
+			value = value[1 : len(value)-1]
+		} else if len(value) >= 2 && value[0] == '\'' && value[len(value)-1] == '\'' {
+			value = value[1 : len(value)-1]
+		}
+		if num, err := strconv.ParseInt(value, 10, 64); err == nil {
+			result[key] = num
+		} else if floatVal, err := strconv.ParseFloat(value, 64); err == nil {
+			result[key] = floatVal
+		} else if boolVal, err := strconv.ParseBool(value); err == nil {
+			result[key] = boolVal
+		} else {
+			result[key] = value
+		}
+	}
+	return result
 }
 
 // ── Model switching ──
