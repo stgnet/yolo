@@ -150,6 +150,145 @@ func TestEditFileToolEdgeCases(t *testing.T) {
 	}
 }
 
+// Test cases for list_files tool edge cases
+func TestListFilesToolEdgeCases(t *testing.T) {
+	tests := []struct {
+		name         string
+		pattern      string
+		expectCount  int // minimum expected count
+		expectError  bool
+	}{
+		{
+			name:        "list all go files",
+			pattern:     "*.go",
+			expectCount: 5,
+			expectError: false,
+		},
+		{
+			name:        "list main files",
+			pattern:     "main.*",
+			expectCount: 2,
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agent := NewYoloAgent()
+
+			result := agent.tools.listFiles(map[string]any{
+				"pattern": tt.pattern,
+			})
+
+			if tt.expectError {
+				if !isError(result) {
+					t.Errorf("Expected error but got: %s", result)
+				}
+			} else {
+				if isError(result) {
+					t.Errorf("Unexpected error: %s", result)
+				} else if result == "(no matching files or directories)" && tt.expectCount > 0 {
+					t.Errorf("Expected at least %d matches but found none", tt.expectCount)
+				}
+			}
+		})
+	}
+}
+
+// Test cases for search_files tool edge cases
+func TestSearchFilesToolEdgeCases(t *testing.T) {
+	tests := []struct {
+		name         string
+		query        string
+		pattern      string
+		expectMatch  bool
+		expectError  bool
+	}{
+		{
+			name:      "search for package main",
+			query:     "package main",
+			pattern:   "*.go",
+			expectMatch: true,
+			expectError: false,
+		},
+		{
+			name:      "search for non-existent pattern",
+			query:     "THIS_UNIQUE_STRING_WILL_NOT_MATCH_ANYTHING_12345",
+			pattern:   "*.go",
+			expectMatch: false,
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agent := NewYoloAgent()
+
+			result := agent.tools.searchFiles(map[string]any{
+				"query":   tt.query,
+				"pattern": tt.pattern,
+			})
+
+			if tt.expectError {
+				if !isError(result) {
+					t.Errorf("Expected error but got: %s", result)
+				}
+			} else {
+				if isError(result) {
+					t.Errorf("Unexpected error: %s", result)
+				} else if tt.expectMatch && strings.Contains(result, "No matches found") {
+					t.Errorf("Expected match but none found")
+				}
+			}
+		})
+	}
+}
+
+// Test cases for run_command tool
+func TestRunCommandToolEdgeCases(t *testing.T) {
+	tests := []struct {
+		name         string
+		command      string
+		expectError  bool
+		expectOutput bool
+	}{
+		{
+			name:        "run echo command",
+			command:     "echo hello",
+			expectError: false,
+			expectOutput: true,
+		},
+		{
+			name:        "run pwd command",
+			command:     "pwd",
+			expectError: false,
+			expectOutput: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agent := NewYoloAgent()
+
+			result := agent.tools.runCommand(map[string]any{
+				"command": tt.command,
+			})
+
+			if tt.expectError {
+				if !isError(result) {
+					t.Errorf("Expected error but got: %s", result)
+				}
+			} else {
+				if isError(result) {
+					t.Errorf("Unexpected error: %s", result)
+				} else if tt.expectOutput && strings.TrimSpace(result) == "" {
+					t.Errorf("Expected output but got none")
+				}
+			}
+		})
+	}
+}
+
 // Helper function to check if a result is an error
 func isError(result string) bool {
 	return len(result) > 0 && (strings.HasPrefix(result, "Error") || strings.HasPrefix(result, "error"))
