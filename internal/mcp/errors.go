@@ -20,8 +20,8 @@ type rpcError struct {
 	data    interface{}
 }
 
-func (e *rpcError) Code() int       { return e.code }
-func (e *rpcError) Message() string { return e.message }
+func (e *rpcError) Code() int         { return e.code }
+func (e *rpcError) Message() string   { return e.message }
 func (e *rpcError) Data() interface{} { return e.data }
 func (e *rpcError) Error() string {
 	if e.data != nil {

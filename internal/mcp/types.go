@@ -78,7 +78,7 @@ type ProtocolInfo struct {
 // InitializeRequest is sent to initialize the connection
 type InitializeRequest struct {
 	ProtocolInfo
-	ClientInfo   Implementation `json:"clientInfo"`
+	ClientInfo   Implementation     `json:"clientInfo"`
 	Capabilities ClientCapabilities `json:"capabilities,omitempty"`
 }
 
@@ -100,7 +100,7 @@ type ClientCapabilities struct {
 
 // ServerCapabilities describes what the server supports
 type ServerCapabilities struct {
-	Logging   *LoggingCapability   `json:"logging,omitempty"`
+	Logging   *LoggingCapability  `json:"logging,omitempty"`
 	Prompts   *PromptCapability   `json:"prompts,omitempty"`
 	Resources *ResourceCapability `json:"resources,omitempty"`
 	Tools     *ToolCapability     `json:"tools,omitempty"`
@@ -153,17 +153,17 @@ type Resource struct {
 
 // ResourceTemplate is a template for creating resources
 type ResourceTemplate struct {
-	URITemplate   string          `json:"uriTemplate"`
-	MimeType      string          `json:"mimeType,omitempty"`
-	Name          string          `json:"name"`
-	Description   string          `json:"description,omitempty"`
-	ResourceAnchor *Resource       `json:"resourceAnchor,omitempty"`
+	URITemplate    string    `json:"uriTemplate"`
+	MimeType       string    `json:"mimeType,omitempty"`
+	Name           string    `json:"name"`
+	Description    string    `json:"description,omitempty"`
+	ResourceAnchor *Resource `json:"resourceAnchor,omitempty"`
 }
 
 // Prompt represents a prompt template
 type Prompt struct {
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
+	Name        string           `json:"name"`
+	Description string           `json:"description,omitempty"`
 	Arguments   []PromptArgument `json:"arguments,omitempty"`
 }
 
@@ -241,7 +241,7 @@ type Message struct {
 type RoleType string
 
 const (
-	RoleUser     RoleType = "user"
+	RoleUser      RoleType = "user"
 	RoleAssistant RoleType = "assistant"
 )
 
@@ -262,11 +262,11 @@ type ListRootsResult struct {
 type Level int
 
 const (
-	LevelDebug   Level = iota + 10
-	LevelInfo            = 20
-	LevelNotice          = 25
-	LevelWarn            = 30
-	LevelError           = 40
+	LevelDebug  Level = iota + 10
+	LevelInfo         = 20
+	LevelNotice       = 25
+	LevelWarn         = 30
+	LevelError        = 40
 )
 
 func (l Level) String() string {
@@ -304,7 +304,7 @@ func (l *Level) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return err
 	}
-	
+
 	switch s {
 	case "debug":
 		*l = LevelDebug

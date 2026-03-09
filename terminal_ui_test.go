@@ -21,7 +21,7 @@ func TestTruncateString(t *testing.T) {
 	for _, tt := range tests {
 		result := truncateString(tt.input, tt.maxLen)
 		if result != tt.expected {
-			t.Errorf("truncateString(%q, %d) = %q; want %q", 
+			t.Errorf("truncateString(%q, %d) = %q; want %q",
 				tt.input, tt.maxLen, result, tt.expected)
 		}
 	}
@@ -38,7 +38,7 @@ func TestNewTerminalUI(t *testing.T) {
 		t.Error("TerminalUI initialized with 0 rows or cols")
 	}
 	if ui.outRow != 1 || ui.outCol != 1 {
-		t.Errorf("Initial cursor position: outRow=%d, outCol=%d; want outRow=1, outCol=1", 
+		t.Errorf("Initial cursor position: outRow=%d, outCol=%d; want outRow=1, outCol=1",
 			ui.outRow, ui.outCol)
 	}
 }
@@ -48,10 +48,10 @@ func TestTerminalUI_UpdateInput(t *testing.T) {
 	ui := NewTerminalUI()
 	prompt := "[blue]user[reset]> "
 	input := []byte("test input")
-	
+
 	ui.UpdateInput(prompt, input)
 	ui.RedrawInput() // Should not panic
-	
+
 	// Just verifying it doesn't crash - actual output is hard to test in unit tests
 }
 
@@ -60,17 +60,17 @@ func TestTerminalUI_RefreshSize(t *testing.T) {
 	ui := NewTerminalUI()
 	originalRows := ui.rows
 	originalCols := ui.cols
-	
+
 	// This should not panic even if terminal size doesn't change
 	ui.RefreshSize()
-	
+
 	if ui.rows <= 0 || ui.cols <= 0 {
-		t.Errorf("RefreshSize resulted in invalid dimensions: rows=%d, cols=%d", 
+		t.Errorf("RefreshSize resulted in invalid dimensions: rows=%d, cols=%d",
 			ui.rows, ui.cols)
 	}
-	
+
 	// Dimensions might stay the same or change based on environment
-	t.Logf("Terminal dimensions - Before: %dx%d, After: %dx%d", 
+	t.Logf("Terminal dimensions - Before: %dx%d, After: %dx%d",
 		originalRows, originalCols, ui.rows, ui.cols)
 }
 
@@ -84,7 +84,7 @@ func TestTerminalUI_ClearInputLine(t *testing.T) {
 // Test TerminalUI Setup and Teardown (smoke tests)
 func TestTerminalUI_SetupTeardown(t *testing.T) {
 	ui := NewTerminalUI()
-	
+
 	// These should not panic
 	ui.Setup()
 	defer ui.Teardown()
@@ -93,7 +93,7 @@ func TestTerminalUI_SetupTeardown(t *testing.T) {
 // Test wrapText edge cases
 func TestWrapTextEdgeCases(t *testing.T) {
 	ui := NewTerminalUI()
-	
+
 	tests := []struct {
 		name     string
 		text     string
@@ -119,23 +119,23 @@ func TestWrapTextEdgeCases(t *testing.T) {
 			expected: "one two three",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Temporarily change cols for testing
 			originalCols := ui.cols
 			ui.cols = tt.cols
-		
+
 			result := ui.wrapText(tt.text)
-		
+
 			// Restore
 			ui.cols = originalCols
-		
+
 			// For complex wrapping, just verify it doesn't panic and returns valid output
 			if len(result) == 0 && len(tt.text) > 0 {
 				t.Errorf("wrapText returned empty string for non-empty input")
 			}
-		
+
 			t.Logf("Input: %q, Output:\n%q", tt.text, result)
 		})
 	}
@@ -144,12 +144,12 @@ func TestWrapTextEdgeCases(t *testing.T) {
 // Test trackCursorMovement function
 func TestTrackCursorMovement(t *testing.T) {
 	ui := NewTerminalUI()
-	
+
 	tests := []struct {
-		name        string
-		text        string
-		wantRow     int
-		wantCol     int
+		name    string
+		text    string
+		wantRow int
+		wantCol int
 	}{
 		{
 			name:    "simple text",
@@ -170,18 +170,18 @@ func TestTrackCursorMovement(t *testing.T) {
 			wantCol: 6,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Reset cursor position for test
 			ui.outRow = 1
 			ui.outCol = 1
-		
+
 			stripped := stripAnsiCodes(tt.text)
 			ui.trackCursorMovement(stripped)
-		
+
 			if ui.outRow != tt.wantRow || ui.outCol != tt.wantCol {
-				t.Errorf("trackCursorMovement: got row=%d col=%d, want row=%d col=%d", 
+				t.Errorf("trackCursorMovement: got row=%d col=%d, want row=%d col=%d",
 					ui.outRow, ui.outCol, tt.wantRow, tt.wantCol)
 			}
 		})
@@ -191,7 +191,7 @@ func TestTrackCursorMovement(t *testing.T) {
 // Test OutputPrintInline and OutputFinishLine (smoke tests)
 func TestTerminalUI_OutputMethods(t *testing.T) {
 	ui := NewTerminalUI()
-	
+
 	// Should not panic
 	ui.OutputPrintInline("test message")
 	ui.OutputFinishLine()
@@ -200,7 +200,7 @@ func TestTerminalUI_OutputMethods(t *testing.T) {
 // Test OutputError and other output methods (smoke tests)
 func TestTerminalUI_ErrorOutputMethods(t *testing.T) {
 	ui := NewTerminalUI()
-	
+
 	// Should not panic
 	ui.OutputPrintInline("error message")
 	ui.OutputFinishLine()
@@ -209,7 +209,7 @@ func TestTerminalUI_ErrorOutputMethods(t *testing.T) {
 // Test ClearInputLine (smoke test)
 func TestTerminalUI_ClearLines(t *testing.T) {
 	ui := NewTerminalUI()
-	
+
 	// Should not panic with various operations
 	ui.ClearInputLine()
 	ui.WriteToInputLine("test")

@@ -11,20 +11,20 @@ import (
 
 // Server implements an MCP server
 type Server struct {
-	name        string
-	version     string
-	tools       []MCPTool
-	resources   []Resource
+	name         string
+	version      string
+	tools        []MCPTool
+	resources    []Resource
 	resourceTpls []ResourceTemplate
-	prompts     []Prompt
+	prompts      []Prompt
 	capabilities *ServerCapabilities
-	
+
 	mu sync.RWMutex
-	
-	toolHandlers      map[string]ToolHandlerFunc
-	resourceReaders   map[string]ResourceReaderFunc
-	promptHandlers    map[string]PromptHandlerFunc
-	
+
+	toolHandlers    map[string]ToolHandlerFunc
+	resourceReaders map[string]ResourceReaderFunc
+	promptHandlers  map[string]PromptHandlerFunc
+
 	logLevel Level
 	clientID string
 }
@@ -41,12 +41,12 @@ type PromptHandlerFunc func(ctx *Server, args map[string]interface{}) (*GetPromp
 // NewServer creates a new MCP server
 func NewServer(name, version string) *Server {
 	return &Server{
-		name:        name,
-		version:     version,
-		tools:       make([]MCPTool, 0),
-		resources:   make([]Resource, 0),
+		name:         name,
+		version:      version,
+		tools:        make([]MCPTool, 0),
+		resources:    make([]Resource, 0),
 		resourceTpls: make([]ResourceTemplate, 0),
-		prompts:     make([]Prompt, 0),
+		prompts:      make([]Prompt, 0),
 		capabilities: &ServerCapabilities{
 			Logging:   &LoggingCapability{},
 			Prompts:   &PromptCapability{},
@@ -64,7 +64,7 @@ func NewServer(name, version string) *Server {
 func (s *Server) ServeSSE(w io.Writer) {
 	// For now, we'll implement a simple echo server for SSE
 	// Full SSE implementation would require proper event streams
-	
+
 	fmt.Fprintf(w, "event: message\ndata: %s\n\n", `{"jsonrpc":"2.0","method":"notifications/initialized"}`)
 }
 
@@ -72,10 +72,10 @@ func (s *Server) handleRequest(req *Request) *Response {
 	s.mu.RLock()
 	_ = s.clientID // will use for logging later
 	s.mu.RUnlock()
-	
+
 	var result json.RawMessage
 	var err error
-	
+
 	switch req.Method {
 	case "initialize":
 		result, err = s.handleInitialize(req)
@@ -102,16 +102,16 @@ func (s *Server) handleRequest(req *Request) *Response {
 	default:
 		err = createError(MethodNotFound, "Method not found", nil)
 	}
-	
+
 	if err != nil {
 		jsonrpcErr, ok := err.(JSONRPCError)
 		if !ok {
 			return createErrorResponse(req.ID, InternalError, "Internal error", nil)
 		}
-		return createErrorResponse(req.ID, jsonrpcErr.Code(), 
+		return createErrorResponse(req.ID, jsonrpcErr.Code(),
 			jsonrpcErr.Message(), jsonrpcErr.Data())
 	}
-	
+
 	return &Response{
 		JSONRPC: "2.0",
 		ID:      req.ID,
@@ -124,7 +124,7 @@ func (s *Server) handleInitialize(req *Request) (json.RawMessage, error) {
 	if err := json.Unmarshal(req.Params, &initReq); err != nil {
 		return nil, createError(InvalidParams, "Invalid params", nil)
 	}
-	
+
 	result := InitializeResult{
 		ProtocolVersion: ProtocolVersion,
 		Capabilities:    *s.capabilities,
@@ -133,11 +133,11 @@ func (s *Server) handleInitialize(req *Request) (json.RawMessage, error) {
 			Version: s.version,
 		},
 	}
-	
+
 	s.mu.Lock()
 	s.clientID = "stdio-0" // Default for stdio transport
 	s.mu.Unlock()
-	
+
 	return json.Marshal(result)
 }
 
@@ -149,7 +149,7 @@ func (s *Server) handleListResources() (json.RawMessage, error) {
 	s.mu.RLock()
 	resources := slices.Clone(s.resources)
 	s.mu.RUnlock()
-	
+
 	result := ListResourcesResult{
 		Resources: resources,
 	}
@@ -161,20 +161,20 @@ func (s *Server) handleReadResource(req *Request) (json.RawMessage, error) {
 	if err := json.Unmarshal(req.Params, &readReq); err != nil {
 		return nil, createError(InvalidParams, "Invalid params", nil)
 	}
-	
+
 	s.mu.RLock()
 	readerFunc, ok := s.resourceReaders[readReq.URI]
 	s.mu.RUnlock()
-	
+
 	if !ok {
 		return nil, createError(-32001, "Resource not found", readReq.URI)
 	}
-	
+
 	result, err := readerFunc(s)
 	if err != nil {
 		return nil, createError(InternalError, "Read failed: "+err.Error(), nil)
 	}
-	
+
 	return json.Marshal(result)
 }
 
@@ -182,7 +182,7 @@ func (s *Server) handleListTools() (json.RawMessage, error) {
 	s.mu.RLock()
 	tools := slices.Clone(s.tools)
 	s.mu.RUnlock()
-	
+
 	result := ListToolsResult{
 		Tools: tools,
 	}
@@ -194,20 +194,20 @@ func (s *Server) handleCallTool(req *Request) (json.RawMessage, error) {
 	if err := json.Unmarshal(req.Params, &callReq); err != nil {
 		return nil, createError(InvalidParams, "Invalid params", nil)
 	}
-	
+
 	s.mu.RLock()
 	handler, ok := s.toolHandlers[callReq.Name]
 	s.mu.RUnlock()
-	
+
 	if !ok {
 		return nil, createError(MethodNotFound, "Tool not found", callReq.Name)
 	}
-	
+
 	result, err := handler(s, callReq.Arguments)
 	if err != nil {
 		return nil, createError(InternalError, "Tool execution failed: "+err.Error(), nil)
 	}
-	
+
 	return json.Marshal(result)
 }
 
@@ -215,7 +215,7 @@ func (s *Server) handleListPrompts() (json.RawMessage, error) {
 	s.mu.RLock()
 	prompts := slices.Clone(s.prompts)
 	s.mu.RUnlock()
-	
+
 	result := ListPromptsResult{
 		Prompts: prompts,
 	}
@@ -227,20 +227,20 @@ func (s *Server) handleGetPrompt(req *Request) (json.RawMessage, error) {
 	if err := json.Unmarshal(req.Params, &getReq); err != nil {
 		return nil, createError(InvalidParams, "Invalid params", nil)
 	}
-	
+
 	s.mu.RLock()
 	handler, ok := s.promptHandlers[getReq.Name]
 	s.mu.RUnlock()
-	
+
 	if !ok {
 		return nil, createError(MethodNotFound, "Prompt not found", getReq.Name)
 	}
-	
+
 	result, err := handler(s, getReq.Arguments)
 	if err != nil {
 		return nil, createError(InternalError, "Prompt fetch failed: "+err.Error(), nil)
 	}
-	
+
 	return json.Marshal(result)
 }
 
@@ -249,11 +249,11 @@ func (s *Server) handleSetLevel(req *Request) (json.RawMessage, error) {
 	if err := json.Unmarshal(req.Params, &setReq); err != nil {
 		return nil, createError(InvalidParams, "Invalid params", nil)
 	}
-	
+
 	s.mu.Lock()
 	s.logLevel = setReq.Level
 	s.mu.Unlock()
-	
+
 	// Return nil result (similar to ping)
 	return nil, nil
 }
@@ -277,7 +277,7 @@ func (s *Server) Log(level Level, message string) {
 	s.mu.RLock()
 	currentLevel := s.logLevel
 	s.mu.RUnlock()
-	
+
 	if level >= currentLevel {
 		fmt.Printf("[%s] %s\n", level, message)
 	}
@@ -314,17 +314,17 @@ func writeResponse(out io.Writer, resp *Response) error {
 	if resp == nil {
 		return nil
 	}
-	
+
 	data, err := json.Marshal(resp)
 	if err != nil {
 		return fmt.Errorf("marshal response: %w", err)
 	}
-	
+
 	_, err = out.Write(append(data, '\n'))
 	if err != nil {
 		return fmt.Errorf("write response: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -332,14 +332,14 @@ func writeResponse(out io.Writer, resp *Response) error {
 func (s *Server) RegisterTool(tool MCPTool, handler ToolHandlerFunc) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	if _, exists := s.toolHandlers[tool.Name]; exists {
 		return fmt.Errorf("tool already registered: %s", tool.Name)
 	}
-	
+
 	s.tools = append(s.tools, tool)
 	s.toolHandlers[tool.Name] = handler
-	
+
 	return nil
 }
 
@@ -347,14 +347,14 @@ func (s *Server) RegisterTool(tool MCPTool, handler ToolHandlerFunc) error {
 func (s *Server) RegisterResource(resource Resource, reader ResourceReaderFunc) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	if _, exists := s.resourceReaders[resource.URI]; exists {
 		return fmt.Errorf("resource already registered: %s", resource.URI)
 	}
-	
+
 	s.resources = append(s.resources, resource)
 	s.resourceReaders[resource.URI] = reader
-	
+
 	return nil
 }
 
@@ -362,14 +362,14 @@ func (s *Server) RegisterResource(resource Resource, reader ResourceReaderFunc) 
 func (s *Server) RegisterPrompt(prompt Prompt, handler PromptHandlerFunc) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	if _, exists := s.promptHandlers[prompt.Name]; exists {
 		return fmt.Errorf("prompt already registered: %s", prompt.Name)
 	}
-	
+
 	s.prompts = append(s.prompts, prompt)
 	s.promptHandlers[prompt.Name] = handler
-	
+
 	return nil
 }
 
@@ -404,8 +404,8 @@ func newErrorToolResult(message string) CallToolResult {
 // Helper to create success tool result
 func newTextToolResult(text string) CallToolResult {
 	return CallToolResult{
-		Content:   []interface{}{newTextContent(text)},
-		IsError:   false,
+		Content: []interface{}{newTextContent(text)},
+		IsError: false,
 	}
 }
 

@@ -34,16 +34,16 @@ type Client struct {
 
 // Tool represents an MCP tool
 type Tool struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description,omitempty"`
-	InputSchema json.RawMessage        `json:"inputSchema,omitempty"`
-	MCPClient   *Client               `json:"-"` // Reference back to client for calling
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	InputSchema json.RawMessage `json:"inputSchema,omitempty"`
+	MCPClient   *Client         `json:"-"` // Reference back to client for calling
 }
 
 // Prompt represents an MCP prompt template
 type Prompt struct {
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
+	Name        string           `json:"name"`
+	Description string           `json:"description,omitempty"`
 	Arguments   []PromptArgument `json:"arguments,omitempty"`
 }
 
@@ -56,10 +56,10 @@ type PromptArgument struct {
 
 // Resource represents an MCP resource
 type Resource struct {
-	URI         string                 `json:"uri"`
-	Name        string                 `json:"name"`
-	Description string                 `json:"description,omitempty"`
-	MimeType    string                 `json:"mimeType,omitempty"`
+	URI         string `json:"uri"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	MimeType    string `json:"mimeType,omitempty"`
 }
 
 // JSON-RPC types
@@ -85,9 +85,9 @@ type Error struct {
 
 // Initialize request/response
 type InitializeRequestParams struct {
-	ProtocolVersion string                 `json:"protocolVersion"`
-	Capabilities    ClientCapabilities     `json:"capabilities"`
-	ClientInfo      ServerInformation      `json:"clientInfo"`
+	ProtocolVersion string             `json:"protocolVersion"`
+	Capabilities    ClientCapabilities `json:"capabilities"`
+	ClientInfo      ServerInformation  `json:"clientInfo"`
 }
 
 type ClientCapabilities struct {
@@ -102,7 +102,7 @@ type ServerInformation struct {
 }
 
 type InitializeResultParams struct {
-	ProtocolVersion string           `json:"protocolVersion"`
+	ProtocolVersion string             `json:"protocolVersion"`
 	Capabilities    ServerCapabilities `json:"capabilities"`
 	ServerInfo      ServerInformation  `json:"serverInfo"`
 }
@@ -121,8 +121,8 @@ type ListToolsResultParams struct {
 
 // Tool call request/response
 type CallToolRequestParams struct {
-	Name      string                 `json:"name"`
-	Arguments map[string]any         `json:"arguments,omitempty"`
+	Name      string         `json:"name"`
+	Arguments map[string]any `json:"arguments,omitempty"`
 }
 type CallToolResultParams struct {
 	Content []Content `json:"content"`
@@ -131,9 +131,9 @@ type CallToolResultParams struct {
 
 // Content can be text or other types
 type Content struct {
-	Type     string      `json:"type"`
-	Text     string      `json:"text,omitempty"`
-	Data     json.RawMessage `json:"data,omitempty"`
+	Type string          `json:"type"`
+	Text string          `json:"text,omitempty"`
+	Data json.RawMessage `json:"data,omitempty"`
 }
 
 // NewClient creates a new MCP client connection to a server process
@@ -260,7 +260,7 @@ func (c *Client) sendRequest(ctx context.Context, req Request) (*Response, error
 
 	// Create a channel for the response
 	ch := make(chan Response, 1)
-	
+
 	c.mu.Lock()
 	c.handlers[req.ID] = ch
 	c.mu.Unlock()
@@ -278,7 +278,7 @@ func (c *Client) sendRequest(ctx context.Context, req Request) (*Response, error
 		c.mu.Lock()
 		delete(c.handlers, req.ID)
 		c.mu.Unlock()
-		
+
 		if resp.Error != nil {
 			return &resp, fmt.Errorf("MCP error %d: %s", resp.Error.Code, resp.Error.Message)
 		}

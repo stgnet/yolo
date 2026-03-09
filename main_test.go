@@ -480,10 +480,10 @@ func TestParseParamString(t *testing.T) {
 			name:  "mixed types",
 			input: "path=main.go, count=10, debug=true, ratio=3.14",
 			expected: map[string]any{
-				"path":   "main.go",
-				"count":  int64(10),
-				"debug":  true,
-				"ratio":  float64(3.14),
+				"path":  "main.go",
+				"count": int64(10),
+				"debug": true,
+				"ratio": float64(3.14),
 			},
 		},
 		{

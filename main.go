@@ -121,8 +121,8 @@ func filterToolActivityMarkers(text string) string {
 	var filtered []string
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if !strings.HasPrefix(trimmed, "[tool activity]") && 
-		   !strings.HasPrefix(trimmed, "[/tool activity]") {
+		if !strings.HasPrefix(trimmed, "[tool activity]") &&
+			!strings.HasPrefix(trimmed, "[/tool activity]") {
 			filtered = append(filtered, line)
 		}
 	}
@@ -1498,25 +1498,25 @@ func (t *ToolExecutor) sendEmail(args map[string]any) string {
 	subject := getStringArg(args, "subject", "")
 	body := getStringArg(args, "body", "")
 	recipientsStr := getStringArg(args, "recipients", "")
-	
+
 	if subject == "" || body == "" || recipientsStr == "" {
 		return "Error: all of subject, body, and recipients must be provided"
 	}
-	
+
 	recipients := strings.Split(recipientsStr, ",")
 	for i := range recipients {
 		recipients[i] = strings.TrimSpace(recipients[i])
 	}
-	
+
 	if len(recipients) == 0 {
 		return "Error: at least one recipient must be provided"
 	}
-	
+
 	output, err := runCommandWithOutput("send_email.sh", subject, body, recipientsStr)
 	if err != nil {
 		return fmt.Sprintf("Error: %v\n%s", err, string(output))
 	}
-	
+
 	return "Email sent successfully"
 }
 
@@ -1951,14 +1951,14 @@ func (a *YoloAgent) displaySessionResumption() {
 	if lastAssistantMsg != nil {
 		cprint(Yellow+Bold, "\n  🔄 RESUMING FROM LAST ACTIVITY:")
 		cprint(Gray, fmt.Sprintf("    Role: %s", lastAssistantMsg.Role))
-		
+
 		// Show full content if it's a tool result or short message, otherwise truncate with indicator
 		content := lastAssistantMsg.Content
 		if len(content) > 200 {
 			content = content[:200] + "..."
 		}
 		cprint(Gray, fmt.Sprintf("    Content: %s", content))
-		
+
 		// Check if it was a tool call from metadata
 		if lastAssistantMsg.Meta != nil && lastAssistantMsg.Meta["tool_name"] != nil {
 			toolName := fmt.Sprintf("%v", lastAssistantMsg.Meta["tool_name"])
@@ -1969,7 +1969,7 @@ func (a *YoloAgent) displaySessionResumption() {
 		cprint(Yellow, "  ⚠️ No recent activity found in history")
 		fmt.Println()
 	}
-	
+
 	// Also show last few messages for context
 	lastMsgs := a.history.GetLastN(3)
 	if len(lastMsgs) > 0 {
