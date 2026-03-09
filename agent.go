@@ -125,11 +125,6 @@ func (a *YoloAgent) setupFirstRun() {
 }
 
 // resumeSession loads history for session resumption (silent, no output)
-func (a *YoloAgent) resumeSession() {
-	// This method is called before terminal setup to ensure history is loaded.
-	// Display happens separately via displaySessionResumption() after terminal is ready.
-}
-
 // displaySessionResumption shows the resuming message with formatting
 func (a *YoloAgent) displaySessionResumption() {
 	cprint(Cyan+Bold, "\n  YOLO - Your Own Living Operator")
@@ -651,7 +646,7 @@ func (a *YoloAgent) Run() {
 	hasHistory := a.history.Load()
 
 	if hasHistory && a.history.GetModel() != "" {
-		a.resumeSession()
+		// History loaded; display happens later via displaySessionResumption()
 	} else {
 		a.setupFirstRun()
 	}
