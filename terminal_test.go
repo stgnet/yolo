@@ -13,12 +13,12 @@ func TestTerminalUIWrapTextEdgeCases(t *testing.T) {
 		cols          int
 		expectedLines int
 	}{
-		{"empty_string", "", 40, 1},                    // Returns ""
-		{"single_word_fits", "hello", 40, 1},           // No wrap needed
+		{"empty_string", "", 40, 1},                      // Returns ""
+		{"single_word_fits", "hello", 40, 1},             // No wrap needed
 		{"words_with_spaces", "hello world test", 10, 2}, // Wraps to 2 lines at 10 chars max
-		{"exact_fit", "exactly twenty chars", 20, 1},   // Fits exactly
-		{"preserves_newlines", "line1\n\nline2", 40, 3}, // Preserves existing newlines including empty line
-		{"empty_line_in_middle", "a\n\nb", 40, 3},       // Empty line in middle preserved
+		{"exact_fit", "exactly twenty chars", 20, 1},     // Fits exactly
+		{"preserves_newlines", "line1\n\nline2", 40, 3},  // Preserves existing newlines including empty line
+		{"empty_line_in_middle", "a\n\nb", 40, 3},        // Empty line in middle preserved
 	}
 
 	for _, tt := range tests {
@@ -27,7 +27,7 @@ func TestTerminalUIWrapTextEdgeCases(t *testing.T) {
 			result := ui.wrapText(tt.text)
 
 			lines := strings.Split(result, "\n")
-			
+
 			if len(lines) != tt.expectedLines {
 				t.Errorf("wrapText produced %d lines, want %d. Result:\n%q", len(lines), tt.expectedLines, result)
 			}
@@ -53,7 +53,7 @@ func TestHistoryManagerWriteRead(t *testing.T) {
 	}
 
 	hm.AddMessage("user", "test message", nil)
-	
+
 	if len(hm.Data.Messages) != 1 {
 		t.Errorf("History should have 1 item after AddMessage, got %d", len(hm.Data.Messages))
 	}
@@ -67,20 +67,20 @@ func TestHistoryManagerWriteRead(t *testing.T) {
 func TestInputManagerBasic(t *testing.T) {
 	agent := &YoloAgent{}
 	im := NewInputManager(agent)
-	
+
 	// buf can be nil or empty, both are valid for a new InputManager
 	if im.buf != nil && len(im.buf) > 0 {
 		t.Errorf("New InputManager should start with empty buffer, got %q", string(im.buf))
 	}
-	
+
 	if im.agent != agent {
 		t.Errorf("InputManager should store agent reference")
 	}
-	
+
 	if im.Lines == nil {
 		t.Errorf("InputManager Lines channel should be initialized")
 	}
-	
+
 	if im.rawBytes == nil || cap(im.rawBytes) < 1 {
 		t.Errorf("InputManager rawBytes channel should be initialized with capacity")
 	}

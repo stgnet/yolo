@@ -27,12 +27,12 @@ func TestToolRegistry(t *testing.T) {
 				"enabled": true
 			}
 		]`
-		
+
 		tmpfile := t.TempDir() + "/tools.json"
 		if err := os.WriteFile(tmpfile, []byte(configContent), 0644); err != nil {
 			t.Fatalf("Failed to write temp config: %v", err)
 		}
-		
+
 		registry := NewToolRegistry()
 		// LoadTools is resilient - it logs warnings for failed tools but doesn't return errors
 		err := registry.LoadTools(tmpfile)
@@ -94,12 +94,12 @@ func TestToolRegistry(t *testing.T) {
 				"enabled": false
 			}
 		]`
-		
+
 		tmpfile := t.TempDir() + "/tools.json"
 		if err := os.WriteFile(tmpfile, []byte(configContent), 0644); err != nil {
 			t.Fatalf("Failed to write temp config: %v", err)
 		}
-		
+
 		registry := NewToolRegistry()
 		// LoadTools should not error - disabled tools are silently skipped
 		err := registry.LoadTools(tmpfile)

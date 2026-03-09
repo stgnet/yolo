@@ -25,25 +25,25 @@ func TestReadFileToolEdgeCases(t *testing.T) {
 			expectError:    false,
 		},
 		{
-			name:      "read with offset",
-			path:      "main.go",
-			offset:    100,
-			limit:     50,
+			name:           "read with offset",
+			path:           "main.go",
+			offset:         100,
+			limit:          50,
 			expectContains: "", // Just check it doesn't error
-			expectError: false,
+			expectError:    false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			agent := NewYoloAgent()
-		
+
 			result := agent.tools.readFile(map[string]any{
 				"path":   tt.path,
 				"offset": float64(tt.offset),
 				"limit":  float64(tt.limit),
 			})
-		
+
 			if tt.expectError {
 				if !isError(result) {
 					t.Errorf("Expected error but got: %s", result)
@@ -84,12 +84,12 @@ func TestWriteFileToolEdgeCases(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			agent := NewYoloAgent()
-		
+
 			result := agent.tools.writeFile(map[string]any{
 				"path":    tt.path,
 				"content": tt.content,
 			})
-		
+
 			if tt.expectErr {
 				if !isError(result) {
 					t.Errorf("Expected error but got: %s", result)
@@ -106,11 +106,11 @@ func TestWriteFileToolEdgeCases(t *testing.T) {
 // Test cases for edit_file tool edge cases
 func TestEditFileToolEdgeCases(t *testing.T) {
 	tests := []struct {
-		name        string
-		path        string
-		oldText     string
-		newText     string
-		expectErr   bool
+		name      string
+		path      string
+		oldText   string
+		newText   string
+		expectErr bool
 	}{
 		{
 			name:      "edit existing file",
@@ -124,19 +124,19 @@ func TestEditFileToolEdgeCases(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			agent := NewYoloAgent()
-		
+
 			// First create the file with old text
 			agent.tools.writeFile(map[string]any{
 				"path":    tt.path,
 				"content": tt.oldText,
 			})
-		
+
 			result := agent.tools.editFile(map[string]any{
 				"path":     tt.path,
 				"old_text": tt.oldText,
 				"new_text": tt.newText,
 			})
-		
+
 			if tt.expectErr {
 				if !isError(result) {
 					t.Errorf("Expected error but got: %s", result)
@@ -153,10 +153,10 @@ func TestEditFileToolEdgeCases(t *testing.T) {
 // Test cases for list_files tool edge cases
 func TestListFilesToolEdgeCases(t *testing.T) {
 	tests := []struct {
-		name         string
-		pattern      string
-		expectCount  int // minimum expected count
-		expectError  bool
+		name        string
+		pattern     string
+		expectCount int // minimum expected count
+		expectError bool
 	}{
 		{
 			name:        "list all go files",
@@ -198,23 +198,23 @@ func TestListFilesToolEdgeCases(t *testing.T) {
 // Test cases for search_files tool edge cases
 func TestSearchFilesToolEdgeCases(t *testing.T) {
 	tests := []struct {
-		name         string
-		query        string
-		pattern      string
-		expectMatch  bool
-		expectError  bool
+		name        string
+		query       string
+		pattern     string
+		expectMatch bool
+		expectError bool
 	}{
 		{
-			name:      "search for package main",
-			query:     "package main",
-			pattern:   "*.go",
+			name:        "search for package main",
+			query:       "package main",
+			pattern:     "*.go",
 			expectMatch: true,
 			expectError: false,
 		},
 		{
-			name:      "search for non-existent pattern",
-			query:     "THIS_UNIQUE_STRING_WILL_NOT_MATCH_ANYTHING_12345",
-			pattern:   "*.go",
+			name:        "search for non-existent pattern",
+			query:       "THIS_UNIQUE_STRING_WILL_NOT_MATCH_ANYTHING_12345",
+			pattern:     "*.go",
 			expectMatch: false,
 			expectError: false,
 		},
@@ -253,15 +253,15 @@ func TestRunCommandToolEdgeCases(t *testing.T) {
 		expectOutput bool
 	}{
 		{
-			name:        "run echo command",
-			command:     "echo hello",
-			expectError: false,
+			name:         "run echo command",
+			command:      "echo hello",
+			expectError:  false,
 			expectOutput: true,
 		},
 		{
-			name:        "run pwd command",
-			command:     "pwd",
-			expectError: false,
+			name:         "run pwd command",
+			command:      "pwd",
+			expectError:  false,
 			expectOutput: true,
 		},
 	}

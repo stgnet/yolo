@@ -46,15 +46,15 @@ func (r *ToolRegistry) LoadTools(configPath string) error {
 		if !cfg.Enabled {
 			continue
 		}
-		
+
 		r.configs[cfg.Name] = cfg
-		
+
 		client, err := NewServer(context.Background(), cfg.Command, nil, os.Environ())
 		if err != nil {
 			fmt.Printf("Warning: failed to create client for %s: %v\n", cfg.Name, err)
 			continue
 		}
-		
+
 		r.tools[cfg.Name] = client
 		fmt.Printf("Registered MCP tool: %s (%s)\n", cfg.Name, cfg.Description)
 	}
