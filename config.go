@@ -15,12 +15,14 @@ const (
 	MaxContextMessages = 40
 	MaxToolOutput      = 0  // 0 = no truncation
 	ToolNudgeAfter     = 0  // 0 = disabled
-	CommandTimeout     = 30 // shell command timeout in seconds
+	CommandTimeout     = 30   // shell command timeout in seconds
+	DefaultNumCtx      = 8192 // default context window size for Ollama models
 )
 
 var (
 	HistoryFile   = filepath.Join(YoloDir, "history.json")
 	OllamaURL     = getEnvDefault("OLLAMA_URL", "http://localhost:11434")
+	NumCtxOverride = os.Getenv("YOLO_NUM_CTX") // if set, overrides auto-detected context size
 	SubagentDir   = filepath.Join(YoloDir, "subagents")
 	fileNameRegex = regexp.MustCompile(`agent_(\d+)\.json`)
 )
