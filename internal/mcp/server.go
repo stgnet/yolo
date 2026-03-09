@@ -250,8 +250,55 @@ func (s *Server) handleSetLevel(req *Request) (json.RawMessage, error) {
 		return nil, createError(InvalidParams, "Invalid params", nil)
 	}
 	
-	// TODO: Implement log level setting
+	s.mu.Lock()
+	s.logLevel = setReq.Level
+	s.mu.Unlock()
+	
+	// Return nil result (similar to ping)
 	return nil, nil
+}
+
+// GetLogLevel returns the current log level
+func (s *Server) GetLogLevel() Level {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.logLevel
+}
+
+// SetLogLevel sets the log level
+func (s *Server) SetLogLevel(level Level) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.logLevel = level
+}
+
+// Log writes a message if it meets the current log level threshold
+func (s *Server) Log(level Level, message string) {
+	s.mu.RLock()
+	currentLevel := s.logLevel
+	s.mu.RUnlock()
+	
+	if level >= currentLevel {
+		fmt.Printf("[%s] %s\n", level, message)
+	}
+}
+
+// LogLevelFromString converts a string to a log level
+func LogLevelFromString(s string) Level {
+	switch s {
+	case "debug":
+		return DebugLevel
+	case "info":
+		return InfoLevel
+	case "notice":
+		return NoticeLevel
+	case "warning":
+		return WarningLevel
+	case "error":
+		return ErrorLevel
+	default:
+		return DebugLevel // Default to most verbose
+	}
 }
 
 func (s *Server) handleListRoots() (json.RawMessage, error) {

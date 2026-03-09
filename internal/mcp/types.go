@@ -262,10 +262,11 @@ type ListRootsResult struct {
 type Level int
 
 const (
-	LevelDebug Level = iota + 10
-	LevelInfo             = 20
-	LevelWarn             = 30
-	LevelError            = 40
+	LevelDebug   Level = iota + 10
+	LevelInfo            = 20
+	LevelNotice          = 25
+	LevelWarn            = 30
+	LevelError           = 40
 )
 
 func (l Level) String() string {
@@ -274,6 +275,8 @@ func (l Level) String() string {
 		return "debug"
 	case LevelInfo:
 		return "info"
+	case LevelNotice:
+		return "notice"
 	case LevelWarn:
 		return "warn"
 	case LevelError:
@@ -282,6 +285,15 @@ func (l Level) String() string {
 		return "unknown"
 	}
 }
+
+// Type aliases for convenience
+const (
+	DebugLevel   Level = LevelDebug
+	InfoLevel    Level = LevelInfo
+	NoticeLevel  Level = LevelNotice
+	WarningLevel Level = LevelWarn
+	ErrorLevel   Level = LevelError
+)
 
 func (l Level) MarshalJSON() ([]byte, error) {
 	return json.Marshal(l.String())
@@ -298,7 +310,9 @@ func (l *Level) UnmarshalJSON(data []byte) error {
 		*l = LevelDebug
 	case "info":
 		*l = LevelInfo
-	case "warn":
+	case "notice":
+		*l = LevelNotice
+	case "warn", "warning":
 		*l = LevelWarn
 	case "error":
 		*l = LevelError
