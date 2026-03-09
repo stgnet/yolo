@@ -313,16 +313,6 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 			toolLog = append(toolLog, toolLogEntry{name: name, args: args, result: cleanResult})
 		}
 
-		// Optionally nudge the model to wrap up after many rounds
-		if ToolNudgeAfter > 0 && roundNum >= ToolNudgeAfter {
-			roundMsgs = append(roundMsgs, ChatMessage{
-				Role: "user",
-				Content: "[SYSTEM] You have used many tool rounds. " +
-					"Please respond to the user with what you have so far. " +
-					"You can always use more tools in the next interaction.",
-			})
-		}
-
 		roundNum++
 	}
 
