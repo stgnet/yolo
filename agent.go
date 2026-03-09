@@ -1,0 +1,807 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+)
+
+// ─── Main Agent ───────────────────────────────────────────────────────
+
+type YoloAgent struct {
+	baseDir         string
+	scriptPath      string
+	ollama          *OllamaClient
+	history         *HistoryManager
+	tools           *ToolExecutor
+	inputMgr        *InputManager
+	running         bool
+	busy            bool // true while agent is processing
+	subagentCounter int
+	lastActivity    time.Time
+	thinkDelay      int
+	mu              sync.Mutex
+	cancelChat      context.CancelFunc // cancels the current Chat HTTP request
+}
+
+func NewYoloAgent() *YoloAgent {
+	baseDir, _ := os.Getwd()
+	execPath, _ := os.Executable()
+
+	a := &YoloAgent{
+		baseDir:      baseDir,
+		scriptPath:   execPath,
+		ollama:       NewOllamaClient(OllamaURL),
+		history:      NewHistoryManager(YoloDir),
+		running:      true,
+		lastActivity: time.Now(),
+		thinkDelay:   IdleThinkDelay,
+	}
+	a.tools = NewToolExecutor(baseDir, a)
+	return a
+}
+
+func (a *YoloAgent) getSystemPrompt() string {
+	// Load the system prompt template from file
+	systemPromptPath := filepath.Join(a.baseDir, "SYSTEM_PROMPT.md")
+	templateContent, err := os.ReadFile(systemPromptPath)
+	if err != nil {
+		cprint(Red, fmt.Sprintf("  Error: Could not read SYSTEM_PROMPT.md: %v\n", err))
+		cprint(Red, "  SYSTEM_PROMPT.md is required. Please ensure it exists in the working directory.\n")
+		os.Exit(1)
+	}
+
+	// Load knowledge base if it exists
+	var kbSection string
+	kbPath := filepath.Join(a.baseDir, ".yolo", "knowledge.md")
+	if content, err := os.ReadFile(kbPath); err == nil {
+		kbSection = "\n## Knowledge Base\n" + string(content)
+	}
+
+	// Replace template variables in the system prompt
+	prompt := string(templateContent)
+	prompt = strings.ReplaceAll(prompt, "{baseDir}", a.baseDir)
+	prompt = strings.ReplaceAll(prompt, "{scriptPath}", a.scriptPath)
+	prompt = strings.ReplaceAll(prompt, "{model}", a.history.GetModel())
+	prompt = strings.ReplaceAll(prompt, "{timestamp}", time.Now().Format(time.RFC3339))
+	prompt = strings.ReplaceAll(prompt, "{knowledgeBase}", kbSection)
+
+	return prompt
+}
+
+func (a *YoloAgent) restart() {
+	// Use the tool executor's restart functionality
+	a.tools.restart(make(map[string]any))
+}
+
+// ── Setup ──
+
+func (a *YoloAgent) setupFirstRun() {
+	cprint(Cyan+Bold, "\n  YOLO - Your Own Living Operator")
+	cprint(Gray, "  A self-evolving AI agent for software development")
+	cprint(Gray, fmt.Sprintf("  Working directory: %s", a.baseDir))
+	fmt.Println()
+
+	cprint(Yellow, "  Connecting to Ollama...")
+	models := a.ollama.ListModels()
+	if len(models) == 0 {
+		cprint(Red, "  Error: Cannot reach Ollama or no models installed.")
+		cprint(Red, "  Make sure Ollama is running: ollama serve")
+		os.Exit(1)
+	}
+
+	cprint(Green, fmt.Sprintf("  Found %d model(s):", len(models)))
+	for i, m := range models {
+		fmt.Printf("    %s%2d%s. %s\n", Bold, i+1, Reset, m)
+	}
+	fmt.Println()
+
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Printf("  %sSelect model (1-%d): %s", Green, len(models), Reset)
+		choice, _ := reader.ReadString('\n')
+		choice = strings.TrimSpace(choice)
+		var idx int
+		if _, err := fmt.Sscanf(choice, "%d", &idx); err != nil || idx < 1 || idx > len(models) {
+			fmt.Println("  Invalid selection, try again.")
+			continue
+		}
+		a.history.SetModel(models[idx-1])
+		a.history.Save()
+		cprint(Green, fmt.Sprintf("\n  Model: %s%s%s", Bold, models[idx-1], Reset))
+		break
+	}
+	a.showHelpHint()
+}
+
+// resumeSession loads history for session resumption (silent, no output)
+func (a *YoloAgent) resumeSession() {
+	// This method is called before terminal setup to ensure history is loaded.
+	// Display happens separately via displaySessionResumption() after terminal is ready.
+}
+
+// displaySessionResumption shows the resuming message with formatting
+func (a *YoloAgent) displaySessionResumption() {
+	cprint(Cyan+Bold, "\n  YOLO - Your Own Living Operator")
+	cprint(Green, fmt.Sprintf("  Resuming — model: %s%s%s", Bold, a.history.GetModel(), Reset))
+	n := len(a.history.Data.Messages)
+	cprint(Gray, fmt.Sprintf("  History: %d messages loaded", n))
+
+	// Find and display the last assistant message
+	var lastAssistantMsg *HistoryMessage
+	for i := len(a.history.Data.Messages) - 1; i >= 0; i-- {
+		if a.history.Data.Messages[i].Role == "assistant" && a.history.Data.Messages[i].Content != "" {
+			lastAssistantMsg = &a.history.Data.Messages[i]
+			break
+		}
+	}
+
+	if lastAssistantMsg != nil {
+		cprint(Yellow+Bold, "\n  🔄 RESUMING FROM LAST ACTIVITY:")
+		cprint(Gray, fmt.Sprintf("    Role: %s", lastAssistantMsg.Role))
+
+		// Show full content if it's a tool result or short message, otherwise truncate with indicator
+		content := lastAssistantMsg.Content
+		if len(content) > 200 {
+			content = content[:200] + "..."
+		}
+		cprint(Gray, fmt.Sprintf("    Content: %s", content))
+
+		// Check if it was a tool call from metadata
+		if lastAssistantMsg.Meta != nil && lastAssistantMsg.Meta["tool_name"] != nil {
+			toolName := fmt.Sprintf("%v", lastAssistantMsg.Meta["tool_name"])
+			cprint(Yellow, fmt.Sprintf("    Tool: %s%s%s", Bold, toolName, Reset))
+		}
+		fmt.Println()
+	} else {
+		cprint(Yellow, "  ⚠️ No recent activity found in history")
+		fmt.Println()
+	}
+
+	// Also show last few messages for context
+	lastMsgs := a.history.GetLastN(3)
+	if len(lastMsgs) > 0 {
+		cprint(Gray, "  Recent context:")
+		for _, m := range lastMsgs {
+			prefix := ""
+			switch m.Role {
+			case "user":
+				prefix = "You"
+			case "assistant":
+				prefix = "Agent"
+			case "tool":
+				prefix = "Tool"
+			default:
+				prefix = m.Role
+			}
+			content := truncateString(m.Content, 50)
+			cprint(Gray, fmt.Sprintf("    [%s] %s", prefix, content))
+		}
+		fmt.Println()
+	}
+	a.showHelpHint()
+}
+
+func (a *YoloAgent) showHelpHint() {
+	cprint(Gray, "  Type a message, or /help for commands.")
+	cprint(Gray, fmt.Sprintf("  Agent thinks autonomously after %ds of idle.\n", IdleThinkDelay))
+}
+
+// ── Chat loop ──
+
+func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
+	// Clear the user's input line so agent output appears cleanly
+	if a.inputMgr != nil {
+		a.inputMgr.ClearLine()
+	}
+
+	if userMessage != "" {
+		a.history.AddMessage("user", userMessage, nil)
+	}
+
+	if autonomous {
+		a.history.AddMessage("system",
+			"No new user input. You are in autonomous mode. "+
+				"Continue making progress on your own — do NOT ask the user "+
+				"for input or confirmation. Pick the most impactful next task "+
+				"and execute it using tools. Focus on: code quality, bug fixes, "+
+				"tests, self-improvement, or new features. "+
+				"Act decisively. Do the work, then move to the next thing.", nil)
+	}
+
+	// Base context from persistent history
+	baseMsgs := []ChatMessage{
+		{Role: "system", Content: a.getSystemPrompt()},
+	}
+	baseMsgs = append(baseMsgs, a.history.GetContextMessages(MaxContextMessages)...)
+
+	// In-memory messages for the current tool-calling chain
+	var roundMsgs []ChatMessage
+	type toolLogEntry struct {
+		name   string
+		args   map[string]any
+		result string
+	}
+	var toolLog []toolLogEntry
+	var finalText string
+
+	roundNum := 0
+	for {
+		allMsgs := append(baseMsgs, roundMsgs...)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		a.mu.Lock()
+		a.cancelChat = cancel
+		a.mu.Unlock()
+
+		result, err := a.ollama.Chat(ctx, a.history.GetModel(), allMsgs, ollamaTools)
+		cancel()
+		a.mu.Lock()
+		a.cancelChat = nil
+		a.mu.Unlock()
+
+		if err != nil {
+			if ctx.Err() != nil {
+				cprint(Yellow, "\n  Interrupted.")
+				return
+			}
+			cprint(Red, fmt.Sprintf("\nError: %v", err))
+			return
+		}
+
+		toolCalls := result.ToolCalls
+
+		// Also check for text-based tool calls as fallback
+		if len(toolCalls) == 0 {
+			toolCalls = a.parseTextToolCalls(result.DisplayText)
+		}
+
+		if len(toolCalls) == 0 {
+			finalText = result.DisplayText
+			break
+		}
+
+		// Build proper assistant message with tool_calls
+		var nativeTCs []ToolCall
+		for i, tc := range toolCalls {
+			argsJSON, _ := json.Marshal(tc.Args)
+			nativeTCs = append(nativeTCs, ToolCall{
+				ID: fmt.Sprintf("call_%d_%d", roundNum, i),
+				Function: ToolCallFunc{
+					Name:      tc.Name,
+					Arguments: json.RawMessage(argsJSON),
+				},
+			})
+		}
+		roundMsgs = append(roundMsgs, ChatMessage{
+			Role:      "assistant",
+			Content:   result.ContentText,
+			ToolCalls: nativeTCs,
+		})
+
+		// Execute each tool and add tool-role result
+		for _, call := range toolCalls {
+			name := call.Name
+			args := call.Args
+			if args == nil {
+				args = map[string]any{}
+			}
+
+			shortArgs, _ := json.Marshal(args)
+			shortStr := string(shortArgs)
+			if len(shortStr) > 80 {
+				shortStr = shortStr[:80] + "..."
+			}
+			cprint(Yellow, fmt.Sprintf("  [%s] %s", name, shortStr))
+
+			resultStr := a.tools.Execute(name, args)
+
+			preview := resultStr
+			if len(preview) > 200 {
+				preview = preview[:200] + "..."
+			}
+			preview = strings.ReplaceAll(preview, "\n", " ")
+			cprint(Gray, fmt.Sprintf("  => %s", preview))
+
+			cleanResult := filterToolActivityMarkers(resultStr)
+			roundMsgs = append(roundMsgs, ChatMessage{Role: "tool", Content: cleanResult})
+			toolLog = append(toolLog, toolLogEntry{name: name, args: args, result: cleanResult})
+		}
+
+		// Optionally nudge the model to wrap up after many rounds
+		if ToolNudgeAfter > 0 && roundNum >= ToolNudgeAfter {
+			roundMsgs = append(roundMsgs, ChatMessage{
+				Role: "user",
+				Content: "[SYSTEM] You have used many tool rounds. " +
+					"Please respond to the user with what you have so far. " +
+					"You can always use more tools in the next interaction.",
+			})
+		}
+
+		roundNum++
+	}
+
+	// Save to persistent history (only final assistant text, not internal tracking)
+	if finalText != "" {
+		// Response was already streamed to the terminal by Chat(), just save to history
+		a.history.AddMessage("assistant", finalText, nil)
+	}
+}
+
+func (a *YoloAgent) parseTextToolCalls(text string) []ParsedToolCall {
+	var calls []ParsedToolCall
+
+	// Format 1: <tool_call>{"name": ..., "args": ...}</tool_call>
+	re1 := regexp.MustCompile(`(?s)<tool_call>\s*(\{.*?\})\s*</tool_call>`)
+	for _, match := range re1.FindAllStringSubmatch(text, -1) {
+		var obj map[string]any
+		if err := json.Unmarshal([]byte(match[1]), &obj); err == nil {
+			if name, ok := obj["name"].(string); ok {
+				args, _ := obj["args"].(map[string]any)
+				if args == nil {
+					args = map[string]any{}
+				}
+				calls = append(calls, ParsedToolCall{Name: name, Args: args})
+			}
+		}
+	}
+
+	// Format 2: <tool_call><function=name><parameter=key>value</parameter>...</function></tool_call>
+	if len(calls) == 0 {
+		re2 := regexp.MustCompile(`(?s)<tool_call>\s*<function=(\w+)>(.*?)</function>\s*</tool_call>`)
+		reParam := regexp.MustCompile(`(?s)<parameter=(\w+)>\s*(.*?)\s*</parameter>`)
+		for _, match := range re2.FindAllStringSubmatch(text, -1) {
+			name := match[1]
+			body := match[2]
+			args := map[string]any{}
+			for _, pm := range reParam.FindAllStringSubmatch(body, -1) {
+				args[pm[1]] = pm[2]
+			}
+			calls = append(calls, ParsedToolCall{Name: name, Args: args})
+		}
+	}
+
+	// Format 3: [tool_name] {"key": "value", ...} or [tool_name] => result
+	if len(calls) == 0 {
+		re3 := regexp.MustCompile(`(?m)\[(\w+)\]\s*(?:=>[^{]*)?\s*(\{.*?\})`)
+		validToolSet := map[string]bool{}
+		for _, t := range validTools {
+			validToolSet[t] = true
+		}
+		for _, match := range re3.FindAllStringSubmatch(text, -1) {
+			name := match[1]
+			if validToolSet[name] {
+				var args map[string]any
+				if err := json.Unmarshal([]byte(match[2]), &args); err == nil {
+					calls = append(calls, ParsedToolCall{Name: name, Args: args})
+				}
+			}
+		}
+	}
+
+	// Format 4: <tool_name>{"key": "value"}</tool_name> or <tool_name><key>value</key></tool_name>
+	if len(calls) == 0 {
+		for _, toolName := range validTools {
+			re4 := regexp.MustCompile(fmt.Sprintf(`(?s)<%s>(.*?)</%s>`, regexp.QuoteMeta(toolName), regexp.QuoteMeta(toolName)))
+			for _, match := range re4.FindAllStringSubmatch(text, -1) {
+				body := strings.TrimSpace(match[1])
+				var args map[string]any
+				if err := json.Unmarshal([]byte(body), &args); err != nil {
+					args = map[string]any{}
+					// Parse XML-style <key>value</key> params
+					reParam := regexp.MustCompile(`<(\w+)>(.*?)</\w+>`)
+					for _, pm := range reParam.FindAllStringSubmatch(body, -1) {
+						args[pm[1]] = pm[2]
+					}
+				}
+				if len(args) > 0 {
+					calls = append(calls, ParsedToolCall{Name: toolName, Args: args})
+				}
+			}
+		}
+	}
+
+	// Format 5: [tool activity] blocks with tool calls on following lines
+	if len(calls) == 0 {
+		reFormat5 := regexp.MustCompile(`(?s)\[tool activity\]\s*\n(.*)`)
+		for _, match := range reFormat5.FindAllStringSubmatch(text, -1) {
+			if len(match) >= 2 {
+				activityBlock := strings.TrimSpace(match[1])
+				lines := strings.Split(activityBlock, "\n")
+				for _, line := range lines {
+					line = strings.TrimSpace(line)
+					if line == "" {
+						continue
+					}
+					// Try [tool] or [tool()] format, optionally with parameters after =>
+					reBracketTool := regexp.MustCompile(`^\[([^\]]+)\]\s*(?:=>\s*(.*))?$`)
+					if match5 := reBracketTool.FindStringSubmatch(line); len(match5) >= 2 {
+						toolName := strings.TrimSpace(match5[1])
+						// Strip parentheses and arguments if present: spawn_subagent() -> spawn_subagent
+						if idx := strings.Index(toolName, "("); idx >= 0 {
+							toolName = toolName[:idx]
+						}
+						validToolSet := map[string]bool{}
+						for _, t := range validTools {
+							validToolSet[t] = true
+						}
+						if validToolSet[toolName] {
+							args := map[string]any{}
+							if len(match5) >= 3 && strings.TrimSpace(match5[2]) != "" {
+								args = parseParamString(match5[2])
+							}
+							calls = append(calls, ParsedToolCall{Name: toolName, Args: args})
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return calls
+}
+
+// parseParamString converts "key=value, key2=value2" into a JSON-serializable map
+func parseParamString(paramStr string) map[string]any {
+	result := make(map[string]any)
+	pairs := strings.Split(paramStr, ",")
+	for _, pair := range pairs {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		eqIdx := strings.Index(pair, "=")
+		if eqIdx < 0 {
+			continue
+		}
+		key := strings.TrimSpace(pair[:eqIdx])
+		value := strings.TrimSpace(pair[eqIdx+1:])
+		if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
+			value = value[1 : len(value)-1]
+		} else if len(value) >= 2 && value[0] == '\'' && value[len(value)-1] == '\'' {
+			value = value[1 : len(value)-1]
+		}
+		if num, err := strconv.ParseInt(value, 10, 64); err == nil {
+			result[key] = num
+		} else if floatVal, err := strconv.ParseFloat(value, 64); err == nil {
+			result[key] = floatVal
+		} else if boolVal, err := strconv.ParseBool(value); err == nil {
+			result[key] = boolVal
+		} else {
+			result[key] = value
+		}
+	}
+	return result
+}
+
+// ── Model switching ──
+
+func (a *YoloAgent) switchModel(model string) string {
+	models := a.ollama.ListModels()
+	found := false
+	for _, m := range models {
+		if m == model {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Sprintf("Model '%s' not found. Available: %s", model, strings.Join(models, ", "))
+	}
+	old := a.history.GetModel()
+	a.history.SetModel(model)
+	a.history.AddEvolution("model_switch", fmt.Sprintf("%s -> %s", old, model))
+	cprint(Cyan, fmt.Sprintf("  Switched model: %s -> %s", old, model))
+	return fmt.Sprintf("Switched from %s to %s", old, model)
+}
+
+// ── Sub-agents ──
+
+func (a *YoloAgent) spawnSubagent(task, model string) string {
+	a.mu.Lock()
+	a.subagentCounter++
+	aid := a.subagentCounter
+	a.mu.Unlock()
+
+	useModel := model
+	if useModel == "" {
+		useModel = a.history.GetModel()
+	}
+	os.MkdirAll(SubagentDir, 0o755)
+	resultFile := filepath.Join(SubagentDir, fmt.Sprintf("agent_%d.json", aid))
+
+	go func() {
+		cprint(Magenta, fmt.Sprintf("  [sub-agent #%d] started (%s)", aid, useModel))
+		msgs := []ChatMessage{
+			{
+				Role: "system",
+				Content: fmt.Sprintf("You are a sub-agent. Complete this task concisely:\n\n%s\n\nWorking directory: %s",
+					task, a.baseDir),
+			},
+		}
+
+		status := "complete"
+		result := ""
+		chatResult, err := a.ollama.Chat(context.Background(), useModel, msgs, nil)
+		if err != nil {
+			result = err.Error()
+			status = "error"
+		} else if chatResult != nil {
+			result = chatResult.DisplayText
+		}
+		if result == "" {
+			result = "(no output)"
+		}
+
+		data, _ := json.MarshalIndent(map[string]any{
+			"id":     aid,
+			"task":   task,
+			"model":  useModel,
+			"status": status,
+			"result": result,
+			"ts":     time.Now().Format(time.RFC3339),
+		}, "", "  ")
+		os.WriteFile(resultFile, data, 0o644)
+		cprint(Magenta, fmt.Sprintf("\n  [sub-agent #%d] %s. See %s", aid, status, resultFile))
+	}()
+
+	return fmt.Sprintf("Sub-agent #%d spawned (%s). Results -> %s", aid, useModel, resultFile)
+}
+
+// ── Slash commands ──
+
+func (a *YoloAgent) handleCommand(cmd string) {
+	parts := strings.SplitN(cmd, " ", 2)
+	command := strings.ToLower(parts[0])
+	arg := ""
+	if len(parts) > 1 {
+		arg = parts[1]
+	}
+
+	switch command {
+	case "/help", "/h":
+		cprint(Cyan, "Commands:")
+		cprint(Reset, "  /help            Show this help")
+		cprint(Reset, "  /model           Current model")
+		cprint(Reset, "  /models          List available models")
+		cprint(Reset, "  /switch <name>   Switch model")
+		cprint(Reset, "  /history         Message count")
+		cprint(Reset, "  /clear           Clear conversation history")
+		cprint(Reset, "  /status          Agent status")
+		cprint(Reset, "  /restart         Restart YOLO")
+		cprint(Reset, "  /exit, /quit     Exit YOLO")
+
+	case "/model":
+		cprint(Cyan, fmt.Sprintf("  Model: %s", a.history.GetModel()))
+
+	case "/models":
+		models := a.ollama.ListModels()
+		cprint(Cyan, "  Available models:")
+		for _, m := range models {
+			marker := ""
+			if m == a.history.GetModel() {
+				marker = fmt.Sprintf(" %s<- current%s", Green, Reset)
+			}
+			cprint(Reset, fmt.Sprintf("    %s%s", m, marker))
+		}
+
+	case "/switch":
+		if arg != "" {
+			a.switchModel(arg)
+		} else {
+			cprint(Red, "  Usage: /switch <model-name>")
+		}
+
+	case "/history":
+		n := len(a.history.Data.Messages)
+		e := len(a.history.Data.EvolutionLog)
+		cprint(Cyan, fmt.Sprintf("  Messages: %d  |  Evolution events: %d", n, e))
+
+	case "/clear":
+		a.history.Data.Messages = []HistoryMessage{}
+		a.history.Save()
+		cprint(Cyan, "  History cleared (config preserved)")
+
+	case "/status":
+		cprint(Cyan, "Status:")
+		cprint(Reset, fmt.Sprintf("  Model:       %s", a.history.GetModel()))
+		cprint(Reset, fmt.Sprintf("  Messages:    %d", len(a.history.Data.Messages)))
+		cprint(Reset, fmt.Sprintf("  Evolutions:  %d", len(a.history.Data.EvolutionLog)))
+		cprint(Reset, fmt.Sprintf("  Working dir: %s", a.baseDir))
+		cprint(Reset, fmt.Sprintf("  Script:      %s", a.scriptPath))
+		cprint(Reset, fmt.Sprintf("  Idle delay:  %ds", IdleThinkDelay))
+		cprint(Reset, fmt.Sprintf("  Think delay: %ds", ThinkLoopDelay))
+
+	case "/restart":
+		cprint(Yellow, "  Restarting YOLO...")
+		// a.running = false
+		go func() {
+			time.Sleep(1 * time.Second)
+			a.restart()
+		}()
+		return // Let the goroutine handle restart
+
+	case "/exit", "/quit":
+		a.running = false
+		return // Exit the function to stop processing further input
+
+	default:
+		cprint(Red, fmt.Sprintf("  Unknown command: %s  (try /help)", command))
+	}
+}
+
+// ── Main loop ──
+
+func (a *YoloAgent) showPrompt() {
+	prompt := fmt.Sprintf("%s%syou> %s", Green, Bold, Reset)
+	a.inputMgr.ShowPrompt(prompt)
+}
+
+func (a *YoloAgent) Run() {
+	hasHistory := a.history.Load()
+
+	if hasHistory && a.history.GetModel() != "" {
+		a.resumeSession()
+	} else {
+		a.setupFirstRun()
+	}
+
+	a.lastActivity = time.Now()
+	a.thinkDelay = IdleThinkDelay
+
+	// Set up split terminal UI (MUST be done before ANY output)
+	globalUI = NewTerminalUI()
+	globalUI.Setup()
+	defer func() {
+		globalUI.Teardown()
+		globalUI = nil
+	}()
+
+	// Display session resumption message AFTER terminal is set up
+	if hasHistory && a.history.GetModel() != "" {
+		a.displaySessionResumption()
+	}
+
+	// Start async input manager
+	a.inputMgr = NewInputManager(a)
+	a.inputMgr.Start()
+	defer a.inputMgr.Stop()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGWINCH)
+	go func() {
+		for sig := range sigCh {
+			switch sig {
+			case syscall.SIGWINCH:
+				if globalUI != nil {
+					globalUI.RefreshSize()
+				}
+			case syscall.SIGINT:
+				a.mu.Lock()
+				cancel := a.cancelChat
+				a.mu.Unlock()
+				if cancel != nil {
+					cancel()
+				} else {
+					a.running = false
+					cprint(Cyan, "\n  Interrupted — saving session...")
+				}
+			}
+		}
+	}()
+
+	a.showPrompt()
+
+	for a.running {
+		select {
+		case line := <-a.inputMgr.Lines:
+			if !line.OK {
+				a.running = false
+				break
+			}
+
+			stripped := strings.TrimSpace(line.Text)
+			lower := strings.ToLower(stripped)
+			if lower == "exit" || lower == "quit" {
+				a.running = false
+			} else if strings.HasPrefix(stripped, "/") {
+				a.handleCommand(stripped)
+				a.showPrompt()
+			} else if stripped != "" {
+				a.mu.Lock()
+				a.busy = true
+				a.mu.Unlock()
+
+				// Echo user's input with green color and prefix
+				cprint(Green, fmt.Sprintf("  [%s] %s", "you", stripped))
+
+				a.chatWithAgent(stripped, false)
+
+				a.mu.Lock()
+				a.busy = false
+				a.mu.Unlock()
+
+				// Check for any lines queued while busy
+				a.drainQueuedInput()
+				a.showPrompt()
+			}
+
+		case <-time.After(1 * time.Second):
+			// Check for autonomous thinking
+			a.inputMgr.mu.Lock()
+			bufEmpty := len(a.inputMgr.buf) == 0
+			a.inputMgr.mu.Unlock()
+			if bufEmpty {
+				elapsed := time.Since(a.lastActivity)
+				if elapsed >= time.Duration(a.thinkDelay)*time.Second {
+					a.inputMgr.ClearLine()
+					cprint(Gray, "  [autonomous thinking...]")
+
+					a.mu.Lock()
+					a.busy = true
+					a.mu.Unlock()
+
+					a.chatWithAgent("", true)
+
+					a.mu.Lock()
+					a.busy = false
+					a.mu.Unlock()
+
+					a.lastActivity = time.Now()
+					a.thinkDelay = ThinkLoopDelay
+					a.drainQueuedInput()
+					a.showPrompt()
+				}
+			}
+		}
+	}
+
+	a.history.Save()
+	fmt.Print("\r\n")
+	cprint(Cyan, "  Session saved. Goodbye!\n")
+}
+
+// drainQueuedInput processes any lines that were typed while the agent was busy.
+func (a *YoloAgent) drainQueuedInput() {
+	for {
+		select {
+		case line := <-a.inputMgr.Lines:
+			if !line.OK {
+				a.running = false
+				return
+			}
+			stripped := strings.TrimSpace(line.Text)
+			lower := strings.ToLower(stripped)
+			if lower == "exit" || lower == "quit" {
+				a.running = false
+				return
+			} else if strings.HasPrefix(stripped, "/") {
+				a.handleCommand(stripped)
+			} else if stripped != "" {
+				cprint(Green, fmt.Sprintf("  [%s] %s", "queued", stripped))
+
+				a.mu.Lock()
+				a.busy = true
+				a.mu.Unlock()
+
+				a.chatWithAgent(stripped, false)
+
+				a.mu.Lock()
+				a.busy = false
+				a.mu.Unlock()
+			}
+		default:
+			return
+		}
+	}
+}
