@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -268,7 +270,9 @@ func TestRunCommandToolEdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
 			agent := NewYoloAgent()
+			agent.baseDir = tmpDir  // Update base dir for test isolation
 
 			result := agent.tools.runCommand(map[string]any{
 				"command": tt.command,
@@ -292,4 +296,162 @@ func TestRunCommandToolEdgeCases(t *testing.T) {
 // Helper function to check if a result is an error
 func isError(result string) bool {
 	return len(result) > 0 && (strings.HasPrefix(result, "Error") || strings.HasPrefix(result, "error"))
+}
+
+// TestMakeDir tests the makeDir tool functionality
+func TestMakeDir(t *testing.T) {
+	tests := []struct {
+		name        string
+		path        string
+		expectError bool
+	}{
+		{"create simple dir", "test_dir_12345", false},
+		{"create nested dirs", "nested/deep/dir/67890", false},
+		{"missing path param", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			agent := NewYoloAgent()
+			agent.baseDir = tmpDir  // Update base dir for test isolation
+			agent.tools = NewToolExecutor(tmpDir, agent)  // Recreate tool executor with new baseDir
+
+			result := agent.tools.makeDir(map[string]any{
+				"path": tt.path,
+			})
+
+			if tt.expectError {
+				if !isError(result) {
+					t.Errorf("Expected error but got: %s", result)
+				}
+			} else {
+				if isError(result) {
+					t.Errorf("Unexpected error: %s", result)
+				}
+				
+				// Verify directory was created using agent's baseDir
+				fullPath := filepath.Join(agent.baseDir, tt.path)
+				info, err := os.Stat(fullPath)
+				if err != nil {
+					t.Errorf("Directory not created at %s: %v", fullPath, err)
+				} else if !info.IsDir() {
+					t.Errorf("Created file instead of directory")
+				}
+			}
+		})
+	}
+}
+
+// TestRemoveDir tests the removeDir tool functionality
+func TestRemoveDir(t *testing.T) {
+	tests := []struct {
+		name        string
+		setupFunc   func(tmpDir string, agent *YoloAgent) string
+		expectError bool
+	}{
+		{
+			name: "remove empty dir",
+			setupFunc: func(tmpDir string, agent *YoloAgent) string {
+				dirPath := "empty_dir_abcde"
+				agent.tools.makeDir(map[string]any{"path": dirPath})
+				return dirPath
+			},
+			expectError: false,
+		},
+		{
+			name: "remove dir with files",
+			setupFunc: func(tmpDir string, agent *YoloAgent) string {
+				dirPath := "dir_with_files_fghij"
+				agent.tools.makeDir(map[string]any{"path": dirPath})
+				filePath := filepath.Join(dirPath, "file.txt")
+				agent.tools.writeFile(map[string]any{
+					"path": filePath,
+					"data": []string{"test content"},
+				})
+				return dirPath
+			},
+			expectError: false,
+		},
+		{
+			name:        "remove non-existent dir",
+			setupFunc:   func(tmpDir string, agent *YoloAgent) string { return "non_existent_xyz" },
+			expectError: true,
+		},
+		{
+			name:        "missing path param",
+			setupFunc:   func(tmpDir string, agent *YoloAgent) string { return "" },
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			agent := NewYoloAgent()
+			agent.baseDir = tmpDir  // Update base dir for test isolation
+			agent.tools = NewToolExecutor(tmpDir, agent)  // Recreate tool executor with new baseDir
+
+			dirPath := tt.setupFunc(tmpDir, agent)
+			
+			result := agent.tools.removeDir(map[string]any{
+				"path": dirPath,
+			})
+
+			if tt.expectError {
+				if !isError(result) {
+					t.Errorf("Expected error but got: %s", result)
+				}
+			} else {
+				if isError(result) {
+					t.Errorf("Unexpected error: %s", result)
+				}
+				
+				// Verify directory was removed using agent's baseDir
+				fullPath := filepath.Join(agent.baseDir, dirPath)
+				if _, err := os.Stat(fullPath); !os.IsNotExist(err) {
+					t.Errorf("Directory still exists after removal")
+				}
+			}
+		})
+	}
+}
+
+// TestMakeAndRemoveDirIntegration tests makeDir and removeDir working together
+func TestMakeAndRemoveDirIntegration(t *testing.T) {
+	tmpDir := t.TempDir()
+	agent := NewYoloAgent()
+	agent.baseDir = tmpDir  // Update base dir for test isolation
+	agent.tools = NewToolExecutor(tmpDir, agent)  // Recreate tool executor with new baseDir
+
+	// Create nested directory structure
+	testPath := "integration_test_klmno/deep/nested/dir"
+	result := agent.tools.makeDir(map[string]any{"path": testPath})
+	if isError(result) {
+		t.Fatalf("Failed to create directory: %s", result)
+	}
+
+	// Verify it exists using agent's baseDir
+	fullPath := filepath.Join(agent.baseDir, testPath)
+	if _, err := os.Stat(fullPath); err != nil {
+		t.Fatalf("Directory not created: %v", err)
+	}
+
+	// Add a file in nested dir
+	agent.tools.writeFile(map[string]any{
+		"path": filepath.Join(testPath, "test.txt"),
+		"data": []string{"integration test"},
+	})
+
+	// Remove parent directory (should remove everything)
+	result = agent.tools.removeDir(map[string]any{"path": filepath.Dir(filepath.Dir(testPath))})
+	if isError(result) {
+		t.Fatalf("Failed to remove directory: %s", result)
+	}
+
+	// Verify removal
+	parentPath := filepath.Join(tmpDir, filepath.Dir(filepath.Dir(testPath)))
+	if _, err := os.Stat(parentPath); !os.IsNotExist(err) {
+		t.Errorf("Parent directory and contents not fully removed")
+	}
 }
