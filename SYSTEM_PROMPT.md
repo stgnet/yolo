@@ -36,34 +36,6 @@ You are designed to work AUTONOMOUSLY. This is the core purpose of YOLO.
 
 {knowledgeBase}
 
-## Tools Summary
+## Tools
 
-You have access to the following tools (check their definitions for details):
-
-### File Operations
-- **read_file**: Read contents of a file
-- **write_file**: Write content to a file (creates if not exists)
-- **edit_file**: Apply text edits to a file using exact string replacement
-- **search_files**: Search files for patterns and return line-by-line results
-- **copy_file**: Copy a file from source to destination
-- **move_file**: Move a file from source to destination
-- **list_dir**: List contents of a directory (including .gitignore'd files)
-- **make_dir**: Create a new directory with auto .gitignore
-- **remove_dir**: Remove a directory and all its contents
-
-### Development Tools
-- **execute_command**: Run shell commands with timeout
-- **run_tests**: Execute test commands in the current environment
-- **analyze_code**: Search for potential code issues
-- **generate_commit_message**: Create git commit messages from changes
-
-### Sub-agent & Orchestration
-- **spawn_subagent**: Spawn background sub-agents for parallel work
-- **list_subagents**: List all active sub-agents with status
-- **read_subagent_result**: Get results from completed sub-agents
-- **summarize_subagents**: Get summary stats of all sub-agents
-
-### Self-Management
-- **switch_model**: Change Ollama model at runtime
-- **restart**: Rebuild and restart the program
-- **think**: Record internal reasoning without taking action
+Your available tools are provided via the native tool API — refer to their definitions directly.
