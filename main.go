@@ -40,9 +40,9 @@ const (
 )
 
 var (
-	HistoryFile  = filepath.Join(YoloDir, "history.json")
-	OllamaURL    = getEnvDefault("OLLAMA_URL", "http://localhost:11434")
-	SubagentDir  = filepath.Join(YoloDir, "subagents")
+	HistoryFile   = filepath.Join(YoloDir, "history.json")
+	OllamaURL     = getEnvDefault("OLLAMA_URL", "http://localhost:11434")
+	SubagentDir   = filepath.Join(YoloDir, "subagents")
 	fileNameRegex = regexp.MustCompile(`agent_(\d+)\.json`)
 )
 
@@ -2095,7 +2095,35 @@ func NewYoloAgent() *YoloAgent {
 }
 
 func (a *YoloAgent) getSystemPrompt() string {
+	// Load the system prompt template from file
+	systemPromptPath := filepath.Join(a.baseDir, "SYSTEM_PROMPT.md")
+	templateContent, err := os.ReadFile(systemPromptPath)
+	if err != nil {
+		// Fallback to embedded template if file doesn't exist
+		cprint(Red, fmt.Sprintf("  Warning: Could not read SYSTEM_PROMPT.md: %v\n", err))
+		return a.getFallbackSystemPrompt()
+	}
+	
 	// Load knowledge base if it exists
+	var kbSection string
+	kbPath := filepath.Join(a.baseDir, ".yolo", "knowledge.md")
+	if content, err := os.ReadFile(kbPath); err == nil {
+		kbSection = "\n## Knowledge Base\n" + string(content)
+	}
+
+	// Replace template variables in the system prompt
+	prompt := string(templateContent)
+	prompt = strings.ReplaceAll(prompt, "{baseDir}", a.baseDir)
+	prompt = strings.ReplaceAll(prompt, "{scriptPath}", a.scriptPath)
+	prompt = strings.ReplaceAll(prompt, "{model}", a.history.GetModel())
+	prompt = strings.ReplaceAll(prompt, "{timestamp}", time.Now().Format(time.RFC3339))
+	prompt = strings.ReplaceAll(prompt, "{knowledgeBase}", kbSection)
+
+	return prompt
+}
+
+// getFallbackSystemPrompt returns a minimal embedded system prompt if the template file fails to load
+func (a *YoloAgent) getFallbackSystemPrompt() string {
 	var kbSection string
 	kbPath := filepath.Join(a.baseDir, ".yolo", "knowledge.md")
 	if content, err := os.ReadFile(kbPath); err == nil {
