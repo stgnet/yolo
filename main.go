@@ -790,6 +790,7 @@ var validTools = []string{
 	"list_subagents", "read_subagent_result", "summarize_subagents",
 	"list_models", "switch_model", "think", "restart",
 	"send_email",
+	"make_dir", "remove_dir",
 }
 
 type ToolExecutor struct {
@@ -854,6 +855,10 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 		return t.restart(args)
 	case "send_email":
 		return t.sendEmail(args)
+	case "make_dir":
+		return t.makeDir(args)
+	case "remove_dir":
+		return t.removeDir(args)
 	default:
 		return fmt.Sprintf("Error: unknown tool '%s'. Available tools: %s", name, strings.Join(validTools, ", "))
 	}
@@ -1090,7 +1095,66 @@ func (t *ToolExecutor) listFiles(args map[string]any) string {
 	return header + "\n" + strings.Join(items, "\n")
 }
 
-// globRecursive handles recursive glob patterns with **/ wildcards
+// ─── make_dir and remove_dir tools ──┬───────┴───────────────┬────────────
+
+func (t *ToolExecutor) makeDir(args map[string]any) string {
+	path := getStringArg(args, "path", "")
+	if path == "" {
+		return "Error: path is required"
+	}
+
+	full, err := t.safePath(path)
+	if err != nil {
+		return fmt.Sprintf("Error: %v", err)
+	}
+
+	if err := os.MkdirAll(full, 0o755); err != nil {
+		return fmt.Sprintf("Error creating directory %s: %v", path, err)
+	}
+
+	// Create .gitignore with * to prevent indexing
+	gitignorePath := filepath.Join(full, ".gitignore")
+	if err := os.WriteFile(gitignorePath, []byte("*\n"), 0o644); err != nil {
+		// Non-critical error, log but don't fail
+		return fmt.Sprintf("Created directory %s (note: could not create .gitignore)", path)
+	}
+
+	return fmt.Sprintf("Created directory: %s", path)
+}
+
+func (t *ToolExecutor) removeDir(args map[string]any) string {
+	path := getStringArg(args, "path", "")
+	if path == "" {
+		return "Error: path is required"
+	}
+
+	full, err := t.safePath(path)
+	if err != nil {
+		return fmt.Sprintf("Error: %v", err)
+	}
+
+	// Check if path exists and is a directory
+	info, err := os.Stat(full)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Sprintf("Error: %s does not exist", path)
+		}
+		return fmt.Sprintf("Error: %v", err)
+	}
+
+	if !info.IsDir() {
+		return fmt.Sprintf("Error: %s is not a directory", path)
+	}
+
+	if err := os.RemoveAll(full); err != nil {
+		return fmt.Sprintf("Error removing directory %s: %v", path, err)
+	}
+
+	return fmt.Sprintf("Removed directory: %s", path)
+}
+
+// ─── globRecursive handles recursive glob patterns with **/ wildcards ──────┬────────────
+
 func (t *ToolExecutor) globRecursive(pattern string) ([]string, error) {
 	var matches []string
 

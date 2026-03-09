@@ -247,6 +247,127 @@ func TestToolExecutorWriteFile(t *testing.T) {
 	}
 }
 
+// TestToolExecutorMakeDir tests the make_dir tool
+func TestToolExecutorMakeDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	executor := &ToolExecutor{baseDir: tmpDir}
+
+	// Test creating a single directory
+	result := executor.makeDir(map[string]any{
+		"path": "newdir",
+	})
+
+	if !strings.Contains(result, "Created directory") {
+		t.Errorf("Expected success message, got: %s", result)
+	}
+
+	// Verify directory was created
+	info, err := os.Stat(filepath.Join(tmpDir, "newdir"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.IsDir() {
+		t.Errorf("Expected directory, got file")
+	}
+
+	// Test creating nested directories with parentDirs=true (default)
+	result = executor.makeDir(map[string]any{
+		"path": "parent/child/grandchild",
+	})
+
+	if !strings.Contains(result, "Created directory") {
+		t.Errorf("Expected success message for nested dirs, got: %s", result)
+	}
+
+	// Verify all directories were created
+	info, err = os.Stat(filepath.Join(tmpDir, "parent", "child", "grandchild"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.IsDir() {
+		t.Errorf("Expected directory, got file")
+	}
+
+	// Test creating directory with .gitignore
+	result = executor.makeDir(map[string]any{
+		"path": "withignore",
+	})
+
+	// Verify .gitignore was created in the new directory
+	gitignorePath := filepath.Join(tmpDir, "withignore", ".gitignore")
+	if _, err := os.Stat(gitignorePath); err != nil {
+		t.Errorf("Expected .gitignore file to be created, got: %v", err)
+	}
+
+	// Test missing path argument
+	result = executor.makeDir(map[string]any{})
+	if !strings.Contains(result, "Error") || !strings.Contains(result, "path is required") {
+		t.Errorf("Expected error for missing path, got: %s", result)
+	}
+}
+
+// TestToolExecutorRemoveDir tests the remove_dir tool
+func TestToolExecutorRemoveDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	executor := &ToolExecutor{baseDir: tmpDir}
+
+	// Create a test directory with some content
+	testDir := filepath.Join(tmpDir, "to_remove")
+	if err := os.Mkdir(testDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a file inside the directory
+	testFile := filepath.Join(testDir, "file.txt")
+	if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Test removing directory with force=true (default)
+	result := executor.removeDir(map[string]any{
+		"path": "to_remove",
+	})
+
+	if !strings.Contains(result, "Removed directory") {
+		t.Errorf("Expected success message, got: %s", result)
+	}
+
+	// Verify directory was removed
+	if _, err := os.Stat(testDir); !os.IsNotExist(err) {
+		t.Errorf("Expected directory to be removed")
+	}
+
+	// Test error for non-existent path with force=false
+	result = executor.removeDir(map[string]any{
+		"path":  "nonexistent",
+		"force": false,
+	})
+
+	if !strings.Contains(result, "Error") {
+		t.Errorf("Expected error for non-existent dir without force, got: %s", result)
+	}
+
+	// Test error for file path (not directory)
+	testFile2 := filepath.Join(tmpDir, "notadirectory.txt")
+	if err := os.WriteFile(testFile2, []byte("test"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result = executor.removeDir(map[string]any{
+		"path": "notadirectory.txt",
+	})
+
+	if !strings.Contains(result, "Error") || !strings.Contains(result, "is not a directory") {
+		t.Errorf("Expected error for non-directory path, got: %s", result)
+	}
+
+	// Test missing path argument
+	result = executor.removeDir(map[string]any{})
+	if !strings.Contains(result, "Error") || !strings.Contains(result, "path is required") {
+		t.Errorf("Expected error for missing path, got: %s", result)
+	}
+}
+
 // TestToolExecutorEditFile tests the editFile tool
 func TestToolExecutorEditFile(t *testing.T) {
 	tmpDir := t.TempDir()
