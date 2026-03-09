@@ -1208,8 +1208,11 @@ func (t *ToolExecutor) removeDir(args map[string]any) string {
 func (t *ToolExecutor) copyFile(args map[string]any) string {
 	source := getStringArg(args, "source", "")
 	dest := getStringArg(args, "dest", "")
-	if source == "" || dest == "" {
-		return "Error: source and dest are required"
+	if source == "" {
+		return "Error: 'source' parameter is required"
+	}
+	if dest == "" {
+		return "Error: 'dest' parameter is required"
 	}
 
 	fullSource, err := t.safePath(source)
@@ -1232,7 +1235,7 @@ func (t *ToolExecutor) copyFile(args map[string]any) string {
 	}
 
 	if info.IsDir() {
-		return fmt.Sprintf("Error: source %s is a directory, not a file", source)
+		return fmt.Sprintf("Error: cannot move directories, source %s is a directory", source)
 	}
 
 	// Create destination directory if it doesn't exist
@@ -1258,8 +1261,11 @@ func (t *ToolExecutor) copyFile(args map[string]any) string {
 func (t *ToolExecutor) moveFile(args map[string]any) string {
 	source := getStringArg(args, "source", "")
 	dest := getStringArg(args, "dest", "")
-	if source == "" || dest == "" {
-		return "Error: source and dest are required"
+	if source == "" {
+		return "Error: 'source' parameter is required"
+	}
+	if dest == "" {
+		return "Error: 'dest' parameter is required"
 	}
 
 	fullSource, err := t.safePath(source)
@@ -1282,7 +1288,7 @@ func (t *ToolExecutor) moveFile(args map[string]any) string {
 	}
 
 	if info.IsDir() {
-		return fmt.Sprintf("Error: source %s is a directory, not a file", source)
+		return "Error: cannot move directories"
 	}
 
 	// Create destination directory if it doesn't exist
@@ -1296,7 +1302,7 @@ func (t *ToolExecutor) moveFile(args map[string]any) string {
 		return fmt.Sprintf("Error moving file: %v", err)
 	}
 
-	return fmt.Sprintf("Moved %s -> %s", source, dest)
+	return fmt.Sprintf("File moved successfully from %s to %s", source, dest)
 }
 
 // ─── globRecursive handles recursive glob patterns with **/ wildcards ──────┬────────────
