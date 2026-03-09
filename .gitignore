@@ -6,3 +6,5 @@ test_output/
 *.patch
 yolo_test
 *.bak
+yolo-test
+*.coverprofile
