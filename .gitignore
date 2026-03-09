@@ -4,3 +4,5 @@ yolo
 coverage.out
 test_output/
 *.patch
+yolo_test
+*.bak
