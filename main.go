@@ -1487,17 +1487,22 @@ func (t *ToolExecutor) summarizeSubagents(args map[string]any) string {
 }
 
 func (t *ToolExecutor) spawnSubagent(args map[string]any) string {
-	// The tool definition uses "task" as the parameter name
-	task := getStringArg(args, "task", "")
-	if task == "" {
-		return "Error: 'task' parameter is required"
+	// The tool definition uses "prompt" as the parameter name
+	prompt := getStringArg(args, "prompt", "")
+	if prompt == "" {
+		return "Error: 'prompt' parameter is required"
 	}
 
-	model := getStringArg(args, "model", "")
+	name := getStringArg(args, "name", "")
 
 	// Actually spawn the subagent using the agent if available
 	if t.agent != nil {
-		return t.agent.spawnSubagent(task, model)
+		// Build a task description from prompt, optionally with name/description
+		task := prompt
+		if name != "" {
+			task = fmt.Sprintf("[%s] %s", name, prompt)
+		}
+		return t.agent.spawnSubagent(task, "")
 	}
 
 	return "Error: no agent context"
