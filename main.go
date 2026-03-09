@@ -2215,7 +2215,7 @@ func (a *YoloAgent) parseTextToolCalls(text string) []ParsedToolCall {
 
 	// Format 5: [tool activity] blocks with tool calls on following lines
 	if len(calls) == 0 {
-		reFormat5 := regexp.MustCompile(`\[tool activity\]\s*\n([^\[]+)`)
+		reFormat5 := regexp.MustCompile(`\[tool activity\]\s*\n((?:\[[^\]]*\]\s*(?:=>[^[\n]*)?\s*\n?)+)`)
 		for _, match := range reFormat5.FindAllStringSubmatch(text, -1) {
 			if len(match) >= 2 {
 				activityBlock := strings.TrimSpace(match[1])
@@ -2225,8 +2225,8 @@ func (a *YoloAgent) parseTextToolCalls(text string) []ParsedToolCall {
 					if line == "" {
 						continue
 					}
-					// Try [tool] format
-					reBracketTool := regexp.MustCompile(`^\[([^\]]+)\]\s*(?:\([^)]*\))?\s*(?:=>.*)?$`)
+					// Try [tool] or [tool()] format
+					reBracketTool := regexp.MustCompile(`^\[([^\]]+)\]\s*(?:=>.*)?$`)
 					if match5 := reBracketTool.FindStringSubmatch(line); len(match5) >= 2 {
 						toolName := strings.TrimSpace(match5[1])
 						// Strip parentheses and arguments if present: spawn_subagent() -> spawn_subagent
