@@ -207,12 +207,6 @@ func getIntArg(args map[string]any, key string, fallback int) int {
 }
 
 
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + "..."
-}
 
 func isBinaryData(data []byte) bool {
 	// Check the first 8KB for null bytes or high ratio of non-text bytes
@@ -802,7 +796,7 @@ func (t *ToolExecutor) listSubagents(args map[string]any) string {
 		}
 
 		status := getStringArg(result, "status", "")
-		task := truncate(getStringArg(result, "task", ""), 40)
+		task := truncateString(getStringArg(result, "task", ""), 40)
 		info, _ := os.Stat(file)
 		modTime := info.ModTime().Format("15:04:05")
 
@@ -873,7 +867,7 @@ func (t *ToolExecutor) summarizeSubagents(args map[string]any) string {
 			errors++
 		}
 
-		summaries = append(summaries, fmt.Sprintf("  #%d [%s]: %s", id, status, truncate(task, 50)))
+		summaries = append(summaries, fmt.Sprintf("  #%d [%s]: %s", id, status, truncateString(task, 50)))
 	}
 
 	output := fmt.Sprintf("Subagent Summary (%d total):\n", len(files))
