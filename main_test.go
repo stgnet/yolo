@@ -1,4 +1,199 @@
-package main
+		})
+	}
+}
+
+// TestToolExecutorMoveFile tests the moveFile tool
+func TestToolExecutorMoveFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	executor := &ToolExecutor{baseDir: tmpDir}
+
+	// Create a source file
+	sourcePath := filepath.Join(tmpDir, "source.txt")
+	if err := os.WriteFile(sourcePath, []byte("test content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name        string
+		params      map[string]any
+		wantErr     bool
+		errContains string
+		validate    func(t *testing.T, tmpDir string, result string)
+	}{
+		{
+			name: "simple rename in same directory",
+			params: map[string]any{
+				"source": "source.txt",
+				"dest":   "renamed.txt",
+			},
+			wantErr: false,
+			validate: func(t *testing.T, tmpDir string, result string) {
+				if !strings.Contains(result, "moved successfully") {
+					t.Errorf("Expected success message, got: %s", result)
+				}
+				// Verify old file doesn't exist
+				oldPath := filepath.Join(tmpDir, "source.txt")
+				if _, err := os.Stat(oldPath); err == nil {
+					t.Error("Source file should not exist after move")
+				}
+				// Verify new file exists with content
+				newPath := filepath.Join(tmpDir, "renamed.txt")
+				content, err := os.ReadFile(newPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if string(content) != "test content" {
+					t.Errorf("Content mismatch: got %q", string(content))
+				}
+			},
+		},
+		{
+			name: "move to nested directory",
+			params: map[string]any{
+				"source": "renamed.txt",
+				"dest":   "subdir/nested.txt",
+			},
+			wantErr: false,
+			validate: func(t *testing.T, tmpDir string, result string) {
+				if !strings.Contains(result, "moved successfully") {
+					t.Errorf("Expected success message, got: %s", result)
+				}
+				// Verify file exists in nested directory
+				newPath := filepath.Join(tmpDir, "subdir", "nested.txt")
+				content, err := os.ReadFile(newPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if string(content) != "test content" {
+					t.Errorf("Content mismatch: got %q", string(content))
+				}
+			},
+		},
+		{
+			name: "move to new nested directory (auto-create)",
+			params: map[string]any{
+				"source": "nested.txt",
+				"dest":   "newdir/deep/nested.txt",
+			},
+			wantErr: false,
+			validate: func(t *testing.T, tmpDir string, result string) {
+				if !strings.Contains(result, "moved successfully") {
+					t.Errorf("Expected success message, got: %s", result)
+				}
+				// Verify file exists in auto-created directory
+				newPath := filepath.Join(tmpDir, "newdir", "deep", "nested.txt")
+				if _, err := os.Stat(newPath); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name:        "source does not exist",
+			params:      map[string]any{"source": "nonexistent.txt", "dest": "dest.txt"},
+			wantErr:     true,
+			errContains: "does not exist",
+		},
+		{
+			name: "try to move directory instead of file",
+			params: map[string]any{
+				"source": "subdir/",
+				"dest":   "newdir/",
+			},
+			wantErr:     true,
+			errContains: "cannot move directories",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Recreate source file for each test if needed
+			if tt.name == "simple rename in same directory" || 
+			   tt.name == "move to nested directory" || 
+			   tt.name == "move to new nested directory (auto-create)" {
+				sourcePath := filepath.Join(tmpDir, "source.txt")
+				if err := os.WriteFile(sourcePath, []byte("test content"), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			result := executor.moveFile(tt.params)
+
+			if tt.wantErr {
+				if !strings.Contains(result, "Error:") {
+					t.Errorf("Expected error, got: %s", result)
+				}
+				if tt.errContains != "" && !strings.Contains(result, tt.errContains) {
+					t.Errorf("Expected error to contain %q, got: %s", tt.errContains, result)
+				}
+			} else {
+				if strings.Contains(result, "Error:") {
+					t.Errorf("Unexpected error: %s", result)
+				}
+				if tt.validate != nil {
+					tt.validate(t, tmpDir, result)
+				}
+			}
+		})
+	}
+}
+
+// TestToolExecutorMoveFileValidation tests parameter validation in moveFile
+func TestToolExecutorMoveFileValidation(t *testing.T) {
+	tmpDir := t.TempDir()
+	executor := &ToolExecutor{baseDir: tmpDir}
+
+	tests := []struct {
+		name    string
+		params  map[string]any
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "missing source",
+			params:  map[string]any{"dest": "destination.txt"},
+			wantErr: true,
+			errMsg:  "'source' parameter is required",
+		},
+		{
+			name:    "missing dest",
+			params:  map[string]any{"source": "source.txt"},
+			wantErr: true,
+			errMsg:  "'dest' parameter is required",
+		},
+		{
+			name: "empty source",
+			params: map[string]any{
+				"source": "",
+				"dest":   "destination.txt",
+			},
+			wantErr: true,
+			errMsg:  "'source' parameter is required",
+		},
+		{
+			name: "empty dest",
+			params: map[string]any{
+				"source": "source.txt",
+				"dest":   "",
+			},
+			wantErr: true,
+			errMsg:  "'dest' parameter is required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := executor.moveFile(tt.params)
+
+			if tt.wantErr && !strings.Contains(result, "Error:") {
+				t.Errorf("Expected error in result, got: %s", result)
+			}
+
+			if tt.wantErr && !strings.Contains(result, tt.errMsg) {
+				t.Errorf("Expected error message to contain %q, got: %s", tt.errMsg, result)
+			}
+		})
+	}
+}package main
 
 import (
 	"os"
