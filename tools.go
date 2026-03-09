@@ -206,29 +206,6 @@ func getIntArg(args map[string]any, key string, fallback int) int {
 	return fallback
 }
 
-func getStringValue(m map[string]any, key string) string {
-	if v, ok := m[key]; ok {
-		switch val := v.(type) {
-		case string:
-			return val
-		default:
-			return fmt.Sprintf("%v", val)
-		}
-	}
-	return ""
-}
-
-func getIntValue(m map[string]any, key string, fallback int) int {
-	if v, ok := m[key]; ok {
-		switch val := v.(type) {
-		case float64:
-			return int(val)
-		case int:
-			return val
-		}
-	}
-	return fallback
-}
 
 func truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {
@@ -824,8 +801,8 @@ func (t *ToolExecutor) listSubagents(args map[string]any) string {
 			continue
 		}
 
-		status := getStringValue(result, "status")
-		task := truncate(getStringValue(result, "task"), 40)
+		status := getStringArg(result, "status", "")
+		task := truncate(getStringArg(result, "task", ""), 40)
 		info, _ := os.Stat(file)
 		modTime := info.ModTime().Format("15:04:05")
 
@@ -853,10 +830,10 @@ func (t *ToolExecutor) readSubagentResult(args map[string]any) string {
 	}
 
 	output := fmt.Sprintf("Sub-agent #%d Result:\n", agentID)
-	output += fmt.Sprintf("  Task: %s\n", getStringValue(result, "task"))
-	output += fmt.Sprintf("  Model: %s\n", getStringValue(result, "model"))
-	output += fmt.Sprintf("  Status: %s\n", getStringValue(result, "status"))
-	output += fmt.Sprintf("  Result: %s\n", getStringValue(result, "result"))
+	output += fmt.Sprintf("  Task: %s\n", getStringArg(result, "task", ""))
+	output += fmt.Sprintf("  Model: %s\n", getStringArg(result, "model", ""))
+	output += fmt.Sprintf("  Status: %s\n", getStringArg(result, "status", ""))
+	output += fmt.Sprintf("  Result: %s\n", getStringArg(result, "result", ""))
 
 	return output
 }
@@ -886,9 +863,9 @@ func (t *ToolExecutor) summarizeSubagents(args map[string]any) string {
 			continue
 		}
 
-		id := getIntValue(result, "id", 0)
-		status := getStringValue(result, "status")
-		task := getStringValue(result, "task")
+		id := getIntArg(result, "id", 0)
+		status := getStringArg(result, "status", "")
+		task := getStringArg(result, "task", "")
 
 		if status == "complete" {
 			completed++
