@@ -98,7 +98,6 @@ var validTools = []string{
 	"search_files", "run_command", "spawn_subagent",
 	"list_subagents", "read_subagent_result", "summarize_subagents",
 	"list_models", "switch_model", "think", "restart",
-	"send_email",
 	"make_dir", "remove_dir", "copy_file", "move_file",
 }
 
@@ -162,8 +161,6 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 		return "Thought recorded."
 	case "restart":
 		return t.restart(args)
-	case "send_email":
-		return t.sendEmail(args)
 	case "make_dir":
 		return t.makeDir(args)
 	case "remove_dir":
@@ -799,21 +796,6 @@ func (t *ToolExecutor) runCommand(args map[string]any) string {
 	return result
 }
 
-// runCommandWithOutput runs a command with arguments and returns the output and error
-func runCommandWithOutput(command string, args ...string) ([]byte, error) {
-	cmd := exec.Command(command, args...)
-	return cmd.CombinedOutput()
-}
-
-func (t *ToolExecutor) runSendEmailScript(subject, body, recipientsStr string) ([]byte, error) {
-	// Resolve the path to send_email.sh relative to executable location
-	exePath, _ := os.Executable()
-	scriptPath := filepath.Join(filepath.Dir(exePath), "send_email.sh")
-
-	cmd := exec.Command(scriptPath, subject, body, recipientsStr)
-	return cmd.CombinedOutput()
-}
-
 func (t *ToolExecutor) listSubagents(args map[string]any) string {
 	files, err := filepath.Glob(filepath.Join(SubagentDir, "agent_*.json"))
 	if err != nil {
@@ -1019,28 +1001,3 @@ func (t *ToolExecutor) restart(args map[string]any) string {
 	return "Process replaced"
 }
 
-func (t *ToolExecutor) sendEmail(args map[string]any) string {
-	subject := getStringArg(args, "subject", "")
-	body := getStringArg(args, "body", "")
-	recipientsStr := getStringArg(args, "recipients", "")
-
-	if subject == "" || body == "" || recipientsStr == "" {
-		return "Error: all of subject, body, and recipients must be provided"
-	}
-
-	recipients := strings.Split(recipientsStr, ",")
-	for i := range recipients {
-		recipients[i] = strings.TrimSpace(recipients[i])
-	}
-
-	if len(recipients) == 0 {
-		return "Error: at least one recipient must be provided"
-	}
-
-	output, err := t.runSendEmailScript(subject, body, recipientsStr)
-	if err != nil {
-		return fmt.Sprintf("Error: %v\n%s", err, string(output))
-	}
-
-	return "Email sent successfully"
-}
