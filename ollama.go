@@ -78,8 +78,7 @@ type OllamaTagsResponse struct {
 // Returns 0 if the info can't be retrieved.
 func (c *OllamaClient) GetModelContextLength(model string) int {
 	payload, _ := json.Marshal(map[string]string{"name": model})
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Post(c.baseURL+"/api/show", "application/json", strings.NewReader(string(payload)))
+	resp, err := c.client.Post(c.baseURL+"/api/show", "application/json", strings.NewReader(string(payload)))
 	if err != nil {
 		return 0
 	}
@@ -106,8 +105,7 @@ func (c *OllamaClient) GetModelContextLength(model string) int {
 }
 
 func (c *OllamaClient) ListModels() []string {
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get(c.baseURL + "/api/tags")
+	resp, err := c.client.Get(c.baseURL + "/api/tags")
 	if err != nil {
 		return nil
 	}
