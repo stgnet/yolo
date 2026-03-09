@@ -70,9 +70,10 @@ const (
 // rawWrite writes text to stdout, converting lone \n to \r\n for raw terminal mode.
 // In raw mode, OPOST is disabled so \n only moves the cursor down without returning
 // to column 1. This function ensures proper carriage return + line feed behavior.
+// Lone \r (carriage return) is preserved as-is so callers can overwrite the current
+// line (e.g. spinner animation) without advancing to the next row.
 func rawWrite(s string) {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
-	s = strings.ReplaceAll(s, "\r", "\n")
 	s = strings.ReplaceAll(s, "\n", "\r\n")
 	fmt.Print(s)
 }
@@ -710,6 +711,17 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 		thinking := msg.Thinking
 		content := msg.Content
 		tcList := msg.ToolCalls
+
+		// Normalize line endings from API: convert \r\n and lone \r to \n
+		// so rawWrite (which only converts \n→\r\n) handles them correctly.
+		if strings.ContainsRune(thinking, '\r') {
+			thinking = strings.ReplaceAll(thinking, "\r\n", "\n")
+			thinking = strings.ReplaceAll(thinking, "\r", "\n")
+		}
+		if strings.ContainsRune(content, '\r') {
+			content = strings.ReplaceAll(content, "\r\n", "\n")
+			content = strings.ReplaceAll(content, "\r", "\n")
+		}
 
 		// On first real output, stop the spinner
 		if !gotFirstOutput && (thinking != "" || content != "" || len(tcList) > 0) {
