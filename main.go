@@ -594,6 +594,16 @@ var ollamaTools = []ToolDef{
 			"thought": {Type: "string", Description: "Your reasoning"},
 		}, []string{"thought"}),
 	toolDef("restart", "Rebuild and restart the program", map[string]ToolParam{}, nil),
+	toolDef("copy_file", "Copy a file from source to destination. Creates destination directory if needed.",
+		map[string]ToolParam{
+			"source": {Type: "string", Description: "Relative path to source file"},
+			"dest":   {Type: "string", Description: "Relative path for destination"},
+		}, []string{"source", "dest"}),
+	toolDef("move_file", "Move a file from source to destination. Creates destination directory if needed.",
+		map[string]ToolParam{
+			"source": {Type: "string", Description: "Relative path to source file"},
+			"dest":   {Type: "string", Description: "Relative path for destination"},
+		}, []string{"source", "dest"}),
 }
 
 // ─── Ollama Client ────────────────────────────────────────────────────
@@ -2493,7 +2503,7 @@ func (a *YoloAgent) parseTextToolCalls(text string) []ParsedToolCall {
 
 	// Format 5: [tool activity] blocks with tool calls on following lines
 	if len(calls) == 0 {
-		reFormat5 := regexp.MustCompile(`(?s)\[tool activity\]\s*\n((?:\[[^\]]*\]\s*(?:=>[^[\n]*)?\s*\n?)+)`)
+		reFormat5 := regexp.MustCompile(`(?s)\[tool activity\]\s*\n(.*)`)
 		for _, match := range reFormat5.FindAllStringSubmatch(text, -1) {
 			if len(match) >= 2 {
 				activityBlock := strings.TrimSpace(match[1])
