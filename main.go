@@ -40,9 +40,10 @@ const (
 )
 
 var (
-	HistoryFile = filepath.Join(YoloDir, "history.json")
-	OllamaURL   = getEnvDefault("OLLAMA_URL", "http://localhost:11434")
-	SubagentDir = filepath.Join(YoloDir, "subagents")
+	HistoryFile  = filepath.Join(YoloDir, "history.json")
+	OllamaURL    = getEnvDefault("OLLAMA_URL", "http://localhost:11434")
+	SubagentDir  = filepath.Join(YoloDir, "subagents")
+	fileNameRegex = regexp.MustCompile(`agent_(\d+)\.json`)
 )
 
 func getEnvDefault(key, fallback string) string {
@@ -1459,8 +1460,28 @@ func (t *ToolExecutor) listSubagents(args map[string]any) string {
 
 	var results []string
 	for _, file := range files {
+		// Extract agent ID from filename (e.g., "agent_1.json" -> "1")
+		filename := filepath.Base(file)
+		idMatch := fileNameRegex.FindStringSubmatch(filename)
+		agentID := idMatch[1]
+
+		// Read the file to get status and task info
+		data, err := os.ReadFile(file)
+		if err != nil {
+			continue
+		}
+
+		var result map[string]any
+		if err := json.Unmarshal(data, &result); err != nil {
+			continue
+		}
+
+		status := getStringValue(result, "status")
+		task := truncate(getStringValue(result, "task"), 40)
 		info, _ := os.Stat(file)
-		results = append(results, fmt.Sprintf("%s (modified: %s)", filepath.Base(file), info.ModTime().Format(time.RFC3339)))
+		modTime := info.ModTime().Format("15:04:05")
+
+		results = append(results, fmt.Sprintf("#%s [%s] %s (updated: %s)", agentID, status, task, modTime))
 	}
 
 	return "Active subagents:\n" + strings.Join(results, "\n")
