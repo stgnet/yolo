@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -52,14 +53,16 @@ func toolDef(name, desc string, props map[string]ToolParam, required []string) T
 // ─── Ollama Client ────────────────────────────────────────────────────
 
 type OllamaClient struct {
-	baseURL string
-	client  *http.Client
+	baseURL  string
+	client   *http.Client
+	ctxCache map[string]int // cached context lengths per model
 }
 
 func NewOllamaClient(baseURL string) *OllamaClient {
 	return &OllamaClient{
-		baseURL: strings.TrimRight(baseURL, "/"),
-		client:  &http.Client{Timeout: 300 * time.Second},
+		baseURL:  strings.TrimRight(baseURL, "/"),
+		client:   &http.Client{Timeout: 300 * time.Second},
+		ctxCache: make(map[string]int),
 	}
 }
 
@@ -69,6 +72,37 @@ type OllamaModel struct {
 
 type OllamaTagsResponse struct {
 	Models []OllamaModel `json:"models"`
+}
+
+// GetModelContextLength queries the Ollama API for a model's context length.
+// Returns 0 if the info can't be retrieved.
+func (c *OllamaClient) GetModelContextLength(model string) int {
+	payload, _ := json.Marshal(map[string]string{"name": model})
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Post(c.baseURL+"/api/show", "application/json", strings.NewReader(string(payload)))
+	if err != nil {
+		return 0
+	}
+	defer resp.Body.Close()
+
+	var data struct {
+		ModelInfo map[string]any `json:"model_info"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return 0
+	}
+
+	// Look for context_length in model_info (key varies by architecture,
+	// e.g. "llama.context_length", "qwen2.context_length", etc.)
+	for k, v := range data.ModelInfo {
+		if strings.HasSuffix(k, ".context_length") {
+			switch n := v.(type) {
+			case float64:
+				return int(n)
+			}
+		}
+	}
+	return 0
 }
 
 func (c *OllamaClient) ListModels() []string {
@@ -148,11 +182,23 @@ type ParsedToolCall struct {
 }
 
 func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMessage, tools []ToolDef) (*ChatResult, error) {
+	numCtx := DefaultNumCtx
+	if NumCtxOverride != "" {
+		if n, err := strconv.Atoi(NumCtxOverride); err == nil && n > 0 {
+			numCtx = n
+		}
+	} else if cached, ok := c.ctxCache[model]; ok {
+		numCtx = cached
+	} else if detected := c.GetModelContextLength(model); detected > 0 {
+		c.ctxCache[model] = detected
+		numCtx = detected
+	}
+
 	payload := ChatRequest{
 		Model:    model,
 		Messages: messages,
 		Stream:   true,
-		Options:  map[string]any{"num_ctx": 8192},
+		Options:  map[string]any{"num_ctx": numCtx},
 	}
 	if len(tools) > 0 {
 		payload.Tools = tools
