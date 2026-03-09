@@ -799,7 +799,7 @@ var validTools = []string{
 	"list_subagents", "read_subagent_result", "summarize_subagents",
 	"list_models", "switch_model", "think", "restart",
 	"send_email",
-	"make_dir", "remove_dir", "copy_file",
+	"make_dir", "remove_dir", "copy_file", "move_file",
 }
 
 type ToolExecutor struct {
@@ -870,6 +870,8 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 		return t.removeDir(args)
 	case "copy_file":
 		return t.copyFile(args)
+	case "move_file":
+		return t.moveFile(args)
 	default:
 		return fmt.Sprintf("Error: unknown tool '%s'. Available tools: %s", name, strings.Join(validTools, ", "))
 	}
@@ -1212,6 +1214,50 @@ func (t *ToolExecutor) copyFile(args map[string]any) string {
 	}
 
 	return fmt.Sprintf("Copied %s -> %s", source, dest)
+}
+
+func (t *ToolExecutor) moveFile(args map[string]any) string {
+	source := getStringArg(args, "source", "")
+	dest := getStringArg(args, "dest", "")
+	if source == "" || dest == "" {
+		return "Error: source and dest are required"
+	}
+
+	fullSource, err := t.safePath(source)
+	if err != nil {
+		return fmt.Sprintf("Error: %v", err)
+	}
+
+	fullDest, err := t.safePath(dest)
+	if err != nil {
+		return fmt.Sprintf("Error: %v", err)
+	}
+
+	// Check if source exists and is a file
+	info, err := os.Stat(fullSource)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Sprintf("Error: source file %s does not exist", source)
+		}
+		return fmt.Sprintf("Error: %v", err)
+	}
+
+	if info.IsDir() {
+		return fmt.Sprintf("Error: source %s is a directory, not a file", source)
+	}
+
+	// Create destination directory if it doesn't exist
+	destDir := filepath.Dir(fullDest)
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return fmt.Sprintf("Error creating destination directory: %v", err)
+	}
+
+	// Use os.Rename which handles both rename and move across filesystems
+	if err := os.Rename(fullSource, fullDest); err != nil {
+		return fmt.Sprintf("Error moving file: %v", err)
+	}
+
+	return fmt.Sprintf("Moved %s -> %s", source, dest)
 }
 
 // ─── globRecursive handles recursive glob patterns with **/ wildcards ──────┬────────────
