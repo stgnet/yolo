@@ -61,9 +61,9 @@ func TestSpawnSubagent(t *testing.T) {
 
 	executor := &ToolExecutor{baseDir: tmpDir, agent: agent}
 
-	// Test with minimal required parameters (tool defines "task", not "prompt")
+	// Test with minimal required parameters (tool defines "prompt", not "task")
 	params := map[string]any{
-		"task": "Test subagent task",
+		"prompt": "Test subagent task",
 	}
 
 	result := executor.spawnSubagent(params)
@@ -78,8 +78,8 @@ func TestSpawnSubagent(t *testing.T) {
 
 	// Test with model parameter
 	paramsWithModel := map[string]any{
-		"task":  "Test subagent task with model",
-		"model": "llama3",
+		"prompt": "Test subagent task with model",
+		"model":  "llama3",
 	}
 
 	result2 := executor.spawnSubagent(paramsWithModel)
@@ -105,18 +105,18 @@ func TestSpawnSubagentValidation(t *testing.T) {
 		errMsg  string
 	}{
 		{
-			name:    "missing task",
+			name:    "missing prompt",
 			params:  map[string]any{},
 			wantErr: true,
-			errMsg:  "'task' parameter is required",
+			errMsg:  "'prompt' parameter is required",
 		},
 		{
-			name: "empty string task",
+			name: "empty string prompt",
 			params: map[string]any{
-				"task": "",
+				"prompt": "",
 			},
 			wantErr: true,
-			errMsg:  "'task' parameter is required",
+			errMsg:  "'prompt' parameter is required",
 		},
 	}
 
