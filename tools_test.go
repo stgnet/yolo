@@ -40,9 +40,9 @@ func TestMakeDir(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
 			executor := &ToolExecutor{baseDir: tmpDir}
-		
+
 			result := executor.makeDir(tt.args)
-		
+
 			if tt.expectError {
 				if !isError(result) {
 					t.Errorf("Expected error but got: %s", result)
@@ -52,10 +52,10 @@ func TestMakeDir(t *testing.T) {
 					t.Errorf("Unexpected error: %s", result)
 					return
 				}
-			
+
 				path := getStringArg(tt.args, "path", "")
 				fullPath := filepath.Join(tmpDir, path)
-			
+
 				if _, err := os.Stat(fullPath); os.IsNotExist(err) {
 					t.Errorf("Directory was not created: %s", fullPath)
 				} else {
@@ -64,7 +64,7 @@ func TestMakeDir(t *testing.T) {
 						t.Errorf("Created path is not a directory: %s", fullPath)
 					}
 				}
-			
+
 				// Verify .gitignore was created
 				gitignorePath := filepath.Join(fullPath, ".gitignore")
 				if _, err := os.Stat(gitignorePath); os.IsNotExist(err) {
@@ -75,7 +75,7 @@ func TestMakeDir(t *testing.T) {
 	}
 }
 
-// TestRemoveDir tests the remove_dir tool implementation  
+// TestRemoveDir tests the remove_dir tool implementation
 func TestRemoveDir(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -90,7 +90,7 @@ func TestRemoveDir(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name:        "remove directory with files",
+			name: "remove directory with files",
 			setupAction: func(dir string) {
 				dirPath := filepath.Join(dir, "with_files")
 				os.MkdirAll(dirPath, 0755)
@@ -100,7 +100,7 @@ func TestRemoveDir(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name:        "remove nested directory",
+			name: "remove nested directory",
 			setupAction: func(dir string) {
 				dirPath := filepath.Join(dir, "level1/level2")
 				os.MkdirAll(dirPath, 0755)
@@ -126,14 +126,14 @@ func TestRemoveDir(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
-		
+
 			if tt.setupAction != nil {
 				tt.setupAction(tmpDir)
 			}
-		
+
 			executor := &ToolExecutor{baseDir: tmpDir}
 			result := executor.removeDir(tt.args)
-		
+
 			if tt.expectError {
 				if !isError(result) {
 					t.Errorf("Expected error but got: %s", result)
@@ -143,10 +143,10 @@ func TestRemoveDir(t *testing.T) {
 					t.Errorf("Unexpected error: %s", result)
 					return
 				}
-			
+
 				path := getStringArg(tt.args, "path", "")
 				fullPath := filepath.Join(tmpDir, path)
-			
+
 				if _, err := os.Stat(fullPath); !os.IsNotExist(err) {
 					t.Errorf("Directory was not removed: %s", fullPath)
 				}
@@ -181,7 +181,7 @@ func TestMoveFile(t *testing.T) {
 				if _, err := os.Stat(srcPath); !os.IsNotExist(err) {
 					t.Errorf("Source file still exists: %s", srcPath)
 				}
-				
+
 				// Verify destination exists with content
 				destPath := filepath.Join(tmpDir, "destination.txt")
 				content, err := os.ReadFile(destPath)
@@ -212,7 +212,7 @@ func TestMoveFile(t *testing.T) {
 				if _, err := os.Stat(srcPath); !os.IsNotExist(err) {
 					t.Errorf("Source file still exists: %s", srcPath)
 				}
-				
+
 				// Verify destination exists
 				destPath := filepath.Join(tmpDir, "subdir/moved.txt")
 				if _, err := os.Stat(destPath); os.IsNotExist(err) {
@@ -239,13 +239,13 @@ func TestMoveFile(t *testing.T) {
 			},
 		},
 		{
-			name: "missing source argument",
+			name:        "missing source argument",
 			setupAction: func(dir string) {},
 			args: map[string]any{
 				"dest": "destination.txt",
 			},
 			expectError: true,
-			checkFunc: nil,
+			checkFunc:   nil,
 		},
 		{
 			name: "missing dest argument",
@@ -257,17 +257,17 @@ func TestMoveFile(t *testing.T) {
 				"source": "source.txt",
 			},
 			expectError: true,
-			checkFunc: nil,
+			checkFunc:   nil,
 		},
 		{
-			name: "move non-existent source file",
+			name:        "move non-existent source file",
 			setupAction: func(dir string) {},
 			args: map[string]any{
 				"source": "non_existent.txt",
 				"dest":   "destination.txt",
 			},
 			expectError: true,
-			checkFunc: nil,
+			checkFunc:   nil,
 		},
 		{
 			name: "move directory instead of file should fail",
@@ -279,21 +279,21 @@ func TestMoveFile(t *testing.T) {
 				"dest":   "moved_dir",
 			},
 			expectError: true,
-			checkFunc: nil,
+			checkFunc:   nil,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
-		
+
 			if tt.setupAction != nil {
 				tt.setupAction(tmpDir)
 			}
-		
+
 			executor := &ToolExecutor{baseDir: tmpDir}
 			result := executor.moveFile(tt.args)
-		
+
 			if tt.expectError {
 				if !isError(result) {
 					t.Errorf("Expected error but got: %s", result)
@@ -303,12 +303,12 @@ func TestMoveFile(t *testing.T) {
 					t.Errorf("Unexpected error: %s", result)
 					return
 				}
-				
+
 				// Check that result contains move confirmation
 				if !strings.Contains(strings.ToLower(result), "moved") {
 					t.Errorf("Result should contain 'moved': %s", result)
 				}
-			
+
 				if tt.checkFunc != nil {
 					tt.checkFunc(t, tmpDir, result)
 				}
@@ -321,4 +321,3 @@ func TestMoveFile(t *testing.T) {
 func isError(msg string) bool {
 	return len(msg) >= 6 && msg[:5] == "Error"
 }
-
