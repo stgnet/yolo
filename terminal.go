@@ -14,7 +14,10 @@ import (
 // ─── Terminal Output ──────────────────────────────────────────────────
 
 // globalUI is set once the split UI is active. Before that, output goes to stdout directly.
-var globalUI *TerminalUI
+var (
+	globalUI    *TerminalUI
+	ansiCodeRe  = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+)
 
 // rawWrite writes text to stdout, converting lone \n to \r\n for raw terminal mode.
 // In raw mode, OPOST is disabled so \n only moves the cursor down without returning
@@ -47,8 +50,7 @@ func cprintNoNL(color, text string) {
 // stripAnsiCodes removes ANSI escape sequences from text for cursor tracking purposes.
 // This ensures color codes don't mess up column/row calculations.
 func stripAnsiCodes(s string) string {
-	re := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
-	return re.ReplaceAllString(s, "")
+	return ansiCodeRe.ReplaceAllString(s, "")
 }
 
 // breakWordAtVisibleLength breaks a word containing ANSI codes at the specified visible character count.
