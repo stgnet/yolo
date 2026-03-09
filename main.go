@@ -106,6 +106,45 @@ func stripAnsiCodes(s string) string {
 	return re.ReplaceAllString(s, "")
 }
 
+// breakWordAtVisibleLength breaks a word containing ANSI codes at the specified visible character count.
+// It returns (truncatedPart, remainder) ensuring neither part has broken ANSI escape sequences.
+func breakWordAtVisibleLength(word string, maxVisibleLen int) (string, string) {
+	if len(stripAnsiCodes(word)) <= maxVisibleLen {
+		return word, ""
+	}
+
+	var truncated strings.Builder
+	remaining := word
+	var visibleCount int
+
+	for visibleCount < maxVisibleLen && remaining != "" {
+		// Check if next character starts an ANSI escape sequence
+		if strings.HasPrefix(remaining, "\x1b[") {
+			// Find end of the full ANSI sequence (ends with a letter)
+			endIdx := -1
+			for i := 2; i < len(remaining); i++ {
+				b := remaining[i]
+				if (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') {
+					endIdx = i + 1
+					break
+				}
+			}
+			if endIdx > 0 {
+				truncated.WriteString(remaining[:endIdx])
+				remaining = remaining[endIdx:]
+				continue
+			}
+		}
+
+		// Not an ANSI sequence, take one character
+		truncated.WriteString(remaining[:1])
+		remaining = remaining[1:]
+		visibleCount++
+	}
+
+	return truncated.String(), remaining
+}
+
 // truncateString truncates a string to maxLen runes, adding "..." if truncated.
 func truncateString(s string, maxLen int) string {
 	runes := []rune(s)
@@ -186,10 +225,10 @@ func (ui *TerminalUI) wrapText(text string) string {
 
 			// Break words longer than terminal width (using visible length)
 			for len(stripAnsiCodes(word)) > ui.cols && currentLen == 0 {
-				// For oversized words, we need to be careful not to break
-				// in the middle of an ANSI escape sequence
-				wrappedLines = append(wrappedLines, word[:ui.cols])
-				word = word[ui.cols:]
+				// For oversized words, break at visible character boundary while preserving ANSI codes
+				truncated, remainder := breakWordAtVisibleLength(word, ui.cols)
+				wrappedLines = append(wrappedLines, truncated)
+				word = remainder
 			}
 
 			current.WriteString(word)
