@@ -522,6 +522,14 @@ var ollamaTools = []ToolDef{
 		map[string]ToolParam{
 			"command": {Type: "string", Description: "Shell command to run"},
 		}, []string{"command"}),
+	toolDef("make_dir", "Create a new directory recursively. Automatically creates a .gitignore file with * to prevent git from indexing the directory contents.",
+		map[string]ToolParam{
+			"path": {Type: "string", Description: "Relative path for the new directory"},
+		}, []string{"path"}),
+	toolDef("remove_dir", "Remove a directory and all its contents recursively. Only works on directories, not files.",
+		map[string]ToolParam{
+			"path": {Type: "string", Description: "Relative path to the directory to remove"},
+		}, []string{"path"}),
 	toolDef("spawn_subagent", "Spawn a background sub-agent for a parallel task",
 		map[string]ToolParam{
 			"prompt":      {Type: "string", Description: "Task description/prompt for the sub-agent"},
@@ -1378,6 +1386,15 @@ func runCommandWithOutput(command string, args ...string) ([]byte, error) {
 	return cmd.CombinedOutput()
 }
 
+func (t *ToolExecutor) runSendEmailScript(subject, body, recipientsStr string) ([]byte, error) {
+	// Resolve the path to send_email.sh relative to executable location
+	exePath, _ := os.Executable()
+	scriptPath := filepath.Join(filepath.Dir(exePath), "send_email.sh")
+
+	cmd := exec.Command(scriptPath, subject, body, recipientsStr)
+	return cmd.CombinedOutput()
+}
+
 func (t *ToolExecutor) listSubagents(args map[string]any) string {
 	files, err := filepath.Glob(filepath.Join(SubagentDir, "agent_*.json"))
 	if err != nil {
@@ -1576,7 +1593,7 @@ func (t *ToolExecutor) sendEmail(args map[string]any) string {
 		return "Error: at least one recipient must be provided"
 	}
 
-	output, err := runCommandWithOutput("send_email.sh", subject, body, recipientsStr)
+	output, err := t.runSendEmailScript(subject, body, recipientsStr)
 	if err != nil {
 		return fmt.Sprintf("Error: %v\n%s", err, string(output))
 	}
