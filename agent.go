@@ -340,7 +340,6 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 					"Wrap up what you are doing and provide a brief response so " +
 					"their message can be processed.",
 			})
-			cprint(Gray, "  [user message queued — nudging agent to wrap up]")
 		}
 
 		roundNum++
