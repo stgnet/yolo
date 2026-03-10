@@ -368,6 +368,7 @@ func (ui *TerminalUI) drawInputLocked() {
 
 	// Flatten queued messages into individual display lines (handles multi-line messages).
 	// First line of each message gets "  [queued] " prefix, continuation lines get aligned spaces.
+	// Long lines are wrapped (not truncated) so the full message is visible.
 	var queuedDisplayLines []string
 	for _, msg := range ui.queuedMsgs {
 		msgLines := strings.Split(msg, "\n")
@@ -377,8 +378,14 @@ func (ui *TerminalUI) drawInputLocked() {
 				prefix = "           " // 11 chars, aligned with prefix above
 			}
 			maxLen := ui.cols - len(prefix)
-			if maxLen > 0 && len(line) > maxLen {
-				line = line[:maxLen]
+			if maxLen <= 0 {
+				maxLen = 1
+			}
+			// Wrap long lines instead of truncating
+			for len(line) > maxLen {
+				queuedDisplayLines = append(queuedDisplayLines, prefix+line[:maxLen])
+				line = line[maxLen:]
+				prefix = "           " // continuation lines use aligned spaces
 			}
 			queuedDisplayLines = append(queuedDisplayLines, prefix+line)
 		}

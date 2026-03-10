@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -387,6 +388,17 @@ func TestTerminalUI_MultiLineQueuedMessages(t *testing.T) {
 	// 3 queued lines + 1 input = 4 bottom rows, scrollEnd = 24 - 4 - 1 = 19
 	if ui.scrollEnd != 19 {
 		t.Errorf("2 msgs (one multi-line): scrollEnd=%d, want 19", ui.scrollEnd)
+	}
+
+	// A long message should wrap to multiple display lines, not truncate.
+	// cols=80, prefix "  [queued] " is 11 chars, so maxLen per line = 69.
+	// A 150-char message should produce ceil(150/69) = 3 display lines.
+	ui.peakBottomRows = 0
+	ui.queuedMsgs = []string{strings.Repeat("X", 150)}
+	ui.drawInputLocked()
+	// 3 wrapped lines + 1 input = 4 bottom rows, scrollEnd = 24 - 4 - 1 = 19
+	if ui.scrollEnd != 19 {
+		t.Errorf("150-char wrapped queued msg: scrollEnd=%d, want 19", ui.scrollEnd)
 	}
 }
 
