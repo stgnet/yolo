@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -153,42 +154,86 @@ func TestTrackCursorMovement(t *testing.T) {
 
 	tests := []struct {
 		name    string
+		cols    int
 		text    string
 		wantRow int
 		wantCol int
 	}{
 		{
 			name:    "simple text",
+			cols:    80,
 			text:    "hello",
 			wantRow: 1,
 			wantCol: 6,
 		},
 		{
 			name:    "with newline",
+			cols:    80,
 			text:    "hello\nworld",
 			wantRow: 2,
 			wantCol: 6,
 		},
 		{
 			name:    "with carriage return",
+			cols:    80,
 			text:    "hello\rworld",
 			wantRow: 1,
 			wantCol: 6,
+		},
+		{
+			// This is the key bug case: a line exactly filling the terminal
+			// width followed by \n should advance only ONE row, not two.
+			// rawWrite converts \n to \r\n; the \r cancels the pending wrap
+			// and \n advances one row.
+			name:    "exact width line then newline",
+			cols:    10,
+			text:    "1234567890\nABC",
+			wantRow: 2,
+			wantCol: 4,
+		},
+		{
+			name:    "exact width line then char",
+			cols:    10,
+			text:    "1234567890X",
+			wantRow: 2,
+			wantCol: 2,
+		},
+		{
+			name:    "exact width line at end",
+			cols:    10,
+			text:    "1234567890",
+			wantRow: 2,
+			wantCol: 1,
+		},
+		{
+			name:    "exact width then carriage return",
+			cols:    10,
+			text:    "1234567890\rABC",
+			wantRow: 1,
+			wantCol: 4,
+		},
+		{
+			name:    "two exact width lines",
+			cols:    10,
+			text:    "1234567890\n1234567890\nABC",
+			wantRow: 3,
+			wantCol: 4,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Reset cursor position for test
 			ui.outRow = 1
 			ui.outCol = 1
+			ui.cols = tt.cols
+			ui.scrollEnd = 100 // large enough to not interfere
 
 			stripped := stripAnsiCodes(tt.text)
 			ui.trackCursorMovement(stripped)
 
 			if ui.outRow != tt.wantRow || ui.outCol != tt.wantCol {
-				t.Errorf("trackCursorMovement: got row=%d col=%d, want row=%d col=%d",
-					ui.outRow, ui.outCol, tt.wantRow, tt.wantCol)
+				t.Errorf("trackCursorMovement(%q): got row=%d col=%d, want row=%d col=%d",
+					tt.text, ui.outRow, ui.outCol, tt.wantRow, tt.wantCol)
 			}
 		})
 	}
@@ -343,6 +388,17 @@ func TestTerminalUI_MultiLineQueuedMessages(t *testing.T) {
 	// 3 queued lines + 1 input = 4 bottom rows, scrollEnd = 24 - 4 - 1 = 19
 	if ui.scrollEnd != 19 {
 		t.Errorf("2 msgs (one multi-line): scrollEnd=%d, want 19", ui.scrollEnd)
+	}
+
+	// A long message should wrap to multiple display lines, not truncate.
+	// cols=80, prefix "  [queued] " is 11 chars, so maxLen per line = 69.
+	// A 150-char message should produce ceil(150/69) = 3 display lines.
+	ui.peakBottomRows = 0
+	ui.queuedMsgs = []string{strings.Repeat("X", 150)}
+	ui.drawInputLocked()
+	// 3 wrapped lines + 1 input = 4 bottom rows, scrollEnd = 24 - 4 - 1 = 19
+	if ui.scrollEnd != 19 {
+		t.Errorf("150-char wrapped queued msg: scrollEnd=%d, want 19", ui.scrollEnd)
 	}
 }
 
