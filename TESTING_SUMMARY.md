@@ -2,16 +2,17 @@
 
 ## Overall Metrics
 - **Total Lines of Code**: 8,494 Go lines
-- **Test Coverage**: 55.9%
+- **Test Coverage**: ~57% (updated after email tools tests)
 - **Build Status**: ✅ Success
 - **Formatting**: ✅ Clean (gofmt)
-- **Git Status**: ✅ Committed (ahead by 34 commits)
+- **Git Status**: ✅ Committed
 
 ## Test Files
 | File | Purpose | Status |
 |------|---------|--------|
 | `agent_test.go` | Core agent functionality | ✅ PASS |
 | `agent_control_test.go` | Model management tools | ✅ PASS |
+| `tools_email_test.go` | Email sending tools (send_email, send_report) | ✅ PASS |
 | `gog_test.go` | Google Workspace integration | ✅ PASS |
 | `reddit_test.go` | Reddit API integration | ✅ PASS |
 | `websearch_test.go` | DuckDuckGo + Wikipedia search | ✅ PASS |
@@ -96,7 +97,17 @@ if !found { t.Error("tool not found") }
 
 ## Recent Improvements
 
-### Latest Commit: Reddit Tool Tests
+### Latest Commit: Email Tools Tests (2026-03-10)
+- Added `TestSendEmailToolDefinition` - validates send_email tool schema and parameters
+- Added `TestSendReportToolDefinition` - validates send_report tool schema  
+- Added `TestSendEmailMissingPassword` - tests error handling when EMAIL_PASSWORD not set
+- Added `TestSendReportMissingPassword` - tests error handling for reports
+- Added `TestSendEmailMissingRequiredFields` - validates subject/body requirements
+- Added `TestSendReportMissingBody` - validates body requirement
+- Added `TestSendEmailDefaultRecipient` - verifies scott@stg.net default
+- **All 7 tests passing** ✅
+
+### Previous: Reddit Tool Tests
 - Added `TestRedditToolDefinition` - validates tool schema
 - Added `TestRedditToolInValidTools` - checks registration
 - Added `TestRedditActions` - verifies all 3 actions documented
