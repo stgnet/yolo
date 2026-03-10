@@ -8,6 +8,17 @@ All notable changes to YOLO will be documented in this file.
 - **Multi-line input**: The input area now expands upward to show the full
   message as it's being typed, with word wrapping instead of horizontal
   scrolling. The scroll region, divider, and input area resize dynamically.
+- **Email sending tools** (`tools_email.go`): YOLO can now send automated progress reports:
+  - `send_report`: Send a progress report email to scott@stg.net
+  - `send_email`: Send custom emails with subject, body, and recipient
+  - Both use SMTP from yolo@b-haven.org (requires EMAIL_PASSWORD env var)
+- **Email documentation** (`EMAIL_SETUP.md`): Setup instructions for configuring email sending
+
+### Fixed
+- **LimitedConcurrency deadlock**: Race condition when multiple jobs executed
+  concurrently without proper synchronization. Changed `wg.Add()` to run before
+  goroutine creation in worker loop, and moved semaphore acquisition outside the
+  job execution to prevent deadlocks with concurrent job completion.
 - **Visible queued messages**: Messages typed while the agent is busy are
   displayed as `[queued] text` between the divider and input prompt. They
   remain visible until processed, making it clear what's pending.
