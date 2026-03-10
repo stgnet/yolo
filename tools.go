@@ -765,6 +765,10 @@ func (t *ToolExecutor) runCommand(args map[string]any) string {
 	if result == "" {
 		return "(no output)"
 	}
+	// Strip standalone \r to prevent line overwrites in terminal output.
+	// \r\n → \n (preserving real newlines), then remove remaining \r.
+	result = strings.ReplaceAll(result, "\r\n", "\n")
+	result = strings.ReplaceAll(result, "\r", "")
 	return result
 }
 
