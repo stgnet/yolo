@@ -818,6 +818,12 @@ func (a *YoloAgent) drainQueuedInput() {
 			}
 			stripped := strings.TrimSpace(line.Text)
 			lower := strings.ToLower(stripped)
+
+			// Remove from queued display (no-op if message wasn't queued)
+			if stripped != "" && globalUI != nil {
+				globalUI.RemoveQueuedMessage()
+			}
+
 			if lower == "exit" || lower == "quit" {
 				a.running = false
 				return

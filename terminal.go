@@ -122,14 +122,16 @@ func filterToolActivityMarkers(text string) string {
 // TerminalUI manages a split terminal: a scrolling output region on top and
 // a fixed input line at the bottom, separated by a divider.
 type TerminalUI struct {
-	mu       sync.Mutex
-	fd       int
-	rows     int
-	cols     int
-	inputBuf []byte // mirrors InputManager's buffer for redraw
-	prompt   string
-	outRow   int // tracked row of cursor in output region
-	outCol   int // tracked col of cursor in output region
+	mu         sync.Mutex
+	fd         int
+	rows       int
+	cols       int
+	inputBuf   []byte // mirrors InputManager's buffer for redraw
+	prompt     string
+	outRow     int // tracked row of cursor in output region
+	outCol     int // tracked col of cursor in output region
+	queuedMsgs []string // messages queued while agent is busy
+	scrollEnd  int      // last row of the scroll region (dynamic)
 }
 
 // wrapText wraps text to the given width, inserting newlines at word boundaries.
@@ -201,11 +203,12 @@ func NewTerminalUI() *TerminalUI {
 		cols = 80
 	}
 	return &TerminalUI{
-		fd:     fd,
-		rows:   rows,
-		cols:   cols,
-		outRow: 1,
-		outCol: 1,
+		fd:        fd,
+		rows:      rows,
+		cols:      cols,
+		outRow:    1,
+		outCol:    1,
+		scrollEnd: rows - 2,
 	}
 }
 
@@ -220,9 +223,10 @@ func (ui *TerminalUI) Setup() {
 		ui.cols = cols
 	}
 
+	ui.scrollEnd = ui.rows - 2
 	// Clear screen, set scroll region, draw divider
 	fmt.Print("\033[2J")
-	fmt.Printf("\033[1;%dr", ui.rows-2)
+	fmt.Printf("\033[1;%dr", ui.scrollEnd)
 	ui.drawDividerLocked()
 	ui.outRow = 1
 	ui.outCol = 1
@@ -230,8 +234,9 @@ func (ui *TerminalUI) Setup() {
 }
 
 func (ui *TerminalUI) drawDividerLocked() {
+	dividerRow := ui.scrollEnd + 1
 	divider := strings.Repeat("─", ui.cols)
-	fmt.Printf("\033[%d;1H%s%s%s", ui.rows-1, Gray, divider, Reset)
+	fmt.Printf("\033[%d;1H%s%s%s", dividerRow, Gray, divider, Reset)
 }
 
 // Teardown restores the full scroll region.
@@ -248,8 +253,8 @@ func (ui *TerminalUI) trackCursorMovement(stripped string) {
 		case '\n':
 			ui.outRow++
 			ui.outCol = 1
-			if ui.outRow > ui.rows-2 {
-				ui.outRow = ui.rows - 2 // scroll region keeps cursor at bottom
+			if ui.outRow > ui.scrollEnd {
+				ui.outRow = ui.scrollEnd // scroll region keeps cursor at bottom
 			}
 		case '\r':
 			ui.outCol = 1
@@ -258,8 +263,8 @@ func (ui *TerminalUI) trackCursorMovement(stripped string) {
 			if ui.outCol > ui.cols {
 				ui.outCol = 1
 				ui.outRow++
-				if ui.outRow > ui.rows-2 {
-					ui.outRow = ui.rows - 2
+				if ui.outRow > ui.scrollEnd {
+					ui.outRow = ui.scrollEnd
 				}
 			}
 		}
@@ -313,34 +318,95 @@ func (ui *TerminalUI) OutputFinishLine() {
 }
 
 func (ui *TerminalUI) drawInputLocked() {
-	// Move to input row and clear it
-	fmt.Printf("\033[%d;1H\033[2K", ui.rows) // Clear entire line
-
 	promptStr := ui.prompt
 	inputStr := string(ui.inputBuf)
-
-	// Calculate available space after prompt
 	promptWidth := len(stripAnsiCodes(promptStr))
-	availableWidth := ui.cols - promptWidth - 1 // -1 for cursor space
 
-	if availableWidth <= 0 {
-		availableWidth = ui.cols - 2
+	// Calculate how many rows the wrapped input occupies.
+	// When the cursor is at the end and totalChars is a multiple of cols,
+	// it wraps to the next row, so we need floor(totalChars/cols)+1.
+	totalChars := promptWidth + len(inputStr)
+	inputRowCount := 1
+	if totalChars > 0 {
+		inputRowCount = totalChars/ui.cols + 1
 	}
 
-	// If input fits on one line, show it all (current behavior)
-	var displayInput string
-	cursorCol := promptWidth + len(inputStr) + 1
-	if len(inputStr) <= availableWidth {
-		displayInput = inputStr
-	} else {
-		// Show rightmost portion that fits (horizontal scrolling)
-		startPos := len(inputStr) - availableWidth
-		displayInput = inputStr[startPos:]
-		cursorCol = promptWidth + len(displayInput) + 1
+	queuedCount := len(ui.queuedMsgs)
+	bottomRows := queuedCount + inputRowCount
+
+	// Cap: leave at least 3 rows for output + 1 for divider
+	maxBottom := ui.rows - 4
+	if maxBottom < 1 {
+		maxBottom = 1
+	}
+	if bottomRows > maxBottom {
+		// Prioritize queued messages; cap input rows
+		inputRowCount = maxBottom - queuedCount
+		if inputRowCount < 1 {
+			inputRowCount = 1
+			queuedCount = maxBottom - 1
+			if queuedCount < 0 {
+				queuedCount = 0
+			}
+		}
+		bottomRows = queuedCount + inputRowCount
 	}
 
-	// Draw prompt and input, then position cursor
-	fmt.Printf("%s%s\033[%d;%dH", promptStr, displayInput, ui.rows, cursorCol)
+	newScrollEnd := ui.rows - bottomRows - 1 // -1 for divider
+	if newScrollEnd < 1 {
+		newScrollEnd = 1
+	}
+
+	// Update scroll region
+	ui.scrollEnd = newScrollEnd
+	fmt.Printf("\033[1;%dr", ui.scrollEnd)
+	if ui.outRow > ui.scrollEnd {
+		ui.outRow = ui.scrollEnd
+	}
+
+	// Clear everything below the scroll region
+	for r := ui.scrollEnd + 1; r <= ui.rows; r++ {
+		fmt.Printf("\033[%d;1H\033[2K", r)
+	}
+
+	// Draw divider
+	divider := strings.Repeat("─", ui.cols)
+	fmt.Printf("\033[%d;1H%s%s%s", ui.scrollEnd+1, Gray, divider, Reset)
+
+	// Draw queued messages (show most recent if capped)
+	row := ui.scrollEnd + 2
+	startIdx := len(ui.queuedMsgs) - queuedCount
+	if startIdx < 0 {
+		startIdx = 0
+	}
+	for i := startIdx; i < len(ui.queuedMsgs); i++ {
+		msg := ui.queuedMsgs[i]
+		maxLen := ui.cols - 11 // "  [queued] " prefix
+		if maxLen > 0 && len(msg) > maxLen {
+			msg = msg[:maxLen]
+		}
+		fmt.Printf("\033[%d;1H%s  [queued] %s%s", row, Gray, msg, Reset)
+		row++
+	}
+
+	// Draw input (prompt + text, terminal auto-wraps)
+	inputStartRow := row
+	displayInput := inputStr
+	maxChars := inputRowCount*ui.cols - promptWidth
+	if maxChars < 0 {
+		maxChars = ui.cols
+	}
+	if len(displayInput) > maxChars {
+		// Truncate from the left so the cursor stays visible at the end
+		displayInput = displayInput[len(displayInput)-maxChars:]
+	}
+	fmt.Printf("\033[%d;1H%s%s", inputStartRow, promptStr, displayInput)
+
+	// Position cursor at end of displayed text
+	dispTotal := promptWidth + len(displayInput)
+	cursorRow := inputStartRow + dispTotal/ui.cols
+	cursorCol := dispTotal%ui.cols + 1
+	fmt.Printf("\033[%d;%dH", cursorRow, cursorCol)
 }
 
 // UpdateInput updates the UI's copy of the input state for redrawing.
@@ -367,11 +433,13 @@ func (ui *TerminalUI) WriteToInputLine(s string) {
 	fmt.Print(s)
 }
 
-// ClearInputLine clears the input line.
+// ClearInputLine clears the entire bottom area (queued messages + input).
 func (ui *TerminalUI) ClearInputLine() {
 	ui.mu.Lock()
 	defer ui.mu.Unlock()
-	fmt.Printf("\033[%d;1H\033[K", ui.rows)
+	for r := ui.scrollEnd + 2; r <= ui.rows; r++ {
+		fmt.Printf("\033[%d;1H\033[2K", r)
+	}
 }
 
 // RefreshSize updates terminal size and redraws layout.
@@ -381,8 +449,25 @@ func (ui *TerminalUI) RefreshSize() {
 	if cols, rows, err := term.GetSize(ui.fd); err == nil && (rows != ui.rows || cols != ui.cols) {
 		ui.rows = rows
 		ui.cols = cols
-		fmt.Printf("\033[1;%dr", ui.rows-2)
-		ui.drawDividerLocked()
+		// drawInputLocked recalculates scrollEnd, scroll region, divider
+		ui.drawInputLocked()
+	}
+}
+
+// AddQueuedMessage adds a message to the queued display below the divider.
+func (ui *TerminalUI) AddQueuedMessage(text string) {
+	ui.mu.Lock()
+	defer ui.mu.Unlock()
+	ui.queuedMsgs = append(ui.queuedMsgs, text)
+	ui.drawInputLocked()
+}
+
+// RemoveQueuedMessage removes the oldest queued message from the display.
+func (ui *TerminalUI) RemoveQueuedMessage() {
+	ui.mu.Lock()
+	defer ui.mu.Unlock()
+	if len(ui.queuedMsgs) > 0 {
+		ui.queuedMsgs = ui.queuedMsgs[1:]
 		ui.drawInputLocked()
 	}
 }
