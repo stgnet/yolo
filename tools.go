@@ -1438,113 +1438,168 @@ func (t *ToolExecutor) isEmptySearchResult(result string) bool {
 }
 
 func (t *ToolExecutor) searchDuckDuckGo(query string, count int) string {
-	url := fmt.Sprintf("https://api.duckduckgo.com/?q=%s&format=json&no_html=1",
-		url.QueryEscape(query))
+	// Use retry logic for transient failures
+	result := t.searchDuckDuckGoWithRetry(query, count, 3)
+	return result
+}
 
-	client := &http.Client{Timeout: 15 * time.Second}
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return fmt.Sprintf("Error creating DuckDuckGo request: %v", err)
-	}
+func (t *ToolExecutor) searchDuckDuckGoWithRetry(query string, count int, maxRetries int) string {
+	var lastErr error
 
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; YOLO-Search-Bot/1.0)")
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		url := fmt.Sprintf("https://api.duckduckgo.com/?q=%s&format=json&no_html=1",
+			url.QueryEscape(query))
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Sprintf("Error fetching from DuckDuckGo: %v", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Sprintf("Error reading DuckDuckGo response: %v", err)
-	}
-
-	// Try to parse as JSON first (Instant Answer format)
-	var iaResult map[string]any
-	if err := json.Unmarshal(body, &iaResult); err == nil {
-		result := t.parseDuckDuckGoJSON(query, count, body)
-		if !t.isEmptySearchResult(result) {
-			return result
+		client := &http.Client{Timeout: 15 * time.Second}
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			lastErr = fmt.Errorf("error creating DuckDuckGo request: %v", err)
+			continue
 		}
+
+		req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; YOLO-Search-Bot/1.0)")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("error fetching from DuckDuckGo: %v", err)
+			if attempt < maxRetries {
+				delay := time.Duration(attempt+1) * 2 * time.Second
+				time.Sleep(delay)
+			}
+			continue
+		}
+		defer resp.Body.Close()
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			lastErr = fmt.Errorf("error reading DuckDuckGo response: %v", err)
+			if attempt < maxRetries {
+				delay := time.Duration(attempt+1) * 2 * time.Second
+				time.Sleep(delay)
+			}
+			continue
+		}
+
+		// Try to parse as JSON first (Instant Answer format)
+		var iaResult map[string]any
+		if err := json.Unmarshal(body, &iaResult); err == nil {
+			result := t.parseDuckDuckGoJSON(query, count, body)
+			if !t.isEmptySearchResult(result) {
+				return result
+			}
+		}
+
+		// Fall back to HTML parsing (won't work for API endpoint, but kept for completeness)
+		return ""
 	}
 
-	// Fall back to HTML parsing (won't work for API endpoint, but kept for completeness)
+	if lastErr != nil {
+		return fmt.Sprintf("Error: DuckDuckGo search failed after %d retries: %v", maxRetries+1, lastErr)
+	}
+
 	return ""
 }
 
 func (t *ToolExecutor) searchWikipedia(query string, count int) string {
-	// Wikipedia Search API - searches titles and content
-	url := fmt.Sprintf("https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=%s&format=json&origin=*&srlimit=%d",
-		url.QueryEscape(query), count)
+	// Use retry logic for transient failures
+	result := t.searchWikipediaWithRetry(query, count, 3)
+	return result
+}
 
-	client := &http.Client{Timeout: 15 * time.Second}
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return fmt.Sprintf("Error creating Wikipedia request: %v", err)
-	}
+func (t *ToolExecutor) searchWikipediaWithRetry(query string, count int, maxRetries int) string {
+	var lastErr error
 
-	req.Header.Set("User-Agent", "YOLO-Search-Bot/1.0 (contact@yolo.local)")
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Wikipedia Search API - searches titles and content
+		urlStr := fmt.Sprintf("https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=%s&format=json&origin=*&srlimit=%d",
+			url.QueryEscape(query), count)
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Sprintf("Error fetching from Wikipedia: %v", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Sprintf("Error reading Wikipedia response: %v", err)
-	}
-
-	var result struct {
-		Query struct {
-			Search []struct {
-				Title    string `json:"title"`
-				PageID   int    `json:"pageid"`
-				Snippet  string `json:"snippet"`
-				Fragment string `json:"fragment"`
-			} `json:"search"`
-		} `json:"query"`
-	}
-
-	if err := json.Unmarshal(body, &result); err != nil {
-		return fmt.Sprintf("Error parsing Wikipedia JSON: %v", err)
-	}
-
-	if len(result.Query.Search) == 0 {
-		return ""
-	}
-
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Wikipedia results for \"%s\":\n\n", query))
-
-	for i, article := range result.Query.Search {
-		sb.WriteString(fmt.Sprintf("%d. **[%s](https://en.wikipedia.org/wiki/%s)**\n",
-			i+1,
-			article.Title,
-			strings.ReplaceAll(article.Title, " ", "_")))
-
-		// Use fragment if available (shows context around search terms), otherwise snippet
-		snippet := article.Snippet
-		if article.Fragment != "" {
-			snippet = article.Fragment
+		client := &http.Client{Timeout: 15 * time.Second}
+		req, err := http.NewRequest("GET", urlStr, nil)
+		if err != nil {
+			lastErr = fmt.Errorf("error creating Wikipedia request: %v", err)
+			continue
 		}
 
-		// Clean up HTML entities and tags
-		snippet = strings.ReplaceAll(snippet, "&amp;", "&")
-		snippet = strings.ReplaceAll(snippet, "&lt;", "<")
-		snippet = strings.ReplaceAll(snippet, "&gt;", ">")
-		snippet = regexp.MustCompile(`<[^>]+>`).ReplaceAllString(snippet, "")
+		req.Header.Set("User-Agent", "YOLO-Search-Bot/1.0 (contact@yolo.local)")
 
-		if len(snippet) > 300 {
-			snippet = snippet[:300] + "..."
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("error fetching from Wikipedia: %v", err)
+			if attempt < maxRetries {
+				delay := time.Duration(attempt+1) * 2 * time.Second
+				time.Sleep(delay)
+			}
+			continue
+		}
+		defer resp.Body.Close()
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			lastErr = fmt.Errorf("error reading Wikipedia response: %v", err)
+			if attempt < maxRetries {
+				delay := time.Duration(attempt+1) * 2 * time.Second
+				time.Sleep(delay)
+			}
+			continue
 		}
 
-		sb.WriteString(fmt.Sprintf("   %s\n\n", strings.TrimSpace(snippet)))
+		var result struct {
+			Query struct {
+				Search []struct {
+					Title    string `json:"title"`
+					PageID   int    `json:"pageid"`
+					Snippet  string `json:"snippet"`
+					Fragment string `json:"fragment"`
+				} `json:"search"`
+			} `json:"query"`
+		}
+
+		if err := json.Unmarshal(body, &result); err != nil {
+			lastErr = fmt.Errorf("error parsing Wikipedia JSON: %v", err)
+			continue
+		}
+
+		if len(result.Query.Search) == 0 {
+			return ""
+		}
+
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("Wikipedia results for \"%s\":\n\n", query))
+
+		for i, article := range result.Query.Search {
+			sb.WriteString(fmt.Sprintf("%d. **[%s](https://en.wikipedia.org/wiki/%s)**\n",
+				i+1,
+				article.Title,
+				strings.ReplaceAll(article.Title, " ", "_")))
+
+			// Use fragment if available (shows context around search terms), otherwise snippet
+			snippet := article.Snippet
+			if article.Fragment != "" {
+				snippet = article.Fragment
+			}
+
+			// Clean up HTML entities and tags
+			snippet = strings.ReplaceAll(snippet, "&amp;", "&")
+			snippet = strings.ReplaceAll(snippet, "&lt;", "<")
+			snippet = strings.ReplaceAll(snippet, "&gt;", ">")
+			snippet = regexp.MustCompile(`<[^>]+>`).ReplaceAllString(snippet, "")
+
+			if len(snippet) > 300 {
+				snippet = snippet[:300] + "..."
+			}
+
+			sb.WriteString(fmt.Sprintf("   %s\n\n", strings.TrimSpace(snippet)))
+		}
+
+		return sb.String()
 	}
 
-	return sb.String()
+	if lastErr != nil {
+		return fmt.Sprintf("Error: Wikipedia search failed after %d retries: %v", maxRetries+1, lastErr)
+	}
+
+	return ""
 }
 
 func (t *ToolExecutor) parseDuckDuckGoJSON(query string, count int, data []byte) string {
