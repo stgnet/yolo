@@ -1037,6 +1037,7 @@ type redditPost struct {
 	Subreddit   string     `json:"subreddit"`
 	Title       string     `json:"title,omitempty"`
 	Selftext    string     `json:"selftext,omitempty"`
+	Body        string     `json:"body,omitempty"` // For comments
 	URL         string     `json:"url,omitempty"`
 	Score       int        `json:"score,omitempty"`
 	NumComments int        `json:"num_comments,omitempty"`
@@ -1048,6 +1049,7 @@ type redditPost struct {
 type redditData struct {
 	Title       string  `json:"title,omitempty"`
 	Selftext    string  `json:"selftext,omitempty"`
+	Body        string  `json:"body,omitempty"`
 	URL         string  `json:"url,omitempty"`
 	Score       int     `json:"score,omitempty"`
 	NumComments int     `json:"num_comments,omitempty"`
@@ -1274,12 +1276,23 @@ func (t *ToolExecutor) appendComment(sb *strings.Builder, post redditPost, depth
 
 	indent := strings.Repeat("  ", depth)
 
-	body := strings.TrimSpace(post.Data.Selftext)
+	// Try Body first (for comments), then Selftext (for posts)
+	body := strings.TrimSpace(post.Body)
+	if body == "" {
+		body = strings.TrimSpace(post.Data.Body)
+	}
+	if body == "" {
+		body = strings.TrimSpace(post.Selftext)
+	}
 	if body == "" && post.Kind != "t1" {
 		body = "[Deleted or removed]"
 	}
 
-	sb.WriteString(fmt.Sprintf("%s**%s** (%d points)\n", indent, post.Data.Author, post.Data.Score))
+	// Use Author and Score directly from the outer struct (for comments)
+	author := post.Author
+	score := post.Score
+
+	sb.WriteString(fmt.Sprintf("%s**%s** (%d points)\n", indent, author, score))
 	if body != "" {
 		// Truncate long comments
 		if len(body) > 1000 {
