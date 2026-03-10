@@ -193,6 +193,28 @@ type ParsedToolCall struct {
 	Args map[string]any
 }
 
+// deduplicateToolCalls removes duplicate tool calls that have identical name
+// and arguments.  This prevents the same write_file / edit_file / etc. from
+// being executed twice when a model (or Ollama backend) sends the same tool
+// call in more than one streaming chunk.
+func deduplicateToolCalls(calls []ParsedToolCall) []ParsedToolCall {
+	if len(calls) <= 1 {
+		return calls
+	}
+	seen := make(map[string]bool, len(calls))
+	out := make([]ParsedToolCall, 0, len(calls))
+	for _, tc := range calls {
+		argsJSON, _ := json.Marshal(tc.Args)
+		key := tc.Name + "|" + string(argsJSON)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, tc)
+	}
+	return out
+}
+
 // Chat sends a streaming chat request to Ollama and returns the accumulated
 // result.  Display text is printed to the terminal as it arrives.  The ctx
 // parameter allows the caller to cancel the request (e.g. on Ctrl-C).
@@ -325,6 +347,11 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 	if displayText == "" {
 		displayText = thinkingText
 	}
+
+	// Deduplicate tool calls that may arrive in multiple streaming chunks.
+	// Some models/backends send the same tool call in both an intermediate
+	// chunk and the done chunk, causing the same operation to execute twice.
+	toolCalls = deduplicateToolCalls(toolCalls)
 
 	return &ChatResult{
 		DisplayText: displayText,

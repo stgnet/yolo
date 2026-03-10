@@ -246,3 +246,77 @@ func TestToolDef(t *testing.T) {
 		t.Errorf("Expected required=['path'], got %v", td.Function.Parameters.Required)
 	}
 }
+
+func TestDeduplicateToolCalls(t *testing.T) {
+	tests := []struct {
+		name     string
+		calls    []ParsedToolCall
+		wantLen  int
+		wantName []string
+	}{
+		{
+			name:    "empty",
+			calls:   nil,
+			wantLen: 0,
+		},
+		{
+			name: "single call unchanged",
+			calls: []ParsedToolCall{
+				{Name: "write_file", Args: map[string]any{"path": "a.go", "content": "x"}},
+			},
+			wantLen:  1,
+			wantName: []string{"write_file"},
+		},
+		{
+			name: "duplicate write_file removed",
+			calls: []ParsedToolCall{
+				{Name: "write_file", Args: map[string]any{"path": "a.go", "content": "x"}},
+				{Name: "write_file", Args: map[string]any{"path": "a.go", "content": "x"}},
+			},
+			wantLen:  1,
+			wantName: []string{"write_file"},
+		},
+		{
+			name: "different args kept",
+			calls: []ParsedToolCall{
+				{Name: "write_file", Args: map[string]any{"path": "a.go", "content": "x"}},
+				{Name: "write_file", Args: map[string]any{"path": "b.go", "content": "y"}},
+			},
+			wantLen:  2,
+			wantName: []string{"write_file", "write_file"},
+		},
+		{
+			name: "different tools kept",
+			calls: []ParsedToolCall{
+				{Name: "read_file", Args: map[string]any{"path": "a.go"}},
+				{Name: "write_file", Args: map[string]any{"path": "a.go", "content": "x"}},
+			},
+			wantLen:  2,
+			wantName: []string{"read_file", "write_file"},
+		},
+		{
+			name: "triple duplicate reduced to one",
+			calls: []ParsedToolCall{
+				{Name: "edit_file", Args: map[string]any{"path": "f.go", "old_text": "a", "new_text": "b"}},
+				{Name: "edit_file", Args: map[string]any{"path": "f.go", "old_text": "a", "new_text": "b"}},
+				{Name: "edit_file", Args: map[string]any{"path": "f.go", "old_text": "a", "new_text": "b"}},
+			},
+			wantLen:  1,
+			wantName: []string{"edit_file"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := deduplicateToolCalls(tt.calls)
+			if len(got) != tt.wantLen {
+				t.Errorf("deduplicateToolCalls() returned %d calls, want %d", len(got), tt.wantLen)
+			}
+			for i, name := range tt.wantName {
+				if i < len(got) && got[i].Name != name {
+					t.Errorf("call[%d].Name = %q, want %q", i, got[i].Name, name)
+				}
+			}
+		})
+	}
+}

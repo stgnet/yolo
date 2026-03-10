@@ -275,6 +275,10 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 			toolCalls = a.parseTextToolCalls(result.DisplayText)
 		}
 
+		// Deduplicate: streaming or text-parsing may yield duplicate calls
+		// that would cause the agent to write the same file twice.
+		toolCalls = deduplicateToolCalls(toolCalls)
+
 		if len(toolCalls) == 0 {
 			finalText = result.DisplayText
 			break
@@ -805,8 +809,11 @@ func (a *YoloAgent) drainQueuedInput() {
 			stripped := strings.TrimSpace(line.Text)
 			lower := strings.ToLower(stripped)
 
-			// Remove from queued display (no-op if message wasn't queued)
+			// Remove from queued display (no-op if message wasn't queued).
+			// Sync the input buffer first so the redraw shows the user's
+			// current in-progress typing accurately (including multiline).
 			if stripped != "" && globalUI != nil {
+				a.inputMgr.SyncToUI()
 				globalUI.RemoveQueuedMessage()
 			}
 
