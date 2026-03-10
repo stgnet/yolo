@@ -19,7 +19,7 @@ interact, and where to find key logic in the source tree.
         │            YoloAgent              │
         │  ┌─────────┐  ┌───────────────┐  │
         │  │ History  │  │ ToolExecutor  │  │
-        │  │ Manager  │  │  (18 tools)   │  │
+        │  │ Manager  │  │  (21 tools)   │  │
         │  └────┬─────┘  └───────┬───────┘  │
         │       │                │           │
         └───────┼────────────────┼───────────┘
