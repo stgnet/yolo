@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/term"
 )
@@ -247,16 +248,60 @@ func (im *InputManager) processLoop() {
 				im.mu.Unlock()
 				im.consumeEscapeSequence()
 			default:
-				if ch >= 32 && unicode.IsPrint(rune(ch)) {
-					im.buf = append(im.buf, ch)
+				if ch >= 0xC0 && ch < 0xFE {
+					// UTF-8 leading byte: collect continuation bytes
+					size := utf8ByteLen(ch)
+					utfBuf := []byte{ch}
+					im.mu.Unlock()
+					for i := 1; i < size; i++ {
+						select {
+						case cb := <-im.rawBytes:
+							if cb&0xC0 == 0x80 { // valid continuation byte
+								utfBuf = append(utfBuf, cb)
+							} else {
+								utfBuf = nil
+								break
+							}
+						case <-time.After(50 * time.Millisecond):
+							utfBuf = nil
+							break
+						}
+						if utfBuf == nil {
+							break
+						}
+					}
+					if utfBuf != nil {
+						if r, _ := utf8.DecodeRune(utfBuf); r != utf8.RuneError && unicode.IsPrint(r) {
+							im.mu.Lock()
+							im.buf = append(im.buf, utfBuf...)
+							im.mu.Unlock()
+						}
+					}
+					im.syncAndRedraw()
+				} else {
+					if ch >= 32 && ch < 0x80 && unicode.IsPrint(rune(ch)) {
+						im.buf = append(im.buf, ch)
+					}
+					im.mu.Unlock()
+					im.syncAndRedraw()
 				}
-				im.mu.Unlock()
-				im.syncAndRedraw()
 			}
 
 		case <-im.rawErr:
 			im.Lines <- InputLine{OK: false}
 			return
 		}
+	}
+}
+
+// utf8ByteLen returns the expected byte length of a UTF-8 sequence from its leading byte.
+func utf8ByteLen(lead byte) int {
+	switch {
+	case lead < 0xE0:
+		return 2
+	case lead < 0xF0:
+		return 3
+	default:
+		return 4
 	}
 }
