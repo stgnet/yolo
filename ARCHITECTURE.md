@@ -200,26 +200,6 @@ YoloAgent.spawnSubagent(task, model)
   └─► Returns immediately: "Sub-agent #3 spawned"
 ```
 
-## Internal packages
-
-### `internal/mcp/` — MCP Server
-
-Implements the [Model Context Protocol](https://modelcontextprotocol.io/)
-server-side.  Provides:
-
-- JSON-RPC 2.0 request routing (`handleRequest`)
-- Tool, resource, and prompt registration
-- Log level management
-- SSE transport (`ServeSSE`)
-
-### `internal/mcpclient/` — MCP Client
-
-Client for connecting to external MCP server processes:
-
-- Starts a subprocess, communicates over stdin/stdout with JSON-RPC
-- Auto-discovers capabilities (tools, prompts, resources)
-- `ToolRegistry` for managing tools from multiple MCP servers
-
 ## File layout
 
 ```
@@ -233,14 +213,6 @@ Client for connecting to external MCP server processes:
 ├── terminal.go             # TerminalUI: split-screen rendering
 ├── config.go               # Constants, env vars, ANSI colours
 ├── SYSTEM_PROMPT.md        # System prompt template (interpolated at runtime)
-├── internal/
-│   ├── mcp/                # MCP protocol server
-│   │   ├── server.go
-│   │   ├── types.go
-│   │   └── errors.go
-│   └── mcpclient/          # MCP protocol client
-│       ├── client.go
-│       └── registry.go
 └── .yolo/                  # Runtime state (gitignored)
     ├── history.json
     └── subagents/
