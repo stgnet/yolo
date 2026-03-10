@@ -14,6 +14,12 @@ All notable changes to YOLO will be documented in this file.
 - **Agent nudge on queued input**: During tool-calling loops, if the user
   has queued a message, the agent is nudged via a system message to wrap up
   and process it.
+- **GOG Google Integration** (`tools_gog.go`): Full OAuth2-enabled access to Google services:
+  - Gmail: search, list, send emails with filters (inbox:unread, newer_than:1d)
+  - Calendar: list events, create events with titles/descriptions/times
+  - Drive: list files/folders, upload/download content
+- **GOG documentation** (`GOOGLE_INTEGRATION.md`): Setup instructions, OAuth2 configuration, and usage examples
+- **GOG tests** (`gog_test.go`): Integration tests verifying Gmail, Calendar, and Drive functionality
 
 ### Fixed
 - **Output line overwrite glitch**: `rawWrite()` was converting standalone
