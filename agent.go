@@ -781,6 +781,7 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		cprint(Reset, "  /clear           Clear conversation history")
 		cprint(Reset, "  /status          Agent status")
 		cprint(Reset, "  /cache           Show/clear search cache stats")
+		cprint(Reset, "  /learn           Run autonomous research for self-improvement")
 		cprint(Reset, "  /restart         Restart YOLO")
 		cprint(Reset, "  /exit, /quit     Exit YOLO")
 
@@ -819,6 +820,15 @@ func (a *YoloAgent) handleCommand(cmd string) {
 
 	case "/cache":
 		a.showCacheStatus(arg)
+
+	case "/learn":
+		cprint(Yellow, "  Starting autonomous learning research...")
+		go func() {
+			time.Sleep(500 * time.Millisecond)
+			result := a.tools.learn(map[string]any{})
+			cprint(Cyan, result)
+		}()
+		return // Let the goroutine handle the learn tool
 
 	case "/status":
 		cprint(Cyan, "Status:")
