@@ -974,6 +974,12 @@ func (t *ToolExecutor) restart(args map[string]any) string {
 	buildCmd := exec.Command("go", "build", "-o", filepath.Base(exePath), ".")
 	buildCmd.Dir = cwd
 
+	// Attach stdin to /dev/null so the build process doesn't steal terminal input.
+	if devNull, derr := os.Open(os.DevNull); derr == nil {
+		buildCmd.Stdin = devNull
+		defer devNull.Close()
+	}
+
 	output, err := buildCmd.CombinedOutput()
 	if err != nil {
 		return fmt.Sprintf("Build failed: %v\n%s", err, string(output))
