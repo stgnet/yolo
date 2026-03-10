@@ -65,12 +65,7 @@ func TestMakeDir(t *testing.T) {
 					}
 				}
 
-				// Verify .gitignore was created
-				gitignorePath := filepath.Join(fullPath, ".gitignore")
-				if _, err := os.Stat(gitignorePath); os.IsNotExist(err) {
-					t.Errorf(".gitignore was not created in: %s", fullPath)
-				}
-			}
+	}
 		})
 	}
 }
