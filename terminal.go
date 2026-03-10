@@ -6,7 +6,6 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 
 	"golang.org/x/term"
 )
@@ -23,8 +22,10 @@ var (
 // In raw mode, OPOST is disabled so \n only moves the cursor down without returning
 // to column 1. This function ensures proper carriage return + line feed behavior.
 func rawWrite(s string) {
+	// Normalize \r\n to \n first, then convert all \n to \r\n for raw terminal mode.
+	// Leave standalone \r alone — it's a valid cursor-positioning operation
+	// (return to column 1) used by the spinner and other overwrite-in-place output.
 	s = strings.ReplaceAll(s, "\r\n", "\n")
-	s = strings.ReplaceAll(s, "\r", "\n")
 	s = strings.ReplaceAll(s, "\n", "\r\n")
 	fmt.Print(s)
 }
@@ -386,57 +387,3 @@ func (ui *TerminalUI) RefreshSize() {
 	}
 }
 
-// ─── Spinner ──────────────────────────────────────────────────────────
-
-var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-
-type Spinner struct {
-	prefix string
-	color  string
-	stop   chan struct{}
-	done   chan struct{}
-}
-
-func NewSpinner(prefix, color string) *Spinner {
-	return &Spinner{
-		prefix: prefix,
-		color:  color,
-		stop:   make(chan struct{}),
-		done:   make(chan struct{}),
-	}
-}
-
-func (s *Spinner) Start() {
-	go func() {
-		defer close(s.done)
-		i := 0
-		for {
-			select {
-			case <-s.stop:
-				return
-			default:
-				frame := spinnerFrames[i%len(spinnerFrames)]
-				text := fmt.Sprintf("\r%s%s%s thinking...%s", s.color, s.prefix, frame, Reset)
-				if globalUI != nil {
-					globalUI.OutputPrintInline(text)
-				} else {
-					rawWrite(text)
-				}
-				i++
-				time.Sleep(100 * time.Millisecond)
-			}
-		}
-	}()
-}
-
-func (s *Spinner) Stop() {
-	close(s.stop)
-	<-s.done
-	clearLen := len(s.prefix) + 20
-	text := fmt.Sprintf("\r%s\r", strings.Repeat(" ", clearLen))
-	if globalUI != nil {
-		globalUI.OutputPrintInline(text)
-	} else {
-		rawWrite(text)
-	}
-}
