@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestWebSearchTool(t *testing.T) {
@@ -183,5 +184,91 @@ func TestWebSearchArgumentParsing(t *testing.T) {
 				t.Errorf("count parsing got %d, want %d", count, tt.expected)
 			}
 		})
+	}
+}
+
+func TestWebSearchCaching(t *testing.T) {
+	executor := NewToolExecutor("/tmp/test-websearch-cache", nil)
+	if executor == nil {
+		t.Fatal("executor is nil")
+	}
+
+	query := "go programming language"
+	count := 3
+
+	// Clear any existing cache entries for this test
+	searchCache.Clear()
+
+	// First search - should NOT be cached
+	result1 := executor.webSearch(map[string]any{"query": query, "count": count})
+	if strings.Contains(result1, "Error:") {
+		t.Skip("Skipping cache test due to network error")
+	}
+
+	// Result should NOT have [Cached] prefix on first call
+	if strings.HasPrefix(result1, "[Cached]") {
+		t.Errorf("First search should not be cached but got: %s", result1[:50])
+	}
+
+	// Second search with same query - SHOULD be cached
+	result2 := executor.webSearch(map[string]any{"query": query, "count": count})
+	if !strings.HasPrefix(result2, "[Cached]") {
+		t.Errorf("Second search should be cached but got: %s", result2[:50])
+	}
+
+	// Verify cache key generation is consistent
+	key1 := getSearchCacheKey(query, count)
+	key2 := getSearchCacheKey(query, count)
+	if key1 != key2 {
+		t.Errorf("Cache keys should be identical: %s vs %s", key1, key2)
+	}
+
+	// Verify different queries produce different keys (case-insensitive)
+	key3 := getSearchCacheKey("GO PROGRAMMING LANGUAGE", count)
+	if key1 != key3 {
+		t.Errorf("Cache keys should be case-insensitive: %s vs %s", key1, key3)
+	}
+
+	// Verify different counts produce different keys
+	key4 := getSearchCacheKey(query, 5)
+	if key1 == key4 {
+		t.Errorf("Different counts should produce different keys")
+	}
+}
+
+func TestWebSearchCacheExpiration(t *testing.T) {
+	executor := NewToolExecutor("/tmp/test-websearch-expire", nil)
+	if executor == nil {
+		t.Fatal("executor is nil")
+	}
+
+	query := "cache expiration test"
+	key := getSearchCacheKey(query, 5)
+
+	// Clear any existing entries first
+	searchCache.Clear()
+
+	// Store an expired entry manually
+	searchCache.Store(key, &searchCacheEntry{
+		Result: "Old cached result",
+		Ts:     time.Now().Add(-10 * time.Minute), // Expired 10 minutes ago
+	})
+
+	// Verify the entry exists before retrieval attempt
+	_, found := searchCache.Load(key)
+	if !found {
+		t.Fatal("Entry should exist before retrieval test")
+	}
+
+	// Try to retrieve - should return false since it's expired and also clean up
+	_, found = executor.getFromSearchCache(key)
+	if found {
+		t.Error("Should not find expired cache entry after getFromSearchCache")
+	}
+
+	// Verify the expired entry was cleaned up by getFromSearchCache
+	_, stillExists := searchCache.Load(key)
+	if stillExists {
+		t.Error("Expired entry should have been removed from cache by getFromSearchCache")
 	}
 }
