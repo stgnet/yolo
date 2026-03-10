@@ -236,9 +236,6 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 	}
 	defer resp.Body.Close()
 
-	spinner := NewSpinner("yolo> ", Blue)
-	spinner.Start()
-
 	// outPrint writes to the output region (inline, no input redraw per token)
 	outPrint := func(s string) {
 		if globalUI != nil {
@@ -273,10 +270,9 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 		content := msg.Content
 		tcList := msg.ToolCalls
 
-		// On first real output, stop the spinner
+		// On first real output, print the prompt prefix
 		if !gotFirstOutput && (thinking != "" || content != "" || len(tcList) > 0) {
 			gotFirstOutput = true
-			spinner.Stop()
 			outPrint(fmt.Sprintf("%s%syolo>%s ", Blue, Bold, Reset))
 		}
 
@@ -315,9 +311,8 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 		}
 	}
 
-	// Clean up spinner if model returned nothing
+	// Print prompt if model returned nothing
 	if !gotFirstOutput {
-		spinner.Stop()
 		outPrint(fmt.Sprintf("%s%syolo>%s ", Blue, Bold, Reset))
 	}
 
