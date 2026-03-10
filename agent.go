@@ -117,7 +117,9 @@ func (a *YoloAgent) setupFirstRun() {
 			continue
 		}
 		a.history.SetModel(models[idx-1])
-		a.history.Save()
+		if err := a.history.Save(); err != nil {
+			cprint(Red, fmt.Sprintf("  Warning: could not save history: %v\n", err))
+		}
 		cprint(Green, fmt.Sprintf("\n  Model: %s%s%s", Bold, models[idx-1], Reset))
 		break
 	}
@@ -594,7 +596,9 @@ func (a *YoloAgent) handleCommand(cmd string) {
 
 	case "/clear":
 		a.history.Data.Messages = []HistoryMessage{}
-		a.history.Save()
+		if err := a.history.Save(); err != nil {
+			cprint(Red, fmt.Sprintf("  Warning: could not save history: %v\n", err))
+		}
 		cprint(Cyan, "  History cleared (config preserved)")
 
 	case "/status":
@@ -751,7 +755,9 @@ func (a *YoloAgent) Run() {
 		}
 	}
 
-	a.history.Save()
+	if err := a.history.Save(); err != nil {
+		cprint(Red, fmt.Sprintf("  Warning: could not save history: %v\n", err))
+	}
 	fmt.Print("\r\n")
 	cprint(Cyan, "  Session saved. Goodbye!\n")
 }
