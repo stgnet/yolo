@@ -607,6 +607,7 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		cprint(Reset, "  /history         Message count")
 		cprint(Reset, "  /clear           Clear conversation history")
 		cprint(Reset, "  /status          Agent status")
+		cprint(Reset, "  /cache           Show/clear search cache stats")
 		cprint(Reset, "  /restart         Restart YOLO")
 		cprint(Reset, "  /exit, /quit     Exit YOLO")
 
@@ -643,6 +644,9 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		}
 		cprint(Cyan, "  History cleared (config preserved)")
 
+	case "/cache":
+		a.showCacheStatus(arg)
+
 	case "/status":
 		cprint(Cyan, "Status:")
 		cprint(Reset, fmt.Sprintf("  Model:       %s", a.history.GetModel()))
@@ -666,6 +670,38 @@ func (a *YoloAgent) handleCommand(cmd string) {
 
 	default:
 		cprint(Red, fmt.Sprintf("  Unknown command: %s  (try /help)", command))
+	}
+}
+
+// showCacheStatus displays web search cache statistics or clears it
+func (a *YoloAgent) showCacheStatus(arg string) {
+	if strings.ToLower(strings.TrimSpace(arg)) == "clear" {
+		searchCache.Clear()
+		cprint(Green, "  Search cache cleared")
+		return
+	}
+
+	// Count cache entries and expired entries
+	count := 0
+	expired := 0
+	now := time.Now()
+	searchCache.Range(func(key, value any) bool {
+		count++
+		if entry, ok := value.(*searchCacheEntry); ok {
+			if now.Sub(entry.Ts) >= searchCacheTTL {
+				expired++
+			}
+		}
+		return true
+	})
+
+	cprint(Cyan, "Search Cache:")
+	cprint(Reset, fmt.Sprintf("  Total entries: %d", count))
+	cprint(Reset, fmt.Sprintf("  Expired entries: %d", expired))
+	cprint(Reset, fmt.Sprintf("  Valid entries: %d", count-expired))
+	cprint(Reset, fmt.Sprintf("  TTL: %v", searchCacheTTL))
+	if arg != "clear" {
+		cprint(Reset, "  Usage: /cache clear (to clear cache)")
 	}
 }
 
