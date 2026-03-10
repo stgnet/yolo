@@ -332,6 +332,17 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 			toolLog = append(toolLog, toolLogEntry{name: name, args: args, result: cleanResult})
 		}
 
+		// If the user has queued input, nudge the agent to finish up
+		if len(a.inputMgr.Lines) > 0 {
+			roundMsgs = append(roundMsgs, ChatMessage{
+				Role: "system",
+				Content: "The user has typed a new message and is waiting for you. " +
+					"Wrap up what you are doing and provide a brief response so " +
+					"their message can be processed.",
+			})
+			cprint(Gray, "  [user message queued — nudging agent to wrap up]")
+		}
+
 		roundNum++
 	}
 
