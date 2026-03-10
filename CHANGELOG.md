@@ -26,6 +26,10 @@ All notable changes to YOLO will be documented in this file.
   `\r` (carriage return) to `\r\n`, causing the cursor position tracker to
   drift from the actual terminal cursor. This made output sometimes write
   over the same line twice. Standalone `\r` is now preserved as-is.
+- **GOG tool example**: Corrected `drive list` → `drive ls` in error message
+
+### Changed
+- **Test coverage**: Added GOG integration tests with realistic golden files for calendar and Drive operations
 
 ### Removed
 - **Spinner**: The animated "thinking..." spinner has been removed. It was
