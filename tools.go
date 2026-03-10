@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1068,7 +1069,7 @@ func (t *ToolExecutor) reddit(args map[string]any) string {
 		limit = 25
 	}
 
-	var url string
+	var requestURL string
 	var err error
 
 	switch action {
@@ -1077,8 +1078,8 @@ func (t *ToolExecutor) reddit(args map[string]any) string {
 		if query == "" {
 			return "Error: 'query' parameter is required for 'search' action"
 		}
-		url = fmt.Sprintf("https://www.reddit.com/search.json?q=%s&limit=%d",
-			strings.ReplaceAll(query, " ", "+"), limit)
+		requestURL = fmt.Sprintf("https://www.reddit.com/search.json?q=%s&limit=%d",
+			url.QueryEscape(query), limit)
 
 	case "subreddit":
 		subreddit := getStringArg(args, "subreddit", "")
@@ -1087,14 +1088,14 @@ func (t *ToolExecutor) reddit(args map[string]any) string {
 		}
 		// Clean subreddit name - remove r/ prefix if present
 		subreddit = strings.TrimPrefix(subreddit, "r/")
-		url = fmt.Sprintf("https://www.reddit.com/r/%s/hot.json?limit=%d", subreddit, limit)
+		requestURL = fmt.Sprintf("https://www.reddit.com/r/%s/hot.json?limit=%d", subreddit, limit)
 
 	case "thread":
 		postID := getStringArg(args, "post_id", "")
 		if postID == "" {
 			return "Error: 'post_id' parameter is required for 'thread' action"
 		}
-		url = fmt.Sprintf("https://www.reddit.com/comments/%s/.json", postID)
+		requestURL = fmt.Sprintf("https://www.reddit.com/comments/%s/.json", postID)
 
 	default:
 		return fmt.Sprintf("Error: unknown action '%s'. Options: 'search', 'subreddit', 'thread'", action)
@@ -1102,7 +1103,7 @@ func (t *ToolExecutor) reddit(args map[string]any) string {
 
 	// Make HTTP request with timeout
 	client := &http.Client{Timeout: 15 * time.Second}
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", requestURL, nil)
 	if err != nil {
 		return fmt.Sprintf("Error creating request: %v", err)
 	}
@@ -1405,7 +1406,7 @@ func (t *ToolExecutor) isEmptySearchResult(result string) bool {
 
 func (t *ToolExecutor) searchDuckDuckGo(query string, count int) string {
 	url := fmt.Sprintf("https://api.duckduckgo.com/?q=%s&format=json&no_html=1",
-		strings.ReplaceAll(query, " ", "+"))
+		url.QueryEscape(query))
 
 	client := &http.Client{Timeout: 15 * time.Second}
 	req, err := http.NewRequest("GET", url, nil)
@@ -1442,7 +1443,7 @@ func (t *ToolExecutor) searchDuckDuckGo(query string, count int) string {
 func (t *ToolExecutor) searchWikipedia(query string, count int) string {
 	// Wikipedia Search API - searches titles and content
 	url := fmt.Sprintf("https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=%s&format=json&origin=*&srlimit=%d",
-		strings.ReplaceAll(query, " ", "+"), count)
+		url.QueryEscape(query), count)
 
 	client := &http.Client{Timeout: 15 * time.Second}
 	req, err := http.NewRequest("GET", url, nil)
