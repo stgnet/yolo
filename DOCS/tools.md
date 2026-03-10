@@ -47,11 +47,11 @@ YOLO (Your Own Living Operator) has these powerful tools for autonomous software
 
 ## 🌐 Web & External APIs
 
-| Tool | Description |
-|------|-------------|
-| `web_search` | Search DuckDuckGo Instant Answer API with Wikipedia fallback |
-| `reddit` | Search Reddit, list subreddit posts, get threads |
-| `gog` | Google Workspace: Gmail, Calendar, Drive, Contacts, Sheets, Docs |
+| Tool | Description | Docs |
+|------|-------------|---|
+| `web_search` | Search DuckDuckGo Instant Answer API with Wikipedia fallback | [below](#web_search-tool) |
+| `reddit` | Search Reddit, list subreddit posts, get threads | [reddit-tool.md](./reddit-tool.md) |
+| `gog` | Google Workspace: Gmail, Calendar, Drive, Contacts, Sheets, Docs | [gog-tool.md](./gog-tool.md) |
 
 ---
 
