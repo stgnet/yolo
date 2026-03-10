@@ -9,8 +9,13 @@ thinks, and improves — even when you're not typing.
   30 seconds of idle, and acts without asking for permission.
 - **21 built-in tools** — file I/O, shell commands, regex search, sub-agent
   spawning, model switching, self-restart, plus web search (DuckDuckGo + 
-  Wikipedia), Reddit API, and Google Workspace integration (Gmail, Calendar,
-  Drive).
+  Wikipedia), Reddit API, Google Workspace integration (Gmail, Calendar,
+  Drive), and autonomous learning.
+- **Self-improvement** — autonomously researches the internet for best
+  practices and improvement opportunities using `learn` tool. Discoveries are
+  tracked in `.yolo_learning.json`.
+- **Email reporting** — can send progress reports via email from yolo@b-haven.org
+  to scott@stg.net (requires EMAIL_PASSWORD env var).
 - **Conversation history** — persisted to `.yolo/history.json`; sessions
   resume automatically.
 - **Sub-agents** — background goroutines that run focused LLM tasks in
@@ -68,6 +73,7 @@ Compile-time constants are in [`config.go`](config.go):
 | `/history` | Show message and evolution counts |
 | `/clear` | Clear conversation history |
 | `/status` | Show agent status |
+| `/learn` | Run autonomous research for self-improvement |
 | `/restart` | Rebuild and restart YOLO |
 | `/exit`, `/quit` | Exit |
 
