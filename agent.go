@@ -303,7 +303,21 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		})
 
 		// Execute each tool and add tool-role result
+		nudged := false
 		for _, call := range toolCalls {
+			// Check for queued input before each tool (not just after the batch)
+			if !nudged && len(a.inputMgr.Lines) > 0 {
+				cprint(Cyan, "  [nudge] User input queued — asking agent to wrap up")
+				roundMsgs = append(roundMsgs, ChatMessage{
+					Role: "system",
+					Content: "IMPORTANT: The user has typed a new message and is waiting for you. " +
+						"You MUST finish immediately. Do NOT call any more tools. " +
+						"Provide a brief summary of what you've done so far, then stop so " +
+						"the user's message can be processed.",
+				})
+				nudged = true
+			}
+
 			name := call.Name
 			args := call.Args
 			if args == nil {
@@ -332,13 +346,16 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 			toolLog = append(toolLog, toolLogEntry{name: name, args: args, result: cleanResult})
 		}
 
-		// If the user has queued input, nudge the agent to finish up
-		if len(a.inputMgr.Lines) > 0 {
+		// Also check after the batch completes (in case no tools were in this round
+		// or the queue filled during execution)
+		if !nudged && len(a.inputMgr.Lines) > 0 {
+			cprint(Cyan, "  [nudge] User input queued — asking agent to wrap up")
 			roundMsgs = append(roundMsgs, ChatMessage{
 				Role: "system",
-				Content: "The user has typed a new message and is waiting for you. " +
-					"Wrap up what you are doing and provide a brief response so " +
-					"their message can be processed.",
+				Content: "IMPORTANT: The user has typed a new message and is waiting for you. " +
+					"You MUST finish immediately. Do NOT call any more tools. " +
+					"Provide a brief summary of what you've done so far, then stop so " +
+					"the user's message can be processed.",
 			})
 		}
 
