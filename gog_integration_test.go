@@ -63,8 +63,8 @@ func TestGogToolCommands(t *testing.T) {
 				}
 			} else {
 				// gog may require authentication, so we expect either valid output or auth error
-				if strings.Contains(result, "Error:") && !strings.Contains(strings.ToLower(result), "authentication") && 
-				   !strings.Contains(strings.ToLower(result), "auth") && !strings.Contains(strings.ToLower(result), "credentials") {
+				if strings.Contains(result, "Error:") && !strings.Contains(strings.ToLower(result), "authentication") &&
+					!strings.Contains(strings.ToLower(result), "auth") && !strings.Contains(strings.ToLower(result), "credentials") {
 					t.Logf("gog returned non-auth error: %s", result[:min(500, len(result))])
 				}
 			}
@@ -78,16 +78,16 @@ func TestGogToolDescription(t *testing.T) {
 	for _, tool := range ollamaTools {
 		if tool.Function.Name == "gog" {
 			found = true
-			
+
 			desc := tool.Function.Description
 			requiredTerms := []string{"Google", "command"}
-			
+
 			for _, term := range requiredTerms {
 				if !strings.Contains(desc, term) {
 					t.Errorf("gog description should contain '%s', got: %s", term, desc)
 				}
 			}
-			
+
 			break
 		}
 	}

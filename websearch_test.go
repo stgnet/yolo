@@ -139,7 +139,7 @@ func TestIsEmptySearchResult(t *testing.T) {
 			expect: true,
 		},
 		{
-			name:   "duckduckgo no results message",
+			name: "duckduckgo no results message",
 			result: `Search results for "golang testing patterns":
 
 No results found for this query. Try a different search term.`,
