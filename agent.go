@@ -809,8 +809,11 @@ func (a *YoloAgent) drainQueuedInput() {
 			stripped := strings.TrimSpace(line.Text)
 			lower := strings.ToLower(stripped)
 
-			// Remove from queued display (no-op if message wasn't queued)
+			// Remove from queued display (no-op if message wasn't queued).
+			// Sync the input buffer first so the redraw shows the user's
+			// current in-progress typing accurately (including multiline).
 			if stripped != "" && globalUI != nil {
+				a.inputMgr.SyncToUI()
 				globalUI.RemoveQueuedMessage()
 			}
 
