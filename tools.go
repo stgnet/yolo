@@ -829,7 +829,10 @@ func (t *ToolExecutor) listSubagents(args map[string]any) string {
 
 		status := getStringArg(result, "status", "")
 		task := truncateString(getStringArg(result, "task", ""), 40)
-		info, _ := os.Stat(file)
+		info, err := os.Stat(file)
+		if err != nil {
+			continue
+		}
 		modTime := info.ModTime().Format("15:04:05")
 
 		results = append(results, fmt.Sprintf("#%s [%s] %s (updated: %s)", agentID, status, task, modTime))
