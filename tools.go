@@ -92,11 +92,11 @@ var ollamaTools = []ToolDef{
 		}, []string{"source", "dest"}),
 	toolDef("reddit", "Fetch posts from Reddit using the public API (no auth required). Can search, list subreddit posts, or get thread details.",
 		map[string]ToolParam{
-			"action": {Type: "string", Description: "Action: 'search' (query Reddit), 'subreddit' (list posts from subreddit), 'thread' (get specific post/comments)"},
+			"action":    {Type: "string", Description: "Action: 'search' (query Reddit), 'subreddit' (list posts from subreddit), 'thread' (get specific post/comments)"},
 			"subreddit": {Type: "string", Description: "Subreddit name without 'r/' (e.g., 'golang') - required for 'subreddit' action"},
-			"query": {Type: "string", Description: "Search query - required for 'search' action"},
-			"post_id": {Type: "string", Description: "Post/comment ID for 'thread' action"},
-			"limit": {Type: "integer", Description: "Max results to return (default: 25, max: 100)"},
+			"query":     {Type: "string", Description: "Search query - required for 'search' action"},
+			"post_id":   {Type: "string", Description: "Post/comment ID for 'thread' action"},
+			"limit":     {Type: "integer", Description: "Max results to return (default: 25, max: 100)"},
 		}, []string{"action"}),
 	toolDef("gog", "Google CLI tool for Gmail, Calendar, Drive, Docs, Sheets, Slides, Contacts, Tasks, People, Chat, Classroom. Use 'command' parameter to pass gog subcommands (e.g., 'gmail search inbox:unread', 'calendar list events', 'drive list'). Output is JSON by default.",
 		map[string]ToolParam{
@@ -237,8 +237,6 @@ func getIntArg(args map[string]any, key string, fallback int) int {
 	}
 	return fallback
 }
-
-
 
 func isBinaryData(data []byte) bool {
 	// Check the first 8KB for null bytes or high ratio of non-text bytes
@@ -1011,30 +1009,30 @@ func (t *ToolExecutor) restart(args map[string]any) string {
 
 // redditPost represents a Reddit post/comment structure for parsing API responses
 type redditPost struct {
-	Kind    string      `json:"kind"`
-	Data    redditData  `json:"data"`
-	IsSelf  bool        `json:"is_self"`
-	Subreddit string    `json:"subreddit"`
-	Title   string      `json:"title,omitempty"`
-	Selftext string     `json:"selftext,omitempty"`
-	URL     string      `json:"url,omitempty"`
-	Score   int         `json:"score,omitempty"`
-	NumComments int     `json:"num_comments,omitempty"`
-	Created float64     `json:"created_utc,omitempty"`
-	ID      string      `json:"id,omitempty"`
-	Author  string      `json:"author,omitempty"`
+	Kind        string     `json:"kind"`
+	Data        redditData `json:"data"`
+	IsSelf      bool       `json:"is_self"`
+	Subreddit   string     `json:"subreddit"`
+	Title       string     `json:"title,omitempty"`
+	Selftext    string     `json:"selftext,omitempty"`
+	URL         string     `json:"url,omitempty"`
+	Score       int        `json:"score,omitempty"`
+	NumComments int        `json:"num_comments,omitempty"`
+	Created     float64    `json:"created_utc,omitempty"`
+	ID          string     `json:"id,omitempty"`
+	Author      string     `json:"author,omitempty"`
 }
 
 type redditData struct {
-	Title     string  `json:"title,omitempty"`
-	Selftext  string  `json:"selftext,omitempty"`
-	URL       string  `json:"url,omitempty"`
-	Score     int     `json:"score,omitempty"`
-	NumComments int   `json:"num_comments,omitempty"`
-	Created   float64 `json:"created_utc,omitempty"`
-	ID        string  `json:"id,omitempty"`
-	Author    string  `json:"author,omitempty"`
-	Subreddit string  `json:"subreddit,omitempty"`
+	Title       string  `json:"title,omitempty"`
+	Selftext    string  `json:"selftext,omitempty"`
+	URL         string  `json:"url,omitempty"`
+	Score       int     `json:"score,omitempty"`
+	NumComments int     `json:"num_comments,omitempty"`
+	Created     float64 `json:"created_utc,omitempty"`
+	ID          string  `json:"id,omitempty"`
+	Author      string  `json:"author,omitempty"`
+	Subreddit   string  `json:"subreddit,omitempty"`
 }
 
 type redditListing struct {
@@ -1077,7 +1075,7 @@ func (t *ToolExecutor) reddit(args map[string]any) string {
 		if query == "" {
 			return "Error: 'query' parameter is required for 'search' action"
 		}
-		url = fmt.Sprintf("https://www.reddit.com/search.json?q=%s&limit=%d", 
+		url = fmt.Sprintf("https://www.reddit.com/search.json?q=%s&limit=%d",
 			strings.ReplaceAll(query, " ", "+"), limit)
 
 	case "subreddit":
@@ -1106,7 +1104,7 @@ func (t *ToolExecutor) reddit(args map[string]any) string {
 	if err != nil {
 		return fmt.Sprintf("Error creating request: %v", err)
 	}
-	
+
 	// Add User-Agent header (Reddit requires it)
 	req.Header.Set("User-Agent", "YOLO-Agent/1.0 (by /u/yolo)")
 
@@ -1137,7 +1135,7 @@ func (t *ToolExecutor) reddit(args map[string]any) string {
 
 func (t *ToolExecutor) parseListingResponse(action string, data []byte) string {
 	var listing redditListing
-	
+
 	if err := json.Unmarshal(data, &listing); err != nil {
 		return fmt.Sprintf("Error parsing JSON: %v", err)
 	}
@@ -1147,7 +1145,7 @@ func (t *ToolExecutor) parseListingResponse(action string, data []byte) string {
 	}
 
 	var sb strings.Builder
-	
+
 	switch action {
 	case "search":
 		sb.WriteString(fmt.Sprintf("Search results (showing %d of available):\n\n", len(listing.Data.Children)))
@@ -1160,25 +1158,25 @@ func (t *ToolExecutor) parseListingResponse(action string, data []byte) string {
 		if i > 0 {
 			sb.WriteString("\n---\n\n")
 		}
-		
+
 		title := post.Data.Title
 		if title == "" && post.Data.Selftext != "" {
 			// Self post without title - use first line of content
 			lines := strings.SplitN(post.Data.Selftext, "\n", 2)
 			title = "[Self Post] " + lines[0]
 		}
-		
+
 		sb.WriteString(fmt.Sprintf("**%s**\n", title))
-		
+
 		if post.Data.Author != "" {
-			sb.WriteString(fmt.Sprintf("By: u/%s | Score: %d | Comments: %d\n", 
+			sb.WriteString(fmt.Sprintf("By: u/%s | Score: %d | Comments: %d\n",
 				post.Data.Author, post.Data.Score, post.Data.NumComments))
 		}
-		
+
 		if post.Data.URL != "" && !strings.Contains(post.Data.URL, "reddit.com") {
 			sb.WriteString(fmt.Sprintf("URL: %s\n", post.Data.URL))
 		}
-		
+
 		if post.Data.Selftext != "" {
 			// Truncate selftext if too long
 			text := strings.TrimSpace(post.Data.Selftext)
@@ -1187,11 +1185,11 @@ func (t *ToolExecutor) parseListingResponse(action string, data []byte) string {
 			}
 			sb.WriteString(fmt.Sprintf("\n%s\n", text))
 		}
-		
+
 		// Add Reddit link
 		postURL := fmt.Sprintf("https://www.reddit.com%s", post.Data.URL)
 		if !strings.HasPrefix(post.Data.URL, "/") {
-			postURL = fmt.Sprintf("https://www.reddit.com/r/%s/comments/%s/", 
+			postURL = fmt.Sprintf("https://www.reddit.com/r/%s/comments/%s/",
 				post.Data.Subreddit, post.Data.ID)
 		}
 		sb.WriteString(fmt.Sprintf("\n[Read more](%s)", postURL))
@@ -1203,7 +1201,7 @@ func (t *ToolExecutor) parseListingResponse(action string, data []byte) string {
 func (t *ToolExecutor) parseThreadResponse(action string, data []byte) string {
 	// Thread responses are nested - we get the post + comments tree
 	var listing redditListing
-	
+
 	if err := json.Unmarshal(data, &listing); err != nil {
 		return fmt.Sprintf("Error parsing JSON: %v", err)
 	}
@@ -1214,12 +1212,12 @@ func (t *ToolExecutor) parseThreadResponse(action string, data []byte) string {
 
 	// First child is usually the original post
 	originalPost := listing.Data.Children[0]
-	
+
 	var sb strings.Builder
-	
+
 	sb.WriteString(fmt.Sprintf("# %s\n", originalPost.Data.Title))
-	sb.WriteString(fmt.Sprintf("By: u/%s | Score: %d | Posted: %s\n\n", 
-		originalPost.Data.Author, 
+	sb.WriteString(fmt.Sprintf("By: u/%s | Score: %d | Posted: %s\n\n",
+		originalPost.Data.Author,
 		originalPost.Data.Score,
 		formatRedditTimestamp(originalPost.Data.Created)))
 
@@ -1234,7 +1232,7 @@ func (t *ToolExecutor) parseThreadResponse(action string, data []byte) string {
 	// Now process comments (remaining children are top-level comments)
 	if len(listing.Data.Children) > 1 {
 		sb.WriteString("\n## Top Comments:\n\n")
-		
+
 		for i := 1; i < len(listing.Data.Children); i++ {
 			comment := listing.Data.Children[i]
 			t.appendComment(&sb, comment.Data, 0)
@@ -1253,12 +1251,12 @@ func (t *ToolExecutor) appendComment(sb *strings.Builder, post redditPost, depth
 	}
 
 	indent := strings.Repeat("  ", depth)
-	
+
 	body := strings.TrimSpace(post.Data.Selftext)
 	if body == "" && post.Kind != "t1" {
 		body = "[Deleted or removed]"
 	}
-	
+
 	sb.WriteString(fmt.Sprintf("%s**%s** (%d points)\n", indent, post.Data.Author, post.Data.Score))
 	if body != "" {
 		// Truncate long comments
@@ -1278,15 +1276,15 @@ func formatRedditTimestamp(timestamp float64) string {
 
 // webSearchResult represents a search result from DuckDuckGo Instant Answer
 type webSearchResult struct {
-	Abstract      string   `json:"abstract"`
-	AbstractSource string  `json:"abstract_source"`
-	AbstractURL   string   `json:"abstract_url"`
-	Url           string   `json:"url"`
-	Image         string   `json:"image"`
-	RelatedTopics []struct {
-		Title       string `json:"text,omitempty"`
-	TopicName    string `json:"topic_name"`
-	Content      struct {
+	Abstract       string `json:"abstract"`
+	AbstractSource string `json:"abstract_source"`
+	AbstractURL    string `json:"abstract_url"`
+	Url            string `json:"url"`
+	Image          string `json:"image"`
+	RelatedTopics  []struct {
+		Title     string `json:"text,omitempty"`
+		TopicName string `json:"topic_name"`
+		Content   struct {
 			Text string `json:"text"`
 		} `json:"text_content,omitempty"`
 		FirstValue string `json:"first_value"`
@@ -1310,7 +1308,7 @@ func (t *ToolExecutor) webSearch(args map[string]any) string {
 
 	// Try DuckDuckGo first
 	ddgResult := t.searchDuckDuckGo(query, count)
-	
+
 	// If DuckDuckGo returned meaningful results, use them
 	if !t.isEmptySearchResult(ddgResult) {
 		return ddgResult
@@ -1318,7 +1316,7 @@ func (t *ToolExecutor) webSearch(args map[string]any) string {
 
 	// Fallback to Wikipedia API
 	wikiResult := t.searchWikipedia(query, count)
-	
+
 	// If Wikipedia also failed or has no results, combine both
 	if t.isEmptySearchResult(wikiResult) {
 		return fmt.Sprintf("No search results found for \"%s\". DuckDuckGo and Wikipedia returned no relevant information.\n\nTry:\n- Using more specific keywords\n- Searching for a different topic\n- Checking spelling of terms", query)
@@ -1338,13 +1336,13 @@ func (t *ToolExecutor) isEmptySearchResult(result string) bool {
 		"Error:",
 		"returned no relevant information",
 	}
-	
+
 	for _, pattern := range emptyPatterns {
 		if strings.Contains(result, pattern) {
 			return true
 		}
 	}
-	
+
 	// Check if result is just a header with minimal content
 	if len(result) < 100 {
 		return true
@@ -1354,7 +1352,7 @@ func (t *ToolExecutor) isEmptySearchResult(result string) bool {
 }
 
 func (t *ToolExecutor) searchDuckDuckGo(query string, count int) string {
-	url := fmt.Sprintf("https://api.duckduckgo.com/?q=%s&format=json&no_html=1", 
+	url := fmt.Sprintf("https://api.duckduckgo.com/?q=%s&format=json&no_html=1",
 		strings.ReplaceAll(query, " ", "+"))
 
 	client := &http.Client{Timeout: 15 * time.Second}
@@ -1362,7 +1360,7 @@ func (t *ToolExecutor) searchDuckDuckGo(query string, count int) string {
 	if err != nil {
 		return fmt.Sprintf("Error creating DuckDuckGo request: %v", err)
 	}
-	
+
 	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; YOLO-Search-Bot/1.0)")
 
 	resp, err := client.Do(req)
@@ -1391,7 +1389,7 @@ func (t *ToolExecutor) searchDuckDuckGo(query string, count int) string {
 
 func (t *ToolExecutor) searchWikipedia(query string, count int) string {
 	// Wikipedia Search API - searches titles and content
-	url := fmt.Sprintf("https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=%s&format=json&origin=*&srlimit=%d", 
+	url := fmt.Sprintf("https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=%s&format=json&origin=*&srlimit=%d",
 		strings.ReplaceAll(query, " ", "+"), count)
 
 	client := &http.Client{Timeout: 15 * time.Second}
@@ -1399,7 +1397,7 @@ func (t *ToolExecutor) searchWikipedia(query string, count int) string {
 	if err != nil {
 		return fmt.Sprintf("Error creating Wikipedia request: %v", err)
 	}
-	
+
 	req.Header.Set("User-Agent", "YOLO-Search-Bot/1.0 (contact@yolo.local)")
 
 	resp, err := client.Do(req)
@@ -1436,27 +1434,27 @@ func (t *ToolExecutor) searchWikipedia(query string, count int) string {
 	sb.WriteString(fmt.Sprintf("Wikipedia results for \"%s\":\n\n", query))
 
 	for i, article := range result.Query.Search {
-		sb.WriteString(fmt.Sprintf("%d. **[%s](https://en.wikipedia.org/wiki/%s)**\n", 
-			i+1, 
+		sb.WriteString(fmt.Sprintf("%d. **[%s](https://en.wikipedia.org/wiki/%s)**\n",
+			i+1,
 			article.Title,
 			strings.ReplaceAll(article.Title, " ", "_")))
-		
+
 		// Use fragment if available (shows context around search terms), otherwise snippet
 		snippet := article.Snippet
 		if article.Fragment != "" {
 			snippet = article.Fragment
 		}
-		
+
 		// Clean up HTML entities and tags
 		snippet = strings.ReplaceAll(snippet, "&amp;", "&")
 		snippet = strings.ReplaceAll(snippet, "&lt;", "<")
 		snippet = strings.ReplaceAll(snippet, "&gt;", ">")
 		snippet = regexp.MustCompile(`<[^>]+>`).ReplaceAllString(snippet, "")
-		
+
 		if len(snippet) > 300 {
 			snippet = snippet[:300] + "..."
 		}
-		
+
 		sb.WriteString(fmt.Sprintf("   %s\n\n", strings.TrimSpace(snippet)))
 	}
 
@@ -1465,20 +1463,20 @@ func (t *ToolExecutor) searchWikipedia(query string, count int) string {
 
 func (t *ToolExecutor) parseDuckDuckGoJSON(query string, count int, data []byte) string {
 	var result struct {
-		Query         string            `json:"query"`
-		Results       int               `json:"results"`
-		Answer        string            `json:"answer"`
-		Abstract      string            `json:"abstract"`
-		AbstractSource string           `json:"abstract_source"`
-		AbstractURL   string            `json:"abstract_url"`
-		Image         string            `json:"image"`
-		RelatedTopics []struct {
-			Title       string        `json:"text,omitempty"`
-			TopicName   string        `json:"topic_name"`
-			Result      json.RawMessage `json:"result,omitempty"`
-			Results     []struct {
-				Text  string `json:"text"`
-				Url   string `json:"url"`
+		Query          string `json:"query"`
+		Results        int    `json:"results"`
+		Answer         string `json:"answer"`
+		Abstract       string `json:"abstract"`
+		AbstractSource string `json:"abstract_source"`
+		AbstractURL    string `json:"abstract_url"`
+		Image          string `json:"image"`
+		RelatedTopics  []struct {
+			Title     string          `json:"text,omitempty"`
+			TopicName string          `json:"topic_name"`
+			Result    json.RawMessage `json:"result,omitempty"`
+			Results   []struct {
+				Text string `json:"text"`
+				Url  string `json:"url"`
 			} `json:"results,omitempty"`
 		} `json:"related_topics,omitempty"`
 	}
@@ -1499,7 +1497,7 @@ func (t *ToolExecutor) parseDuckDuckGoJSON(query string, count int, data []byte)
 	if result.Abstract != "" {
 		sb.WriteString(fmt.Sprintf("**Summary:** %s\n", result.Abstract))
 		if result.AbstractSource != "" {
-			sb.WriteString(fmt.Sprintf("Source: [from%s](%s)\n\n", 
+			sb.WriteString(fmt.Sprintf("Source: [from%s](%s)\n\n",
 				result.AbstractSource, result.AbstractURL))
 		} else {
 			sb.WriteString("\n")
@@ -1519,7 +1517,7 @@ func (t *ToolExecutor) parseDuckDuckGoJSON(query string, count int, data []byte)
 			Text string `json:"text"`
 			Url  string `json:"url"`
 		}
-		
+
 		// Check if Result field contains raw JSON
 		if len(topic.Result) > 0 {
 			var singleResult struct {
@@ -1530,7 +1528,7 @@ func (t *ToolExecutor) parseDuckDuckGoJSON(query string, count int, data []byte)
 				topicResults = append(topicResults, singleResult)
 			}
 		}
-		
+
 		// Check Results array
 		topicResults = append(topicResults, topic.Results...)
 
@@ -1548,7 +1546,7 @@ func (t *ToolExecutor) parseDuckDuckGoJSON(query string, count int, data []byte)
 					break
 				}
 				resultsCount++
-				
+
 				if r.Text != "" {
 					sb.WriteString(fmt.Sprintf("%d. **%s**\n", resultsCount, r.Text))
 				}
@@ -1573,15 +1571,15 @@ func (t *ToolExecutor) parseDuckDuckGoHTML(query string, count int, data []byte)
 
 	// Look for result snippets in HTML (DuckDuckGo uses specific classes)
 	lines := strings.Split(string(data), "\n")
-	
+
 	type SearchResult struct {
-		Title  string
-		URL    string
+		Title   string
+		URL     string
 		Snippet string
 	}
-	
+
 	var results []SearchResult
-	
+
 	// Parse title links and snippets
 	for i, line := range lines {
 		// Look for result titles in <a> tags with class containing "result__a"
@@ -1592,10 +1590,10 @@ func (t *ToolExecutor) parseDuckDuckGoHTML(query string, count int, data []byte)
 				title := titleMatch[1]
 				cleanTitle := strings.TrimPrefix(title, "[")
 				cleanTitle = strings.TrimSuffix(cleanTitle, "]")
-				
+
 				// Look for URL in this line or nearby lines
 				var url string
-				for j := i - 2; j <= i + 2 && j < len(lines); j++ {
+				for j := i - 2; j <= i+2 && j < len(lines); j++ {
 					if strings.Contains(lines[j], `href="http`) {
 						urlMatch := regexp.MustCompile(`href="(https?://[^"]+)"`).FindStringSubmatch(lines[j])
 						if len(urlMatch) > 1 {
@@ -1604,10 +1602,10 @@ func (t *ToolExecutor) parseDuckDuckGoHTML(query string, count int, data []byte)
 						}
 					}
 				}
-				
+
 				// Look for snippet in following lines
 				var snippet string
-				for j := i + 1; j < i + 5 && j < len(lines); j++ {
+				for j := i + 1; j < i+5 && j < len(lines); j++ {
 					if strings.Contains(lines[j], "<div") || strings.Contains(lines[j], "<span") {
 						snippetLines := regexp.MustCompile(`<[^>]+>([^<]+)</[^>]+>`).FindAllStringSubmatch(lines[j], -1)
 						for _, sm := range snippetLines {
@@ -1621,7 +1619,7 @@ func (t *ToolExecutor) parseDuckDuckGoHTML(query string, count int, data []byte)
 						break
 					}
 				}
-				
+
 				results = append(results, SearchResult{
 					Title:   cleanTitle,
 					URL:     url,
@@ -1629,7 +1627,7 @@ func (t *ToolExecutor) parseDuckDuckGoHTML(query string, count int, data []byte)
 				})
 			}
 		}
-		
+
 		if len(results) >= count {
 			break
 		}

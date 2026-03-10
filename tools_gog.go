@@ -14,15 +14,15 @@ func (t *ToolExecutor) gog(args map[string]any) string {
 	// Use the runCommand tool to execute gog with JSON output
 	fullCommand := map[string]any{"command": "gog --json " + command}
 	result := t.runCommand(fullCommand)
-	
+
 	if result == "" {
 		return "Error: gog command returned no output"
 	}
-	
+
 	// Check for common error patterns
 	if strings.Contains(result, "Error") || strings.Contains(result, "error") {
 		return result
 	}
-	
+
 	return result
 }
