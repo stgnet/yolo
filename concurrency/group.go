@@ -266,14 +266,14 @@ func LimitedConcurrency(ctx context.Context, maxWorkers int, jobs []func(context
 	for _, job := range jobs {
 		wg.Add(1)
 		go func(f func(context.Context) error) {
+			defer wg.Done()
+			
 			select {
 			case <-ctx.Done():
-				wg.Done()
 				return
 			case sem <- struct{}{}: // Acquire semaphore
 			}
 			defer func() { <-sem }() // Release semaphore
-			defer wg.Done()
 
 			if err := f(ctx); err != nil {
 				errsMu.Lock()
