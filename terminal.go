@@ -133,6 +133,7 @@ type TerminalUI struct {
 	queuedMsgs     []string // messages queued while agent is busy
 	scrollEnd      int      // last row of the scroll region (dynamic)
 	peakBottomRows int      // high-water mark for bottom area (grow-only)
+	streaming      bool     // true while inline output is in progress (prevents scroll region changes)
 }
 
 // wrapText wraps text to the given width, inserting newlines at word boundaries.
@@ -333,6 +334,8 @@ func (ui *TerminalUI) OutputPrintInline(text string) {
 	ui.mu.Lock()
 	defer ui.mu.Unlock()
 
+	ui.streaming = true
+
 	// Do NOT wrap streaming tokens — they are fragments, not complete lines.
 	// The terminal handles character-level wrapping, and trackCursorMovement
 	// already accounts for it.
@@ -349,6 +352,7 @@ func (ui *TerminalUI) OutputPrintInline(text string) {
 func (ui *TerminalUI) OutputFinishLine() {
 	ui.mu.Lock()
 	defer ui.mu.Unlock()
+	ui.streaming = false
 	ui.drawInputLocked()
 }
 
@@ -536,8 +540,11 @@ func (ui *TerminalUI) RefreshSize() {
 	if cols, rows, err := term.GetSize(ui.fd); err == nil && (rows != ui.rows || cols != ui.cols) {
 		ui.rows = rows
 		ui.cols = cols
-		// drawInputLocked recalculates scrollEnd, scroll region, divider
-		ui.drawInputLocked()
+		if !ui.streaming {
+			// drawInputLocked recalculates scrollEnd, scroll region, divider
+			ui.drawInputLocked()
+		}
+		// If streaming, OutputFinishLine will redraw with updated dimensions
 	}
 }
 
@@ -546,7 +553,10 @@ func (ui *TerminalUI) AddQueuedMessage(text string) {
 	ui.mu.Lock()
 	defer ui.mu.Unlock()
 	ui.queuedMsgs = append(ui.queuedMsgs, text)
-	ui.drawInputLocked()
+	if !ui.streaming {
+		ui.drawInputLocked()
+	}
+	// If streaming, OutputFinishLine will redraw with the queued messages
 }
 
 // RemoveQueuedMessage removes the oldest queued message from the display.
