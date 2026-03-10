@@ -48,6 +48,10 @@ you to pick one. After that, just type what you want done.
 |---|---|---|
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama API endpoint |
 | `YOLO_NUM_CTX` | *(auto-detected)* | Override the model's context window size |
+| `EMAIL_PASSWORD` | *(required for email)* | Gmail app password for sending emails from yolo@b-haven.org |
+| `EMAIL_USERNAME` | `yolo@b-haven.org` | SMTP username (optional) |
+| `EMAIL_SMTP_HOST` | `smtp.gmail.com` | SMTP server (optional) |
+| `EMAIL_SMTP_PORT` | `587` | SMTP port (optional) |
 
 Compile-time constants are in [`config.go`](config.go):
 
@@ -104,7 +108,7 @@ User input ──► YoloAgent ──► OllamaClient ──► Ollama /api/chat
 
 ### State directory
 
-YOLO stores all runtime state in `.yolo/`:
+YOLO stores all runtime state in `.yolo/` and `.yolo_learning.json`:
 
 ```
 .yolo/
@@ -112,6 +116,8 @@ YOLO stores all runtime state in `.yolo/`:
 └── subagents/
     ├── agent_1.json      # Sub-agent results
     └── agent_2.json
+
+.yolo_learning.json       # Discovered improvements from learning sessions
 ```
 
 ## Safety
