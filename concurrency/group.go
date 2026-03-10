@@ -270,6 +270,10 @@ func LimitedConcurrency(ctx context.Context, maxWorkers int, jobs []func(context
 			defer func() { <-sem }() // Release semaphore
 			defer wg.Done()
 
+			if ctx.Err() != nil {
+				return
+			}
+
 			if err := f(ctx); err != nil {
 				errsMu.Lock()
 				errs = append(errs, err)
