@@ -239,6 +239,40 @@ func TestTrackCursorMovement(t *testing.T) {
 	}
 }
 
+// Test that pending wrap at scrollEnd boundary sets ui.pendingWrap instead of
+// eagerly resolving (which would cause the "CR without LF" overwrite bug).
+func TestTrackCursorMovement_PendingWrapAtScrollEnd(t *testing.T) {
+	ui := NewTerminalUI()
+	ui.cols = 10
+	ui.scrollEnd = 5
+
+	// Text fills exactly to col boundary while at scrollEnd
+	ui.outRow = 5
+	ui.outCol = 1
+	ui.pendingWrap = false
+	ui.trackCursorMovement("1234567890") // exactly cols chars
+	if !ui.pendingWrap {
+		t.Error("expected pendingWrap=true when text fills width at scrollEnd")
+	}
+	// outRow/outCol should stay at scrollEnd — the actual scroll is deferred
+	// to resolvePendingWrap() on the next output call.
+	if ui.outRow != 5 {
+		t.Errorf("outRow: got %d, want 5", ui.outRow)
+	}
+
+	// When NOT at scrollEnd, pending wrap should resolve eagerly
+	ui.outRow = 3
+	ui.outCol = 1
+	ui.pendingWrap = false
+	ui.trackCursorMovement("1234567890")
+	if ui.pendingWrap {
+		t.Error("expected pendingWrap=false when NOT at scrollEnd")
+	}
+	if ui.outRow != 4 || ui.outCol != 1 {
+		t.Errorf("eager resolve: got row=%d col=%d, want row=4 col=1", ui.outRow, ui.outCol)
+	}
+}
+
 // Test OutputPrintInline and OutputFinishLine (smoke tests)
 func TestTerminalUI_OutputMethods(t *testing.T) {
 	ui := NewTerminalUI()
