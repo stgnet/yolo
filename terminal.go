@@ -249,25 +249,59 @@ func (ui *TerminalUI) Teardown() {
 }
 
 func (ui *TerminalUI) trackCursorMovement(stripped string) {
+	// Use deferred (pending) wrapping to match real terminal behavior.
+	// When a character is written at the last column, real terminals enter a
+	// "pending wrap" state — the cursor stays at the last column and only
+	// wraps to the next line when the next printable character arrives.
+	// Crucially, rawWrite converts \n to \r\n: if there's a pending wrap,
+	// the \r cancels it (cursor stays on the same row) and then \n advances
+	// one row — so the total is ONE row advance, not two.  The old code
+	// wrapped immediately and then counted \n as a second advance, causing
+	// the tracker to drift ahead of the real cursor position.
+	pendingWrap := false
 	for _, ch := range stripped {
 		switch ch {
 		case '\n':
+			// rawWrite sends \r\n for each \n.  If there's a pending wrap,
+			// the \r cancels it (no extra row advance) and \n advances one
+			// row.  Either way: one row advance total.
+			pendingWrap = false
 			ui.outRow++
 			ui.outCol = 1
 			if ui.outRow > ui.scrollEnd {
 				ui.outRow = ui.scrollEnd // scroll region keeps cursor at bottom
 			}
 		case '\r':
+			// Carriage return cancels any pending wrap without advancing.
+			pendingWrap = false
 			ui.outCol = 1
 		default:
-			ui.outCol++
-			if ui.outCol > ui.cols {
+			if pendingWrap {
+				// Previous character filled the last column; now a printable
+				// character forces the deferred wrap to resolve.
+				pendingWrap = false
 				ui.outCol = 1
 				ui.outRow++
 				if ui.outRow > ui.scrollEnd {
 					ui.outRow = ui.scrollEnd
 				}
 			}
+			ui.outCol++
+			if ui.outCol > ui.cols {
+				// Don't wrap yet — defer until we see what comes next.
+				pendingWrap = true
+			}
+		}
+	}
+	// Resolve any trailing pending wrap so that (outRow, outCol) is a valid
+	// position for the explicit ANSI cursor-positioning on the next call.
+	// The next OutputPrint/OutputPrintInline will \033[row;colH to this
+	// position, which cancels the terminal's pending wrap and moves there.
+	if pendingWrap {
+		ui.outCol = 1
+		ui.outRow++
+		if ui.outRow > ui.scrollEnd {
+			ui.outRow = ui.scrollEnd
 		}
 	}
 }
@@ -334,6 +368,7 @@ func (ui *TerminalUI) drawInputLocked() {
 
 	// Flatten queued messages into individual display lines (handles multi-line messages).
 	// First line of each message gets "  [queued] " prefix, continuation lines get aligned spaces.
+	// Long lines are wrapped (not truncated) so the full message is visible.
 	var queuedDisplayLines []string
 	for _, msg := range ui.queuedMsgs {
 		msgLines := strings.Split(msg, "\n")
@@ -343,8 +378,14 @@ func (ui *TerminalUI) drawInputLocked() {
 				prefix = "           " // 11 chars, aligned with prefix above
 			}
 			maxLen := ui.cols - len(prefix)
-			if maxLen > 0 && len(line) > maxLen {
-				line = line[:maxLen]
+			if maxLen <= 0 {
+				maxLen = 1
+			}
+			// Wrap long lines instead of truncating
+			for len(line) > maxLen {
+				queuedDisplayLines = append(queuedDisplayLines, prefix+line[:maxLen])
+				line = line[maxLen:]
+				prefix = "           " // continuation lines use aligned spaces
 			}
 			queuedDisplayLines = append(queuedDisplayLines, prefix+line)
 		}
