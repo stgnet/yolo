@@ -81,6 +81,8 @@ Search the internet using DuckDuckGo's Instant Answer API with Wikipedia fallbac
 - Research problems and solutions
 - Stay updated on trends and best practices
 
+See [web_search deep dive](./tools.md#web_search-tool) for more details.
+
 ---
 
 ### reddit Tool
