@@ -122,16 +122,17 @@ func filterToolActivityMarkers(text string) string {
 // TerminalUI manages a split terminal: a scrolling output region on top and
 // a fixed input line at the bottom, separated by a divider.
 type TerminalUI struct {
-	mu         sync.Mutex
-	fd         int
-	rows       int
-	cols       int
-	inputBuf   []byte // mirrors InputManager's buffer for redraw
-	prompt     string
-	outRow     int // tracked row of cursor in output region
-	outCol     int // tracked col of cursor in output region
-	queuedMsgs []string // messages queued while agent is busy
-	scrollEnd  int      // last row of the scroll region (dynamic)
+	mu             sync.Mutex
+	fd             int
+	rows           int
+	cols           int
+	inputBuf       []byte // mirrors InputManager's buffer for redraw
+	prompt         string
+	outRow         int // tracked row of cursor in output region
+	outCol         int // tracked col of cursor in output region
+	queuedMsgs     []string // messages queued while agent is busy
+	scrollEnd      int      // last row of the scroll region (dynamic)
+	peakBottomRows int      // high-water mark for bottom area (grow-only)
 }
 
 // wrapText wraps text to the given width, inserting newlines at word boundaries.
@@ -331,8 +332,39 @@ func (ui *TerminalUI) drawInputLocked() {
 		inputRowCount = totalChars/ui.cols + 1
 	}
 
-	queuedCount := len(ui.queuedMsgs)
-	bottomRows := queuedCount + inputRowCount
+	// Flatten queued messages into individual display lines (handles multi-line messages).
+	// First line of each message gets "  [queued] " prefix, continuation lines get aligned spaces.
+	var queuedDisplayLines []string
+	for _, msg := range ui.queuedMsgs {
+		msgLines := strings.Split(msg, "\n")
+		for j, line := range msgLines {
+			prefix := "  [queued] "
+			if j > 0 {
+				prefix = "           " // 11 chars, aligned with prefix above
+			}
+			maxLen := ui.cols - len(prefix)
+			if maxLen > 0 && len(line) > maxLen {
+				line = line[:maxLen]
+			}
+			queuedDisplayLines = append(queuedDisplayLines, prefix+line)
+		}
+	}
+	totalQueuedLines := len(queuedDisplayLines)
+	neededBottomRows := totalQueuedLines + inputRowCount
+
+	// Grow-only behavior: the input area never shrinks UNLESS the queue is
+	// empty AND the input buffer is empty, at which point it collapses to 1 row.
+	canShrink := len(ui.queuedMsgs) == 0 && len(ui.inputBuf) == 0
+	var bottomRows int
+	if canShrink {
+		bottomRows = 1 // single empty input line
+		ui.peakBottomRows = 0
+	} else {
+		if neededBottomRows > ui.peakBottomRows {
+			ui.peakBottomRows = neededBottomRows
+		}
+		bottomRows = ui.peakBottomRows
+	}
 
 	// Cap: leave at least 3 rows for output + 1 for divider
 	maxBottom := ui.rows - 4
@@ -340,21 +372,40 @@ func (ui *TerminalUI) drawInputLocked() {
 		maxBottom = 1
 	}
 	if bottomRows > maxBottom {
-		// Prioritize queued messages; cap input rows
-		inputRowCount = maxBottom - queuedCount
-		if inputRowCount < 1 {
-			inputRowCount = 1
-			queuedCount = maxBottom - 1
-			if queuedCount < 0 {
-				queuedCount = 0
+		bottomRows = maxBottom
+		if ui.peakBottomRows > maxBottom {
+			ui.peakBottomRows = maxBottom
+		}
+	}
+
+	// Determine how many queued lines and input rows to actually display
+	// (may need to cap if bottom area is too small for all content)
+	displayQueuedLines := totalQueuedLines
+	displayInputRows := inputRowCount
+	if displayQueuedLines+displayInputRows > bottomRows {
+		displayInputRows = bottomRows - displayQueuedLines
+		if displayInputRows < 1 {
+			displayInputRows = 1
+			displayQueuedLines = bottomRows - 1
+			if displayQueuedLines < 0 {
+				displayQueuedLines = 0
 			}
 		}
-		bottomRows = queuedCount + inputRowCount
 	}
 
 	newScrollEnd := ui.rows - bottomRows - 1 // -1 for divider
 	if newScrollEnd < 1 {
 		newScrollEnd = 1
+	}
+
+	oldScrollEnd := ui.scrollEnd
+	// Clean transition: when the scroll region is growing (scrollEnd increasing,
+	// bottom area shrinking), clear the rows transitioning into the scroll region
+	// so stale divider/queued content doesn't linger inside the output area.
+	if newScrollEnd > oldScrollEnd {
+		for r := oldScrollEnd + 1; r <= newScrollEnd; r++ {
+			fmt.Printf("\033[%d;1H\033[2K", r)
+		}
 	}
 
 	// Update scroll region
@@ -373,26 +424,21 @@ func (ui *TerminalUI) drawInputLocked() {
 	divider := strings.Repeat("─", ui.cols)
 	fmt.Printf("\033[%d;1H%s%s%s", ui.scrollEnd+1, Gray, divider, Reset)
 
-	// Draw queued messages (show most recent if capped)
+	// Draw queued message lines (show most recent if capped)
 	row := ui.scrollEnd + 2
-	startIdx := len(ui.queuedMsgs) - queuedCount
+	startIdx := len(queuedDisplayLines) - displayQueuedLines
 	if startIdx < 0 {
 		startIdx = 0
 	}
-	for i := startIdx; i < len(ui.queuedMsgs); i++ {
-		msg := ui.queuedMsgs[i]
-		maxLen := ui.cols - 11 // "  [queued] " prefix
-		if maxLen > 0 && len(msg) > maxLen {
-			msg = msg[:maxLen]
-		}
-		fmt.Printf("\033[%d;1H%s  [queued] %s%s", row, Gray, msg, Reset)
+	for i := startIdx; i < len(queuedDisplayLines); i++ {
+		fmt.Printf("\033[%d;1H%s%s%s", row, Gray, queuedDisplayLines[i], Reset)
 		row++
 	}
 
 	// Draw input (prompt + text, terminal auto-wraps)
 	inputStartRow := row
 	displayInput := inputStr
-	maxChars := inputRowCount*ui.cols - promptWidth
+	maxChars := displayInputRows*ui.cols - promptWidth
 	if maxChars < 0 {
 		maxChars = ui.cols
 	}
