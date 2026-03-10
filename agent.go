@@ -950,6 +950,16 @@ func (a *YoloAgent) Run() {
 
 			stripped := strings.TrimSpace(line.Text)
 			lower := strings.ToLower(stripped)
+
+			// Remove any queued-message display for this line. This covers
+			// the TOCTOU race where AddQueuedMessage fires just after the
+			// agent finishes (busy transitions to false between the check in
+			// processLoop and the channel send) — drainQueuedInput wouldn't
+			// see it, so the stale indicator would linger.
+			if stripped != "" && globalUI != nil {
+				globalUI.RemoveQueuedMessage()
+			}
+
 			if lower == "exit" || lower == "quit" {
 				a.running = false
 			} else if strings.HasPrefix(stripped, "/") {
