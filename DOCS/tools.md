@@ -49,7 +49,7 @@ YOLO (Your Own Living Operator) has these powerful tools for autonomous software
 
 | Tool | Description |
 |------|-------------|
-| `web_search` | Search Wikipedia + Bing for information |
+| `web_search` | Search DuckDuckGo Instant Answer API with Wikipedia fallback |
 | `reddit` | Search Reddit, list subreddit posts, get threads |
 | `gog` | Google Workspace: Gmail, Calendar, Drive, Contacts, Sheets, Docs |
 
@@ -58,23 +58,28 @@ YOLO (Your Own Living Operator) has these powerful tools for autonomous software
 ## 🔧 Key Tools Deep Dive
 
 ### web_search Tool
-Search the internet using Wikipedia and Bing.
+Search the internet using DuckDuckGo's Instant Answer API with Wikipedia fallback for comprehensive results.
 
 ```json
 {
   "name": "web_search",
   "arguments": {
-    "query": "gog openclaw google cli",
+    "query": "go programming language concurrency",
     "count": 5
   }
 }
 ```
 
+**How it works:**
+1. Queries DuckDuckGo's Instant Answer API for direct answers and summaries
+2. Falls back to Wikipedia search if DuckDuckGo returns no results
+3. Combines both sources when available for richer information
+
 **Use Cases:**
 - Learn about new tools/technologies
-- Find documentation
+- Find documentation and quick references  
 - Research problems and solutions
-- Stay updated on trends
+- Stay updated on trends and best practices
 
 ---
 
