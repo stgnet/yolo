@@ -10,15 +10,15 @@ import (
 
 // ToolSession manages state across multiple tool calls for complex workflows
 type ToolSession struct {
-	ID            string            `json:"id"`
-	CreatedAt     time.Time         `json:"created_at"`
-	LastActivity  time.Time         `json:"last_activity"`
-	State         map[string]any    `json:"state"`
-	Results       []ToolResult      `json:"results"`
-	Metadata      map[string]string `json:"metadata"`
-	Active        bool              `json:"active"`
-	maxIdleTime   time.Duration     // Maximum idle time before session expires
-	mu            sync.RWMutex
+	ID           string            `json:"id"`
+	CreatedAt    time.Time         `json:"created_at"`
+	LastActivity time.Time         `json:"last_activity"`
+	State        map[string]any    `json:"state"`
+	Results      []ToolResult      `json:"results"`
+	Metadata     map[string]string `json:"metadata"`
+	Active       bool              `json:"active"`
+	maxIdleTime  time.Duration     // Maximum idle time before session expires
+	mu           sync.RWMutex
 }
 
 // ToolResult stores the result of a single tool invocation within a session
@@ -57,14 +57,14 @@ func (sm *SessionManager) CreateSession(sessionID string) *ToolSession {
 
 	now := time.Now()
 	session := &ToolSession{
-		ID:            sessionID,
-		CreatedAt:     now,
-		LastActivity:  now,
-		State:         make(map[string]any),
-		Results:       make([]ToolResult, 0),
-		Metadata:      make(map[string]string),
-		Active:        true,
-		maxIdleTime:   sm.ttl,
+		ID:           sessionID,
+		CreatedAt:    now,
+		LastActivity: now,
+		State:        make(map[string]any),
+		Results:      make([]ToolResult, 0),
+		Metadata:     make(map[string]string),
+		Active:       true,
+		maxIdleTime:  sm.ttl,
 	}
 
 	sm.sessions[sessionID] = session

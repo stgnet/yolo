@@ -27,7 +27,7 @@ import (
 type handoffResult struct {
 	ID      int              // monotonic handoff ID
 	Results []toolExecResult // tool name + output for each executed tool
-	Done    chan struct{}     // closed when the background executor finishes
+	Done    chan struct{}    // closed when the background executor finishes
 }
 
 // toolExecResult is a single tool call's name, arguments, and output string.

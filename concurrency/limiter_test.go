@@ -169,7 +169,7 @@ func TestLimiterGroupCancellation(t *testing.T) {
 	lg := NewLimiterGroup(ctx, 1)
 
 	errorsReceived := make(chan error, 1)
-	
+
 	lg.Go(func(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
@@ -219,7 +219,7 @@ func TestLimiterAvailableSlots(t *testing.T) {
 
 func TestLimiterWithTimeout(t *testing.T) {
 	l := NewLimiter(1).WithTimeout(100 * time.Millisecond)
-	
+
 	l.Acquire()
 	defer l.Release()
 
@@ -234,7 +234,7 @@ func TestLimiterWithTimeout(t *testing.T) {
 
 func BenchmarkLimiterExecute(b *testing.B) {
 	l := NewLimiter(10)
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		l.Execute(func() error {
@@ -247,7 +247,7 @@ func BenchmarkLimiterExecute(b *testing.B) {
 func BenchmarkLimiterGroup(b *testing.B) {
 	ctx := context.Background()
 	lg := NewLimiterGroup(ctx, 10)
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		lg.Go(func(ctx context.Context) error {
