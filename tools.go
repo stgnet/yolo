@@ -110,6 +110,8 @@ var ollamaTools = []ToolDef{
 			"query": {Type: "string", Description: "Search query (required)"},
 			"count": {Type: "integer", Description: "Number of results to return (default: 5, max: 10)"},
 		}, []string{"query"}),
+	toolDef("learn", "Autonomously research and discover self-improvement opportunities from the internet. Uses web search and Reddit to find new features, best practices, and improvements for the YOLO agent.",
+		map[string]ToolParam{}, nil),
 }
 
 // ─── Tool Executor ───────────────────────────────────────────────────
@@ -121,7 +123,7 @@ var validTools = []string{
 	"search_files", "run_command", "spawn_subagent",
 	"list_subagents", "read_subagent_result", "summarize_subagents",
 	"list_models", "switch_model", "think", "restart",
-	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search",
+	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "learn",
 }
 
 // ToolExecutor dispatches tool calls from the LLM to concrete
@@ -204,6 +206,8 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 		return t.gog(args)
 	case "web_search":
 		return t.webSearch(args)
+	case "learn":
+		return t.learn(args)
 	default:
 		return fmt.Sprintf("Error: unknown tool '%s'. Available tools: %s", name, strings.Join(validTools, ", "))
 	}

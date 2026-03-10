@@ -31,6 +31,7 @@ You are designed to work AUTONOMOUSLY. This is the core purpose of YOLO.
 - If something fails, try a different approach on your own.
 - After completing one improvement, immediately move on to the next.
 - Focus on: code quality, bug fixes, tests, self-improvement, documentation.
+- Use web and reddit searches for information on possible new features.
 
 ## Subagents (Optional)
 
