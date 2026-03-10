@@ -20,8 +20,8 @@ import (
 
 // YoloAgent is the central orchestrator. It reads user input, sends messages
 // to the LLM via OllamaClient, dispatches tool calls through ToolExecutor,
-// and persists conversation state with HistoryManager. When idle for
-// IdleThinkDelay seconds it triggers autonomous "thinking" cycles.
+// and persists conversation state with HistoryManager. When no user input is
+// pending it immediately enters autonomous thinking.
 type YoloAgent struct {
 	baseDir         string             // working directory; all file operations are relative to this
 	scriptPath      string             // path to the running binary (used for self-restart)
@@ -32,8 +32,6 @@ type YoloAgent struct {
 	running         bool               // false signals the main loop to exit
 	busy            bool               // true while the agent is processing a chat round
 	subagentCounter int                // monotonic ID for spawned sub-agents
-	lastActivity    time.Time          // timestamp of last user keystroke
-	thinkDelay      int                // seconds to wait before autonomous thinking
 	mu              sync.Mutex         // protects busy, cancelChat, and subagentCounter
 	cancelChat      context.CancelFunc // cancels the in-flight Chat HTTP request
 }
@@ -45,13 +43,11 @@ func NewYoloAgent() *YoloAgent {
 	execPath, _ := os.Executable()
 
 	a := &YoloAgent{
-		baseDir:      baseDir,
-		scriptPath:   execPath,
-		ollama:       NewOllamaClient(OllamaURL),
-		history:      NewHistoryManager(YoloDir),
-		running:      true,
-		lastActivity: time.Now(),
-		thinkDelay:   IdleThinkDelay,
+		baseDir:    baseDir,
+		scriptPath: execPath,
+		ollama:     NewOllamaClient(OllamaURL),
+		history:    NewHistoryManager(YoloDir),
+		running:    true,
 	}
 	a.tools = NewToolExecutor(baseDir, a)
 	return a
@@ -201,8 +197,7 @@ func (a *YoloAgent) displaySessionResumption() {
 }
 
 func (a *YoloAgent) showHelpHint() {
-	cprint(Gray, "  Type a message, or /help for commands.")
-	cprint(Gray, fmt.Sprintf("  Agent thinks autonomously after %ds of idle.\n", IdleThinkDelay))
+	cprint(Gray, "  Type a message, or /help for commands.\n")
 }
 
 // ── Chat loop ──
@@ -324,6 +319,7 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 			if len(preview) > 200 {
 				preview = preview[:200] + "..."
 			}
+			preview = strings.ReplaceAll(preview, "\r", "")
 			preview = strings.ReplaceAll(preview, "\n", " ")
 			cprint(Gray, fmt.Sprintf("  => %s", preview))
 
@@ -650,8 +646,6 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		cprint(Reset, fmt.Sprintf("  Evolutions:  %d", len(a.history.Data.EvolutionLog)))
 		cprint(Reset, fmt.Sprintf("  Working dir: %s", a.baseDir))
 		cprint(Reset, fmt.Sprintf("  Script:      %s", a.scriptPath))
-		cprint(Reset, fmt.Sprintf("  Idle delay:  %ds", IdleThinkDelay))
-		cprint(Reset, fmt.Sprintf("  Think delay: %ds", ThinkLoopDelay))
 
 	case "/restart":
 		cprint(Yellow, "  Restarting YOLO...")
@@ -689,9 +683,6 @@ func (a *YoloAgent) Run() {
 	} else {
 		a.setupFirstRun()
 	}
-
-	a.lastActivity = time.Now()
-	a.thinkDelay = IdleThinkDelay
 
 	// Set up split terminal UI (MUST be done before ANY output)
 	globalUI = NewTerminalUI()
@@ -756,8 +747,8 @@ func (a *YoloAgent) Run() {
 				a.busy = true
 				a.mu.Unlock()
 
-				// Echo user's input with green color and prefix
-				cprint(Green, fmt.Sprintf("  [%s] %s", "you", stripped))
+				// Echo user's input with green color and "you>" prefix
+				cprint(Green, fmt.Sprintf("  you> %s", stripped))
 
 				a.chatWithAgent(stripped, false)
 
@@ -770,32 +761,27 @@ func (a *YoloAgent) Run() {
 				a.showPrompt()
 			}
 
-		case <-time.After(1 * time.Second):
-			// Check for autonomous thinking
+		case <-time.After(100 * time.Millisecond):
+			// No user input — immediately enter autonomous thinking
+			// (the agent is always thinking unless spoken to)
 			a.inputMgr.mu.Lock()
 			bufEmpty := len(a.inputMgr.buf) == 0
 			a.inputMgr.mu.Unlock()
 			if bufEmpty {
-				elapsed := time.Since(a.lastActivity)
-				if elapsed >= time.Duration(a.thinkDelay)*time.Second {
-					a.inputMgr.ClearLine()
-					cprint(Gray, "  [autonomous thinking...]")
+				a.inputMgr.ClearLine()
 
-					a.mu.Lock()
-					a.busy = true
-					a.mu.Unlock()
+				a.mu.Lock()
+				a.busy = true
+				a.mu.Unlock()
 
-					a.chatWithAgent("", true)
+				a.chatWithAgent("", true)
 
-					a.mu.Lock()
-					a.busy = false
-					a.mu.Unlock()
+				a.mu.Lock()
+				a.busy = false
+				a.mu.Unlock()
 
-					a.lastActivity = time.Now()
-					a.thinkDelay = ThinkLoopDelay
-					a.drainQueuedInput()
-					a.showPrompt()
-				}
+				a.drainQueuedInput()
+				a.showPrompt()
 			}
 		}
 	}
@@ -830,7 +816,7 @@ func (a *YoloAgent) drainQueuedInput() {
 			} else if strings.HasPrefix(stripped, "/") {
 				a.handleCommand(stripped)
 			} else if stripped != "" {
-				cprint(Green, fmt.Sprintf("  [%s] %s", "queued", stripped))
+				cprint(Green, fmt.Sprintf("  you> %s", stripped))
 
 				a.mu.Lock()
 				a.busy = true

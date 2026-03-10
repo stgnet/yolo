@@ -248,7 +248,6 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 	var thinkingParts, contentParts []string
 	var toolCalls []ParsedToolCall
 	inThinking := false
-	gotFirstOutput := false
 
 	scanner := bufio.NewScanner(resp.Body)
 	// Increase scanner buffer for large responses
@@ -270,11 +269,11 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 		content := msg.Content
 		tcList := msg.ToolCalls
 
-		// On first real output, print the prompt prefix
-		if !gotFirstOutput && (thinking != "" || content != "" || len(tcList) > 0) {
-			gotFirstOutput = true
-			outPrint(fmt.Sprintf("%s%syolo>%s ", Blue, Bold, Reset))
-		}
+		// Strip carriage returns from LLM output to prevent line overwrites.
+		// \r\n becomes \n (rawWrite will re-add \r\n for raw mode);
+		// standalone \r is simply removed.
+		thinking = strings.ReplaceAll(thinking, "\r", "")
+		content = strings.ReplaceAll(content, "\r", "")
 
 		// Handle thinking tokens
 		if thinking != "" {
@@ -309,11 +308,6 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 		if obj.Done {
 			break
 		}
-	}
-
-	// Print prompt if model returned nothing
-	if !gotFirstOutput {
-		outPrint(fmt.Sprintf("%s%syolo>%s ", Blue, Bold, Reset))
 	}
 
 	if inThinking {
