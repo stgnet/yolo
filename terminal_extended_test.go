@@ -174,7 +174,7 @@ func TestTrackCursorMovementExtended(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ui := &TerminalUI{rows: tt.rows, cols: tt.cols, outRow: 1, outCol: 1}
+			ui := &TerminalUI{rows: tt.rows, cols: tt.cols, outRow: 1, outCol: 1, scrollEnd: tt.rows - 2}
 			ui.trackCursorMovement(tt.text)
 			if ui.outRow != tt.wantRow || ui.outCol != tt.wantCol {
 				t.Errorf("after %q: got row=%d col=%d, want row=%d col=%d",

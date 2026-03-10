@@ -199,8 +199,8 @@ func (im *InputManager) processLoop() {
 				busy := im.agent.busy
 				im.agent.mu.Unlock()
 				trimmed := strings.TrimSpace(line)
-				if busy && trimmed != "" {
-					cprint(Gray, fmt.Sprintf("  [queued: %s]", trimmed))
+				if busy && trimmed != "" && globalUI != nil {
+					globalUI.AddQueuedMessage(trimmed)
 				}
 				// Clear input line after submit
 				im.syncAndRedraw()
