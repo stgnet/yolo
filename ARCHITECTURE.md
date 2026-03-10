@@ -73,7 +73,7 @@ Dispatches tool calls from the LLM to concrete implementations.  All file
 operations are sandboxed under the working directory via `safePath()`, which
 rejects absolute paths and directory-traversal attempts.
 
-The 18 built-in tools:
+The 21 built-in tools:
 
 | Tool | Description |
 |---|---|
