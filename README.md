@@ -13,9 +13,10 @@ thinks, and improves — even when you're not typing.
   resume automatically.
 - **Sub-agents** — background goroutines that run focused LLM tasks in
   parallel.
-- **Split-screen terminal UI** — scrollable output on top, fixed input line
-  on the bottom, with word wrapping, horizontal scrolling, and resize
-  handling.
+- **Split-screen terminal UI** — scrollable output on top, multi-line input
+  at the bottom with word wrapping and resize handling. Queued messages
+  (typed while the agent is working) are shown above the input prompt so
+  you can see what's pending.
 - **Self-improving** — can read and modify its own source code, rebuild, and
   replace the running binary.
 - **UTF-8 input** — full support for multi-byte characters (accented

@@ -119,18 +119,25 @@ Handles terminal input in raw mode, running in its own goroutine:
 
 ### TerminalUI (`terminal.go`)
 
-Manages a split-screen terminal layout:
+Manages a split-screen terminal layout with a dynamically sized bottom area:
 
 - **Output region** (top): scrollable, with word wrapping and ANSI-aware
-  cursor tracking.
-- **Divider** (second-to-last row): a horizontal line.
-- **Input line** (bottom row): fixed position, with horizontal scrolling for
-  long input.
+  cursor tracking. The scroll region shrinks/grows automatically as the
+  bottom area changes size.
+- **Divider**: a horizontal line separating output from the input area.
+  Moves up when the input area grows.
+- **Queued messages** (between divider and input): messages submitted while
+  the agent is busy are displayed here as `[queued] text` in gray. They
+  remain visible until the agent processes each one, providing clear
+  feedback about pending input.
+- **Input area** (bottom): multi-line with word wrapping. Long input
+  expands upward instead of horizontal scrolling. The total bottom area
+  (queued messages + input lines) is capped at half the terminal height.
 
 Also provides:
 - `cprint` / `cprintNoNL`: colour-aware output helpers.
 - `stripAnsiCodes`: removes ANSI escapes for width calculations.
-- `Spinner`: animated thinking indicator.
+- `AddQueuedMessage` / `RemoveQueuedMessage`: manage the visible queue.
 
 ### Configuration (`config.go`)
 
@@ -225,8 +232,8 @@ YoloAgent.spawnSubagent(task, model)
    run with stdin connected to /dev/null and a timeout.
 2. **Graceful degradation**: tool call parsing tries five formats before
    giving up. History corruption resets to empty rather than crashing.
-3. **Concurrency**: InputManager, sub-agents, and the Spinner run in their
-   own goroutines. Shared state is protected by mutexes.
+3. **Concurrency**: InputManager and sub-agents run in their own goroutines.
+   Shared state is protected by mutexes.
 4. **Minimal dependencies**: only `golang.org/x/term` beyond the standard
    library.
 5. **Self-modification**: the agent can read and edit its own source, rebuild

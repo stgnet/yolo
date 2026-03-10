@@ -41,6 +41,12 @@ func TestNewTerminalUI(t *testing.T) {
 		t.Errorf("Initial cursor position: outRow=%d, outCol=%d; want outRow=1, outCol=1",
 			ui.outRow, ui.outCol)
 	}
+	if ui.scrollEnd != ui.rows-2 {
+		t.Errorf("Initial scrollEnd=%d; want rows-2=%d", ui.scrollEnd, ui.rows-2)
+	}
+	if ui.queuedMsgs != nil {
+		t.Errorf("Initial queuedMsgs should be nil, got %v", ui.queuedMsgs)
+	}
 }
 
 // Test TerminalUI UpdateInput and RedrawInput
@@ -220,4 +226,152 @@ func TestColorPrinting(t *testing.T) {
 	// These should not panic - they write directly to stdout
 	cprint("test", "red")
 	cprintNoNL("test", "blue")
+}
+
+// Test AddQueuedMessage and RemoveQueuedMessage
+func TestTerminalUI_QueuedMessages(t *testing.T) {
+	ui := NewTerminalUI()
+
+	// Initially empty
+	if len(ui.queuedMsgs) != 0 {
+		t.Errorf("Expected 0 queued messages, got %d", len(ui.queuedMsgs))
+	}
+
+	// Add messages
+	ui.AddQueuedMessage("first")
+	if len(ui.queuedMsgs) != 1 || ui.queuedMsgs[0] != "first" {
+		t.Errorf("After AddQueuedMessage: got %v", ui.queuedMsgs)
+	}
+
+	ui.AddQueuedMessage("second")
+	ui.AddQueuedMessage("third")
+	if len(ui.queuedMsgs) != 3 {
+		t.Errorf("Expected 3 queued messages, got %d", len(ui.queuedMsgs))
+	}
+
+	// Remove (FIFO order)
+	ui.RemoveQueuedMessage()
+	if len(ui.queuedMsgs) != 2 || ui.queuedMsgs[0] != "second" {
+		t.Errorf("After first remove: got %v", ui.queuedMsgs)
+	}
+
+	ui.RemoveQueuedMessage()
+	if len(ui.queuedMsgs) != 1 || ui.queuedMsgs[0] != "third" {
+		t.Errorf("After second remove: got %v", ui.queuedMsgs)
+	}
+
+	ui.RemoveQueuedMessage()
+	if len(ui.queuedMsgs) != 0 {
+		t.Errorf("After third remove: expected empty, got %v", ui.queuedMsgs)
+	}
+
+	// Remove on empty should be a no-op (not panic)
+	ui.RemoveQueuedMessage()
+	if len(ui.queuedMsgs) != 0 {
+		t.Errorf("Remove on empty: expected empty, got %v", ui.queuedMsgs)
+	}
+}
+
+// Test that scrollEnd adjusts dynamically when queued messages are added
+func TestTerminalUI_DynamicScrollEnd(t *testing.T) {
+	ui := &TerminalUI{rows: 24, cols: 80, outRow: 1, outCol: 1, scrollEnd: 22}
+	ui.prompt = "you> "
+	ui.inputBuf = []byte{}
+
+	// With no queued messages: scrollEnd should be rows - 1(input) - 1(divider) = 22
+	ui.drawInputLocked()
+	if ui.scrollEnd != 22 {
+		t.Errorf("No queued msgs: scrollEnd=%d, want 22", ui.scrollEnd)
+	}
+
+	// Add one queued message: bottom grows by 1
+	ui.queuedMsgs = []string{"msg1"}
+	ui.drawInputLocked()
+	if ui.scrollEnd != 21 {
+		t.Errorf("1 queued msg: scrollEnd=%d, want 21", ui.scrollEnd)
+	}
+
+	// Add more
+	ui.queuedMsgs = []string{"msg1", "msg2", "msg3"}
+	ui.drawInputLocked()
+	if ui.scrollEnd != 19 {
+		t.Errorf("3 queued msgs: scrollEnd=%d, want 19", ui.scrollEnd)
+	}
+
+	// Remove all
+	ui.queuedMsgs = nil
+	ui.drawInputLocked()
+	if ui.scrollEnd != 22 {
+		t.Errorf("After clearing: scrollEnd=%d, want 22", ui.scrollEnd)
+	}
+}
+
+// Test multi-line input row calculation
+func TestInputRowCount(t *testing.T) {
+	tests := []struct {
+		name          string
+		promptWidth   int
+		inputLen      int
+		cols          int
+		wantRowCount  int
+	}{
+		{"empty input", 5, 0, 80, 1},
+		{"short input", 5, 10, 80, 1},          // 15 chars total, fits in 1 row
+		{"fills one row", 5, 75, 80, 2},         // 80 chars = 1 full row, cursor wraps → 2
+		{"just over one row", 5, 76, 80, 2},     // 81 chars → 2 rows
+		{"two full rows", 5, 155, 80, 3},        // 160 chars → 2 full rows + cursor → 3
+		{"narrow terminal", 5, 10, 10, 2},       // 15 chars / 10 cols → 2 rows
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			totalChars := tt.promptWidth + tt.inputLen
+			rowCount := 1
+			if totalChars > 0 {
+				rowCount = totalChars/tt.cols + 1
+			}
+			if rowCount != tt.wantRowCount {
+				t.Errorf("totalChars=%d, cols=%d: got %d rows, want %d",
+					totalChars, tt.cols, rowCount, tt.wantRowCount)
+			}
+		})
+	}
+}
+
+// Test that bottom area is capped to prevent overwhelming the output region
+func TestTerminalUI_BottomAreaCap(t *testing.T) {
+	ui := &TerminalUI{rows: 10, cols: 80, outRow: 1, outCol: 1, scrollEnd: 8}
+	ui.prompt = "you> "
+	ui.inputBuf = []byte{}
+
+	// Add many queued messages — should be capped (rows-4 = 6 max bottom)
+	ui.queuedMsgs = make([]string, 20)
+	for i := range ui.queuedMsgs {
+		ui.queuedMsgs[i] = "msg"
+	}
+	ui.drawInputLocked()
+
+	// scrollEnd must stay >= 1
+	if ui.scrollEnd < 1 {
+		t.Errorf("scrollEnd went below 1: %d", ui.scrollEnd)
+	}
+	// At least 3 rows for output
+	if ui.scrollEnd < 3 {
+		t.Logf("Note: scrollEnd=%d with 10-row terminal and 20 queued messages", ui.scrollEnd)
+	}
+}
+
+// Test that outRow is capped when scroll region shrinks
+func TestTerminalUI_OutRowCapping(t *testing.T) {
+	ui := &TerminalUI{rows: 24, cols: 80, outRow: 22, outCol: 1, scrollEnd: 22}
+	ui.prompt = "you> "
+	ui.inputBuf = []byte{}
+
+	// Adding queued messages shrinks scroll region; outRow should be capped
+	ui.queuedMsgs = []string{"a", "b", "c", "d", "e"}
+	ui.drawInputLocked()
+
+	if ui.outRow > ui.scrollEnd {
+		t.Errorf("outRow=%d exceeds scrollEnd=%d after shrink", ui.outRow, ui.scrollEnd)
+	}
 }

@@ -332,6 +332,16 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 			toolLog = append(toolLog, toolLogEntry{name: name, args: args, result: cleanResult})
 		}
 
+		// If the user has queued input, nudge the agent to finish up
+		if len(a.inputMgr.Lines) > 0 {
+			roundMsgs = append(roundMsgs, ChatMessage{
+				Role: "system",
+				Content: "The user has typed a new message and is waiting for you. " +
+					"Wrap up what you are doing and provide a brief response so " +
+					"their message can be processed.",
+			})
+		}
+
 		roundNum++
 	}
 
@@ -808,6 +818,12 @@ func (a *YoloAgent) drainQueuedInput() {
 			}
 			stripped := strings.TrimSpace(line.Text)
 			lower := strings.ToLower(stripped)
+
+			// Remove from queued display (no-op if message wasn't queued)
+			if stripped != "" && globalUI != nil {
+				globalUI.RemoveQueuedMessage()
+			}
+
 			if lower == "exit" || lower == "quit" {
 				a.running = false
 				return
