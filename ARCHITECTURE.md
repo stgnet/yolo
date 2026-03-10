@@ -95,6 +95,31 @@ The 21 built-in tools:
 | `switch_model` | Change the active model |
 | `think` | Record reasoning without side effects |
 | `restart` | Rebuild from source and `exec` the new binary |
+| `reddit` | Fetch Reddit posts (search, subreddit, thread) |
+| `gog` | Google Workspace integration (Gmail, Calendar, Drive) |
+| `web_search` | Search web via DuckDuckGo IA API + Wikipedia with caching |
+
+### web_search details
+
+The `web_search` tool provides intelligent web search with the following features:
+
+- **Primary source**: DuckDuckGo Instant Answer API (`api.duckduckgo.com`) for quick facts and summaries
+- **Fallback**: Wikipedia Search API when DuckDuckGo has no instant answer
+- **Caching**: 5-minute TTL in-memory cache to avoid redundant API calls
+- **Parameters**: `query` (required), `count` (1-10, default: 5)
+
+The DuckDuckGo IA API only returns data for well-known topics with Wikipedia entries. For specific queries without instant answers, the tool automatically falls back to Wikipedia search which provides broader coverage.
+
+Example usage:
+```json
+{
+  "name": "web_search",
+  "arguments": {
+    "query": "go programming language history",
+    "count": 3
+  }
+}
+```
 
 ### HistoryManager (`history.go`)
 
