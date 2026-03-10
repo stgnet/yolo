@@ -81,7 +81,16 @@ Search the internet using DuckDuckGo's Instant Answer API with Wikipedia fallbac
 - Research problems and solutions
 - Stay updated on trends and best practices
 
-See [web_search deep dive](./tools.md#web_search-tool) for more details.
+**Example Output:**
+```
+Wikipedia results for "golang concurrency patterns":
+
+1. **[Go (programming language)](https://en.wikipedia.org/wiki/Go_(programming_language))**
+   Go is a programming language developed at Google...
+   
+2. **[Goroutine](https://en.wikipedia.org/wiki/Goroutine)**
+   A goroutine is a lightweight thread of execution...
+```
 
 ---
 
