@@ -93,6 +93,8 @@ var ollamaTools = []ToolDef{
 
 // ─── Tool Executor ───────────────────────────────────────────────────
 
+// validTools is the canonical list of tool names recognised by Execute.
+// It is also used by parseTextToolCalls to filter bracket-format matches.
 var validTools = []string{
 	"read_file", "write_file", "edit_file", "list_files",
 	"search_files", "run_command", "spawn_subagent",
@@ -101,11 +103,15 @@ var validTools = []string{
 	"make_dir", "remove_dir", "copy_file", "move_file",
 }
 
+// ToolExecutor dispatches tool calls from the LLM to concrete
+// implementations.  All file operations are sandboxed under baseDir
+// via safePath.
 type ToolExecutor struct {
-	baseDir string
-	agent   *YoloAgent
+	baseDir string     // root directory for file operations
+	agent   *YoloAgent // back-reference for sub-agent spawning, model switching, etc.
 }
 
+// NewToolExecutor creates an executor rooted at baseDir.
 func NewToolExecutor(baseDir string, agent *YoloAgent) *ToolExecutor {
 	return &ToolExecutor{baseDir: baseDir, agent: agent}
 }
@@ -131,6 +137,8 @@ func (t *ToolExecutor) safePath(path string) (string, error) {
 	return full, nil
 }
 
+// Execute dispatches a tool call by name. It returns a human-readable result
+// string; errors are returned inline prefixed with "Error:".
 func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 	switch name {
 	case "read_file":

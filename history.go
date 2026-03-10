@@ -10,25 +10,33 @@ import (
 )
 
 // ─── History Manager ──────────────────────────────────────────────────
+//
+// HistoryManager persists the conversation and evolution log to a JSON
+// file inside the .yolo directory.  It is safe for concurrent use.
 
+// HistoryMessage is a single timestamped message in the conversation.
 type HistoryMessage struct {
-	Role    string         `json:"role"`
+	Role    string         `json:"role"`           // "user", "assistant", "tool", or "system"
 	Content string         `json:"content"`
-	TS      string         `json:"ts"`
-	Meta    map[string]any `json:"meta,omitempty"`
+	TS      string         `json:"ts"`             // RFC 3339 timestamp
+	Meta    map[string]any `json:"meta,omitempty"` // optional key-value metadata
 }
 
+// EvolutionEntry records a significant agent event (e.g. model switch).
 type EvolutionEntry struct {
 	TS     string `json:"ts"`
-	Action string `json:"action"`
-	Detail string `json:"detail"`
+	Action string `json:"action"` // short action tag, e.g. "model_switch"
+	Detail string `json:"detail"` // human-readable description
 }
 
+// HistoryConfig stores session-level configuration persisted alongside
+// messages.
 type HistoryConfig struct {
-	Model   string `json:"model"`
-	Created string `json:"created"`
+	Model   string `json:"model"`   // currently selected Ollama model
+	Created string `json:"created"` // session creation timestamp
 }
 
+// HistoryData is the top-level JSON structure written to history.json.
 type HistoryData struct {
 	Version      int              `json:"version"`
 	Config       HistoryConfig    `json:"config"`
@@ -36,6 +44,8 @@ type HistoryData struct {
 	EvolutionLog []EvolutionEntry `json:"evolution_log"`
 }
 
+// HistoryManager owns the in-memory HistoryData and handles reading and
+// writing it to disk.  All mutating methods are goroutine-safe.
 type HistoryManager struct {
 	yoloDir     string
 	historyFile string
@@ -43,6 +53,8 @@ type HistoryManager struct {
 	mu          sync.Mutex
 }
 
+// NewHistoryManager creates a manager that stores its file in yoloDir.
+// The data starts empty; call Load to read an existing file.
 func NewHistoryManager(yoloDir string) *HistoryManager {
 	h := &HistoryManager{
 		yoloDir:     yoloDir,
@@ -64,6 +76,8 @@ func (h *HistoryManager) empty() HistoryData {
 	}
 }
 
+// Load reads history.json from disk. Returns true on success, false if the
+// file is missing or corrupt (in which case Data is reset to empty).
 func (h *HistoryManager) Load() bool {
 	data, err := os.ReadFile(h.historyFile)
 	if err != nil {
@@ -77,6 +91,8 @@ func (h *HistoryManager) Load() bool {
 	return true
 }
 
+// Save writes the current Data to history.json atomically (write-to-tmp then
+// rename). It creates the yoloDir if it does not exist.
 func (h *HistoryManager) Save() error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -98,6 +114,7 @@ func (h *HistoryManager) Save() error {
 	return nil
 }
 
+// AddMessage appends a new message and persists to disk.
 func (h *HistoryManager) AddMessage(role, content string, meta map[string]any) {
 	h.mu.Lock()
 	msg := HistoryMessage{
@@ -111,6 +128,7 @@ func (h *HistoryManager) AddMessage(role, content string, meta map[string]any) {
 	h.Save()
 }
 
+// AddEvolution appends an evolution event and persists to disk.
 func (h *HistoryManager) AddEvolution(action, description string) {
 	h.mu.Lock()
 	h.Data.EvolutionLog = append(h.Data.EvolutionLog, EvolutionEntry{
@@ -122,6 +140,9 @@ func (h *HistoryManager) AddEvolution(action, description string) {
 	h.Save()
 }
 
+// GetContextMessages returns the last maxMsgs messages converted to
+// ChatMessage format suitable for sending to the LLM. Tool and system
+// messages are re-mapped to the "user" role with appropriate prefixes.
 func (h *HistoryManager) GetContextMessages(maxMsgs int) []ChatMessage {
 	msgs := h.Data.Messages
 	start := 0
@@ -144,10 +165,12 @@ func (h *HistoryManager) GetContextMessages(maxMsgs int) []ChatMessage {
 	return out
 }
 
+// GetModel returns the currently configured model name.
 func (h *HistoryManager) GetModel() string {
 	return h.Data.Config.Model
 }
 
+// SetModel updates the configured model and persists to disk.
 func (h *HistoryManager) SetModel(model string) {
 	h.Data.Config.Model = model
 	h.Save()

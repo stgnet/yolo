@@ -18,22 +18,28 @@ import (
 
 // ─── Main Agent ───────────────────────────────────────────────────────
 
+// YoloAgent is the central orchestrator. It reads user input, sends messages
+// to the LLM via OllamaClient, dispatches tool calls through ToolExecutor,
+// and persists conversation state with HistoryManager. When idle for
+// IdleThinkDelay seconds it triggers autonomous "thinking" cycles.
 type YoloAgent struct {
-	baseDir         string
-	scriptPath      string
-	ollama          *OllamaClient
-	history         *HistoryManager
-	tools           *ToolExecutor
-	inputMgr        *InputManager
-	running         bool
-	busy            bool // true while agent is processing
-	subagentCounter int
-	lastActivity    time.Time
-	thinkDelay      int
-	mu              sync.Mutex
-	cancelChat      context.CancelFunc // cancels the current Chat HTTP request
+	baseDir         string             // working directory; all file operations are relative to this
+	scriptPath      string             // path to the running binary (used for self-restart)
+	ollama          *OllamaClient      // LLM communication
+	history         *HistoryManager    // persistent conversation and evolution log
+	tools           *ToolExecutor      // tool dispatcher
+	inputMgr        *InputManager      // async terminal input
+	running         bool               // false signals the main loop to exit
+	busy            bool               // true while the agent is processing a chat round
+	subagentCounter int                // monotonic ID for spawned sub-agents
+	lastActivity    time.Time          // timestamp of last user keystroke
+	thinkDelay      int                // seconds to wait before autonomous thinking
+	mu              sync.Mutex         // protects busy, cancelChat, and subagentCounter
+	cancelChat      context.CancelFunc // cancels the in-flight Chat HTTP request
 }
 
+// NewYoloAgent creates an agent rooted in the current working directory
+// and connects to the Ollama instance at OllamaURL.
 func NewYoloAgent() *YoloAgent {
 	baseDir, _ := os.Getwd()
 	execPath, _ := os.Executable()
@@ -51,6 +57,8 @@ func NewYoloAgent() *YoloAgent {
 	return a
 }
 
+// getSystemPrompt loads SYSTEM_PROMPT.md and interpolates runtime values
+// (working directory, model name, timestamp, etc.).
 func (a *YoloAgent) getSystemPrompt() string {
 	// Load the system prompt template from file
 	systemPromptPath := filepath.Join(a.baseDir, "SYSTEM_PROMPT.md")
@@ -79,13 +87,16 @@ func (a *YoloAgent) getSystemPrompt() string {
 	return prompt
 }
 
+// restart rebuilds the binary from source and replaces the running process
+// via syscall.Exec. It does not return on success.
 func (a *YoloAgent) restart() {
-	// Use the tool executor's restart functionality
 	a.tools.restart(make(map[string]any))
 }
 
 // ── Setup ──
 
+// setupFirstRun runs on first launch (no history file). It connects to Ollama,
+// lets the user pick a model, and records the choice.
 func (a *YoloAgent) setupFirstRun() {
 	cprint(Cyan+Bold, "\n  YOLO - Your Own Living Operator")
 	cprint(Gray, "  A self-evolving AI agent for software development")
@@ -196,6 +207,10 @@ func (a *YoloAgent) showHelpHint() {
 
 // ── Chat loop ──
 
+// chatWithAgent sends userMessage (or an autonomous prompt when userMessage is
+// empty and autonomous is true) to the LLM and iterates: each response may
+// contain tool calls which are executed and fed back until the model produces
+// a final text-only reply.
 func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 	// Clear the user's input line so agent output appears cleanly
 	if a.inputMgr != nil {
@@ -327,6 +342,15 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 	}
 }
 
+// parseTextToolCalls extracts tool calls from plain-text LLM output when the
+// model does not use native tool_calls. It tries five formats in order and
+// returns on the first that produces results:
+//
+//  1. <tool_call>{"name":"...", "args":{...}}</tool_call>      (JSON)
+//  2. <tool_call><function=name>...</function></tool_call>     (XML)
+//  3. [tool_name] {"key":"value"}                              (Bracket)
+//  4. <tool_name>{"key":"value"}</tool_name>                   (Tag)
+//  5. [tool activity]\n[tool_name] => params\n[/tool activity] (Activity block)
 func (a *YoloAgent) parseTextToolCalls(text string) []ParsedToolCall {
 	var calls []ParsedToolCall
 
@@ -475,6 +499,9 @@ func parseParamString(paramStr string) map[string]any {
 
 // ── Model switching ──
 
+// switchModel validates that model is available in Ollama, updates the
+// history config, and logs an evolution event. Returns an error string if
+// the model is not found.
 func (a *YoloAgent) switchModel(model string) string {
 	models := a.ollama.ListModels()
 	found := false
@@ -496,6 +523,8 @@ func (a *YoloAgent) switchModel(model string) string {
 
 // ── Sub-agents ──
 
+// spawnSubagent launches a background goroutine that sends task to the LLM
+// (without tool access) and writes the result to .yolo/subagents/agent_{id}.json.
 func (a *YoloAgent) spawnSubagent(task, model string) string {
 	a.mu.Lock()
 	a.subagentCounter++
@@ -549,6 +578,7 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 
 // ── Slash commands ──
 
+// handleCommand processes interactive slash commands (/help, /model, /clear, etc.).
 func (a *YoloAgent) handleCommand(cmd string) {
 	parts := strings.SplitN(cmd, " ", 2)
 	command := strings.ToLower(parts[0])
@@ -638,6 +668,9 @@ func (a *YoloAgent) showPrompt() {
 	a.inputMgr.ShowPrompt(prompt)
 }
 
+// Run is the top-level entry point. It loads (or creates) session history,
+// initialises the terminal UI and input manager, registers signal handlers,
+// and enters the main event loop. It blocks until the user exits.
 func (a *YoloAgent) Run() {
 	hasHistory := a.history.Load()
 

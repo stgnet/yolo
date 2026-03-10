@@ -2,6 +2,39 @@
 
 All notable changes to YOLO will be documented in this file.
 
+## [Unreleased] - 2026-03-10
+
+### Added
+- **ARCHITECTURE.md**: Comprehensive system design document with component
+  diagrams, data-flow descriptions, and file layout reference.
+- **CONTRIBUTING.md**: Development workflow, code style, testing guide, and
+  instructions for adding new tools.
+- **Expanded test coverage**: ~100 new test cases across 6 new test files
+  covering HistoryManager, ToolExecutor, TerminalUI, InputManager, agent
+  tool-call parsing, and MCP server handlers.
+- **UTF-8 terminal input**: Multi-byte characters (accented letters, CJK,
+  emoji) are now correctly assembled from the raw byte stream.
+
+### Fixed
+- **Slice mutation bug**: `append(baseMsgs, roundMsgs...)` in the chat loop
+  could corrupt `baseMsgs` across iterations; replaced with explicit copy.
+- **Silent save failures**: `HistoryManager.Save()` now returns errors
+  instead of silently ignoring `os.MkdirAll`, `os.WriteFile`, and
+  `os.Rename` failures. Callers log a warning.
+
+### Removed
+- **Dead code**: `MessageHistory`, `MessageHistoryItem`, `Color` enum,
+  `escapeMarkdown`, `LoadMessageHistory`, and `NewMessageHistory` — all
+  unused legacy code.
+- **Auto .gitignore**: `make_dir` no longer silently creates a `.gitignore`
+  with `*` in every new directory.
+
+### Changed
+- **Improved documentation**: Added godoc comments to all exported types,
+  functions, and constants across `agent.go`, `ollama.go`, `tools.go`,
+  `history.go`, `config.go`. Updated README.md to reflect current features
+  and project state.
+
 ## [Unreleased] - 2026-03-09
 
 ### Added
