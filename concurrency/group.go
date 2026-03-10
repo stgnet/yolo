@@ -301,11 +301,8 @@ func LimitedConcurrency(ctx context.Context, maxWorkers int, jobs []func(context
 			defer wg.Done()
 			defer func() { <-sem }() // Release semaphore
 
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				// Context not cancelled, proceed with job
+			if ctx.Err() != nil {
+				return // Context already cancelled before we started
 			}
 
 			if err := f(ctx); err != nil {
