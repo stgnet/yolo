@@ -298,11 +298,51 @@ func TestTerminalUI_DynamicScrollEnd(t *testing.T) {
 		t.Errorf("3 queued msgs: scrollEnd=%d, want 19", ui.scrollEnd)
 	}
 
-	// Remove all
+	// Remove one: area should NOT shrink (grow-only) — peak was 4 bottom rows
+	ui.queuedMsgs = []string{"msg2", "msg3"}
+	ui.drawInputLocked()
+	if ui.scrollEnd != 19 {
+		t.Errorf("After removing 1 (grow-only): scrollEnd=%d, want 19", ui.scrollEnd)
+	}
+
+	// Remove all but input buffer is not empty: should NOT shrink
 	ui.queuedMsgs = nil
+	ui.inputBuf = []byte("typing")
+	ui.drawInputLocked()
+	if ui.scrollEnd != 19 {
+		t.Errorf("Queue empty but input not empty: scrollEnd=%d, want 19", ui.scrollEnd)
+	}
+
+	// Remove all AND clear input: should shrink back to single line
+	ui.queuedMsgs = nil
+	ui.inputBuf = []byte{}
 	ui.drawInputLocked()
 	if ui.scrollEnd != 22 {
-		t.Errorf("After clearing: scrollEnd=%d, want 22", ui.scrollEnd)
+		t.Errorf("After clearing both: scrollEnd=%d, want 22", ui.scrollEnd)
+	}
+}
+
+// Test multi-line queued messages expand the bottom area correctly
+func TestTerminalUI_MultiLineQueuedMessages(t *testing.T) {
+	ui := &TerminalUI{rows: 24, cols: 80, outRow: 1, outCol: 1, scrollEnd: 22}
+	ui.prompt = "you> "
+	ui.inputBuf = []byte{}
+
+	// A queued message with 3 lines should take 3 rows
+	ui.queuedMsgs = []string{"line1\nline2\nline3"}
+	ui.drawInputLocked()
+	// 3 queued lines + 1 input row + 1 divider = 5, scrollEnd = 24 - 4 - 1 = 19
+	if ui.scrollEnd != 19 {
+		t.Errorf("3-line queued msg: scrollEnd=%d, want 19", ui.scrollEnd)
+	}
+
+	// Two messages, one multi-line: 2 + 1 = 3 queued lines
+	ui.peakBottomRows = 0 // reset for this test
+	ui.queuedMsgs = []string{"first\nsecond", "third"}
+	ui.drawInputLocked()
+	// 3 queued lines + 1 input = 4 bottom rows, scrollEnd = 24 - 4 - 1 = 19
+	if ui.scrollEnd != 19 {
+		t.Errorf("2 msgs (one multi-line): scrollEnd=%d, want 19", ui.scrollEnd)
 	}
 }
 
