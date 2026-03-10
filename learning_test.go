@@ -26,8 +26,13 @@ func TestNewLearningManager(t *testing.T) {
 func TestLearningManagerLoadHistory(t *testing.T) {
 	executor := &ToolExecutor{}
 
+	// Create a unique temp file to avoid conflicts with existing files
+	tmpFile := ".yolo_learning_test_" + t.Name() + ".json"
+	defer os.Remove(tmpFile)
+
 	// Test with non-existent file
 	lm := NewLearningManager(".", executor)
+	lm.historyPath = tmpFile
 	err := lm.LoadHistory()
 	if err != nil {
 		t.Errorf("Expected no error for non-existent file, got %v", err)
@@ -38,11 +43,9 @@ func TestLearningManagerLoadHistory(t *testing.T) {
 
 	// Test with valid JSON
 	testData := `[]`
-	tmpFile := ".yolo_learning_test.json"
 	os.WriteFile(tmpFile, []byte(testData), 0644)
-	defer os.Remove(tmpFile)
 
-	lm.historyPath = tmpFile
+	lm.sessions = nil // Reset for next test
 	err = lm.LoadHistory()
 	if err != nil {
 		t.Errorf("Expected no error for valid empty JSON, got %v", err)
