@@ -28,6 +28,12 @@ All notable changes to YOLO will be documented in this file.
   unused legacy code.
 - **Auto .gitignore**: `make_dir` no longer silently creates a `.gitignore`
   with `*` in every new directory.
+- **Unused MCP packages**: `internal/mcp/` and `internal/mcpclient/` — not
+  imported by any code in the main module.
+- **Stale docs**: `MIGRATION_SUMMARY.md` (completed migration), `TOOLS.md`
+  (outdated tool names).
+- **Misc**: `send_email.sh` (unrelated script), `test_move_source.txt`
+  (leftover test fixture).
 
 ### Changed
 - **Improved documentation**: Added godoc comments to all exported types,
