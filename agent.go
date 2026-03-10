@@ -1017,7 +1017,13 @@ func (a *YoloAgent) Run() {
 }
 
 // drainQueuedInput processes any lines that were typed while the agent was busy.
+// Multiple queued chat messages are combined (newline-separated) into a single
+// message so the agent can handle them in one round instead of one-at-a-time.
 func (a *YoloAgent) drainQueuedInput() {
+	var combined []string
+
+	// First pass: drain all queued lines, handling special cases immediately
+	// and collecting regular chat messages for batching.
 	for {
 		select {
 		case line := <-a.inputMgr.Lines:
@@ -1040,21 +1046,43 @@ func (a *YoloAgent) drainQueuedInput() {
 				a.running = false
 				return
 			} else if strings.HasPrefix(stripped, "/") {
+				// Process any collected chat messages before the command.
+				if len(combined) > 0 {
+					msg := strings.Join(combined, "\n")
+					cprint(Green, fmt.Sprintf("  you> %s", msg))
+
+					a.mu.Lock()
+					a.busy = true
+					a.mu.Unlock()
+
+					a.chatWithAgent(msg, false)
+
+					a.mu.Lock()
+					a.busy = false
+					a.mu.Unlock()
+
+					combined = nil
+				}
 				a.handleCommand(stripped)
 			} else if stripped != "" {
-				cprint(Green, fmt.Sprintf("  you> %s", stripped))
+				combined = append(combined, stripped)
+			}
+		default:
+			// No more queued messages — send the combined batch.
+			if len(combined) > 0 {
+				msg := strings.Join(combined, "\n")
+				cprint(Green, fmt.Sprintf("  you> %s", msg))
 
 				a.mu.Lock()
 				a.busy = true
 				a.mu.Unlock()
 
-				a.chatWithAgent(stripped, false)
+				a.chatWithAgent(msg, false)
 
 				a.mu.Lock()
 				a.busy = false
 				a.mu.Unlock()
 			}
-		default:
 			return
 		}
 	}
