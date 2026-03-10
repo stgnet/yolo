@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"crypto/md5"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -1291,6 +1293,45 @@ type webSearchResult struct {
 	} `json:"related_topics,omitempty"`
 }
 
+// searchCacheEntry represents a cached web search result
+type searchCacheEntry struct {
+	Result string    `json:"result"`
+	Ts     time.Time `json:"ts"` // timestamp when cached
+}
+
+// searchCache is a thread-safe in-memory cache for web search results
+var searchCache = &sync.Map{}
+var searchCacheTTL = 5 * time.Minute // Cache entries expire after 5 minutes
+
+// getSearchCacheKey generates a unique key for caching
+func getSearchCacheKey(query string, count int) string {
+	hash := md5.Sum([]byte(fmt.Sprintf("%s:%d", strings.ToLower(query), count)))
+	return fmt.Sprintf("%x", hash[:8]) // Use first 8 bytes of MD5 as key
+}
+
+// getFromSearchCache retrieves a cached result if available and not expired
+func (t *ToolExecutor) getFromSearchCache(key string) (string, bool) {
+	if entry, ok := searchCache.Load(key); ok {
+		if e, ok := entry.(*searchCacheEntry); ok {
+			if time.Since(e.Ts) < searchCacheTTL {
+				return e.Result, true
+			}
+		}
+		searchCache.Delete(key) // Remove expired entry
+	}
+	return "", false
+}
+
+// addToSearchCache stores a result in the cache
+func (t *ToolExecutor) addToSearchCache(key, result string) {
+	if result != "" && !t.isEmptySearchResult(result) {
+		searchCache.Store(key, &searchCacheEntry{
+			Result: result,
+			Ts:     time.Now(),
+		})
+	}
+}
+
 // webSearch performs a web search using DuckDuckGo's Instant Answer API with Wikipedia fallback
 func (t *ToolExecutor) webSearch(args map[string]any) string {
 	query := getStringArg(args, "query", "")
@@ -1306,11 +1347,19 @@ func (t *ToolExecutor) webSearch(args map[string]any) string {
 		count = 5
 	}
 
+	cacheKey := getSearchCacheKey(query, count)
+
+	// Check cache first
+	if cachedResult, ok := t.getFromSearchCache(cacheKey); ok {
+		return fmt.Sprintf("[Cached] %s", cachedResult)
+	}
+
 	// Try DuckDuckGo first
 	ddgResult := t.searchDuckDuckGo(query, count)
 
 	// If DuckDuckGo returned meaningful results, use them
 	if !t.isEmptySearchResult(ddgResult) {
+		t.addToSearchCache(cacheKey, ddgResult)
 		return ddgResult
 	}
 
@@ -1324,9 +1373,12 @@ func (t *ToolExecutor) webSearch(args map[string]any) string {
 
 	// Combine both if DuckDuckGo had partial info
 	if ddgResult != "" && !t.isEmptySearchResult(ddgResult) {
-		return ddgResult + "\n---\n\n" + wikiResult
+		combined := ddgResult + "\n---\n\n" + wikiResult
+		t.addToSearchCache(cacheKey, combined)
+		return combined
 	}
 
+	t.addToSearchCache(cacheKey, wikiResult)
 	return wikiResult
 }
 
