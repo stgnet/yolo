@@ -1388,6 +1388,7 @@ func (t *ToolExecutor) isEmptySearchResult(result string) bool {
 		"No results found",
 		"Error:",
 		"returned no relevant information",
+		"Try a different search term",
 	}
 
 	for _, pattern := range emptyPatterns {
