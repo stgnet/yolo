@@ -144,13 +144,13 @@ func (lg *LimiterGroup) Go(f func(context.Context) error) {
 		lg.mu.Lock()
 		lg.running++
 		lg.mu.Unlock()
-		
+
 		err := f(ctx)
-		
+
 		lg.mu.Lock()
 		lg.running--
 		lg.mu.Unlock()
-		
+
 		return err
 	}
 
