@@ -95,8 +95,8 @@ func TestGroup_Cancel(t *testing.T) {
 			case <-ctx.Done():
 				atomic.AddInt32(&cancelled, 1)
 				return ctx.Err()
-			default:
-				time.Sleep(50 * time.Millisecond) // Longer sleep to ensure some get cancelled
+			case <-time.After(50 * time.Millisecond):
+				// Work completed
 				atomic.AddInt32(&executed, 1)
 				return nil
 			}
@@ -153,7 +153,7 @@ func TestGroup_FanOut(t *testing.T) {
 	g := NewGroup(context.Background())
 
 	numWorkers := 4
-	results := make(chan int, numWorkers)
+	var resultsReceived int32
 
 	input := "test"
 	resultChan := g.FanOut(input, numWorkers, func(ctx context.Context, in interface{}) error {
@@ -161,13 +161,12 @@ func TestGroup_FanOut(t *testing.T) {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			results <- 1
+			atomic.AddInt32(&resultsReceived, 1)
 			return nil
 		}
 	})
 
-	g.Run()
-
+	// Read all results from the channel
 	count := 0
 	for range resultChan {
 		count++
@@ -177,13 +176,8 @@ func TestGroup_FanOut(t *testing.T) {
 		t.Errorf("Expected %d results from fan-out, got %d", numWorkers, count)
 	}
 
-	resultsCount := 0
-	for range results {
-		resultsCount++
-	}
-
-	if resultsCount != numWorkers {
-		t.Errorf("Expected %d results in channel, got %d", numWorkers, resultsCount)
+	if atomic.LoadInt32(&resultsReceived) != int32(numWorkers) {
+		t.Errorf("Expected %d workers to run, got %d", numWorkers, resultsReceived)
 	}
 }
 
@@ -201,12 +195,14 @@ func TestGroup_FanIn(t *testing.T) {
 	}
 
 	outputChan := g.FanIn(inputChans...)
-	g.Run()
 
+	// Read from output channel before running/canceling the group
 	count := 0
 	for range outputChan {
 		count++
 	}
+
+	g.Run() // Cleanup after reading is complete
 
 	if count != numChannels {
 		t.Errorf("Expected %d items from fan-in, got %d", numChannels, count)
@@ -326,10 +322,15 @@ func TestLimitedConcurrency(t *testing.T) {
 		jobs[i] = func(ctx context.Context) error {
 			atomic.AddInt32(&currentConcurrent, 1)
 
-			current := atomic.LoadInt32(&currentConcurrent)
-			max := atomic.LoadInt32(&maxConcurrent)
-			for current > max {
-				atomic.CompareAndSwapInt32(&maxConcurrent, max, current)
+			for {
+				max := atomic.LoadInt32(&maxConcurrent)
+				current := atomic.LoadInt32(&currentConcurrent)
+				if current <= max {
+					break
+				}
+				if atomic.CompareAndSwapInt32(&maxConcurrent, max, current) {
+					break
+				}
 			}
 
 			time.Sleep(10 * time.Millisecond)

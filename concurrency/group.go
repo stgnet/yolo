@@ -108,43 +108,68 @@ func (g *Group) Error() error {
 
 // FanOut distributes a value to multiple workers and collects their results.
 // Each worker receives the input and sends its result to the returned channel.
-// Call Wait() or Run() to ensure all workers complete.
+// The channel is closed after all workers complete.
 func (g *Group) FanOut(input interface{}, numWorkers int, worker func(context.Context, interface{}) error) <-chan error {
 	resultChan := make(chan error, numWorkers)
 
+	var wg sync.WaitGroup
 	for i := 0; i < numWorkers; i++ {
-		g.Go(func(ctx context.Context) error {
-			err := worker(ctx, input)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err := worker(g.ctx, input)
 			select {
 			case resultChan <- err:
 			default:
 				// Channel full, drop the result (shouldn't happen with buffered channel)
 			}
-			return err
-		})
+		}()
 	}
+
+	// Close the channel after all workers complete
+	go func() {
+		wg.Wait()
+		close(resultChan)
+	}()
 
 	return resultChan
 }
 
 // FanIn collects results from multiple channels into a single channel.
 // It spawns goroutines to read from each input channel and write to the output channel.
+// The output channel is closed after all input channels are exhausted.
+// Goroutines respect context cancellation but continue until channels are closed or context is cancelled.
 func (g *Group) FanIn(inputChans ...<-chan error) <-chan error {
-	outputChan := make(chan error, len(inputChans))
+	outputChan := make(chan error, len(inputChans)*10) // Buffered for better throughput
 
+	var wg sync.WaitGroup
 	for _, ch := range inputChans {
 		inputChan := ch // Capture loop variable
-		g.Go(func(ctx context.Context) error {
-			for err := range inputChan {
+		wg.Add(1)
+		go func(ctx context.Context, in <-chan error) {
+			defer wg.Done()
+			for {
 				select {
 				case <-ctx.Done():
-					return ctx.Err()
-				case outputChan <- err:
+					return
+				case err, ok := <-in:
+					if !ok {
+						return
+					}
+					select {
+					case <-ctx.Done():
+						return
+					case outputChan <- err:
+					}
 				}
 			}
-			return nil
-		})
+		}(g.ctx, inputChan)
 	}
+
+	go func() {
+		wg.Wait()
+		close(outputChan)
+	}()
 
 	return outputChan
 }
@@ -210,7 +235,9 @@ func (b *Barrier) Wait() {
 	// Last goroutine closes all channels
 	if idx == b.count-1 {
 		for _, ch := range b.chans {
-			close(ch)
+			if ch != nil {
+				close(ch)
+			}
 		}
 	} else {
 		<-ch // Wait for barrier to be released
@@ -238,10 +265,10 @@ func LimitedConcurrency(ctx context.Context, maxWorkers int, jobs []func(context
 
 	for _, job := range jobs {
 		wg.Add(1)
-		sem <- struct{}{} // Acquire semaphore
 		go func(f func(context.Context) error) {
-			defer wg.Done()
+			sem <- struct{}{} // Acquire semaphore
 			defer func() { <-sem }() // Release semaphore
+			defer wg.Done()
 
 			if err := f(ctx); err != nil {
 				errsMu.Lock()
