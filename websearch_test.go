@@ -82,15 +82,38 @@ func TestWebSearchDuckDuckGo(t *testing.T) {
 		t.Fatal("executor is nil")
 	}
 
-	// Test DuckDuckGo search directly via the private method
-	result := executor.searchDuckDuckGo("golang testing patterns", 5)
+	tests := []struct {
+		name  string
+		query string
+	}{
+		{
+			name:  "golang testing patterns",
+			query: "golang testing patterns",
+		},
+		{
+			name:  "dependency injection golang",
+			query: "dependency injection golang",
+		},
+		{
+			name:  "golang factory pattern",
+			query: "golang factory pattern",
+		},
+	}
 
-	if strings.Contains(result, "Error:") {
-		t.Logf("DuckDuckGo search returned error (may be network issue): %s", result[:min(200, len(result))])
-	} else if result == "" {
-		t.Log("DuckDuckGo search returned empty result (trying fallback)")
-	} else {
-		t.Logf("DuckDuckGo search succeeded: %s", result[:min(100, len(result))])
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := executor.searchDuckDuckGo(tt.query, 5)
+
+			if strings.Contains(result, "Error:") {
+				t.Logf("DuckDuckGo search returned error: %s", result[:min(200, len(result))])
+			} else if result == "" {
+				t.Log("DuckDuckGo search returned empty/invalid result (will use Wikipedia fallback)")
+			} else if executor.isEmptySearchResult(result) {
+				t.Log("DuckDuckGo search detected as empty by isEmptySearchResult (will use Wikipedia fallback)")
+			} else {
+				t.Logf("DuckDuckGo search succeeded: %s", result[:min(150, len(result))])
+			}
+		})
 	}
 }
 
@@ -116,6 +139,18 @@ func TestIsEmptySearchResult(t *testing.T) {
 			expect: true,
 		},
 		{
+			name:   "duckduckgo no results message",
+			result: `Search results for "golang testing patterns":
+
+No results found for this query. Try a different search term.`,
+			expect: true,
+		},
+		{
+			name:   "try different search term",
+			result: "Try a different search term for better results",
+			expect: true,
+		},
+		{
 			name:   "short result",
 			result: "Brief answer",
 			expect: true,
@@ -131,7 +166,7 @@ func TestIsEmptySearchResult(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := executor.isEmptySearchResult(tt.result)
 			if got != tt.expect {
-				t.Errorf("isEmptySearchResult(%q) = %v, want %v", tt.result, got, tt.expect)
+				t.Errorf("isEmptySearchResult(%q) = %v, want %v", tt.result[:min(50, len(tt.result))], got, tt.expect)
 			}
 		})
 	}
