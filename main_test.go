@@ -288,17 +288,6 @@ func TestToolExecutorMakeDir(t *testing.T) {
 		t.Errorf("Expected directory, got file")
 	}
 
-	// Test creating directory with .gitignore
-	result = executor.makeDir(map[string]any{
-		"path": "withignore",
-	})
-
-	// Verify .gitignore was created in the new directory
-	gitignorePath := filepath.Join(tmpDir, "withignore", ".gitignore")
-	if _, err := os.Stat(gitignorePath); err != nil {
-		t.Errorf("Expected .gitignore file to be created, got: %v", err)
-	}
-
 	// Test missing path argument
 	result = executor.makeDir(map[string]any{})
 	if !strings.Contains(result, "Error") || !strings.Contains(result, "path is required") {

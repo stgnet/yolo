@@ -47,7 +47,7 @@ var ollamaTools = []ToolDef{
 		map[string]ToolParam{
 			"command": {Type: "string", Description: "Shell command to run"},
 		}, []string{"command"}),
-	toolDef("make_dir", "Create a new directory recursively. Automatically creates a .gitignore file with * to prevent git from indexing the directory contents.",
+	toolDef("make_dir", "Create a new directory recursively.",
 		map[string]ToolParam{
 			"path": {Type: "string", Description: "Relative path for the new directory"},
 		}, []string{"path"}),
@@ -395,13 +395,6 @@ func (t *ToolExecutor) makeDir(args map[string]any) string {
 
 	if err := os.MkdirAll(full, 0o755); err != nil {
 		return fmt.Sprintf("Error creating directory %s: %v", path, err)
-	}
-
-	// Create .gitignore with * to prevent indexing
-	gitignorePath := filepath.Join(full, ".gitignore")
-	if err := os.WriteFile(gitignorePath, []byte("*\n"), 0o644); err != nil {
-		// Non-critical error, log but don't fail
-		return fmt.Sprintf("Created directory %s (note: could not create .gitignore)", path)
 	}
 
 	return fmt.Sprintf("Created directory: %s", path)
