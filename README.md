@@ -7,8 +7,10 @@ thinks, and improves — even when you're not typing.
 
 - **Autonomous operation** — runs in the background, thinks on its own after
   30 seconds of idle, and acts without asking for permission.
-- **18 built-in tools** — file I/O, shell commands, regex search, sub-agent
-  spawning, model switching, and self-restart.
+- **21 built-in tools** — file I/O, shell commands, regex search, sub-agent
+  spawning, model switching, self-restart, plus web search (DuckDuckGo + 
+  Wikipedia), Reddit API, and Google Workspace integration (Gmail, Calendar,
+  Drive).
 - **Conversation history** — persisted to `.yolo/history.json`; sessions
   resume automatically.
 - **Sub-agents** — background goroutines that run focused LLM tasks in
