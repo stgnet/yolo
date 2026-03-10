@@ -85,18 +85,18 @@ func TestToolActivityFormatParsing(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			a := &YoloAgent{}
 			calls := a.parseTextToolCalls(tt.content)
-			
+
 			if len(calls) != len(tt.expected) {
-				t.Errorf("Expected %d calls, got %d. Expected: %+v, Got: %+v", 
+				t.Errorf("Expected %d calls, got %d. Expected: %+v, Got: %+v",
 					len(tt.expected), len(calls), tt.expected, calls)
 				return
 			}
-			
+
 			for i, call := range calls {
 				if call.Name != tt.expected[i].Name {
 					t.Errorf("Call %d: expected name '%s', got '%s'", i, tt.expected[i].Name, call.Name)
 				}
-				
+
 				// Compare args maps
 				if !reflect.DeepEqual(call.Args, tt.expected[i].Args) {
 					t.Errorf("Call %d: expected args %+v, got %+v", i, tt.expected[i].Args, call.Args)
@@ -122,7 +122,7 @@ Finally, I'll create a new test file based on what I find.
 
 	a := &YoloAgent{}
 	calls := a.parseTextToolCalls(content)
-	
+
 	expectedCount := 3
 	if len(calls) != expectedCount {
 		t.Errorf("Expected %d tool calls, got %d. Calls: %+v", expectedCount, len(calls), calls)

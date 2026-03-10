@@ -53,8 +53,8 @@ var (
 	// written (one file per spawned sub-agent).
 	SubagentDir = filepath.Join(YoloDir, "subagents")
 
-	// fileNameRegex matches sub-agent result files (agent_1.json, etc.).
-	fileNameRegex = regexp.MustCompile(`agent_(\d+)\.json`)
+	// fileNameRegex matches sub-agent result files (agent_1.json, agent_test_123.json, etc.).
+	fileNameRegex = regexp.MustCompile(`agent_(\S+)\.json`)
 )
 
 // getEnvDefault returns the value of the environment variable key, or

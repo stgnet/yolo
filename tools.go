@@ -783,6 +783,9 @@ func (t *ToolExecutor) listSubagents(args map[string]any) string {
 		// Extract agent ID from filename (e.g., "agent_1.json" -> "1")
 		filename := filepath.Base(file)
 		idMatch := fileNameRegex.FindStringSubmatch(filename)
+		if len(idMatch) < 2 {
+			continue
+		}
 		agentID := idMatch[1]
 
 		// Read the file to get status and task info

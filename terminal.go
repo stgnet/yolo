@@ -14,8 +14,8 @@ import (
 
 // globalUI is set once the split UI is active. Before that, output goes to stdout directly.
 var (
-	globalUI    *TerminalUI
-	ansiCodeRe  = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+	globalUI   *TerminalUI
+	ansiCodeRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 )
 
 // rawWrite writes text to stdout, converting lone \n to \r\n for raw terminal mode.
@@ -128,8 +128,8 @@ type TerminalUI struct {
 	cols           int
 	inputBuf       []byte // mirrors InputManager's buffer for redraw
 	prompt         string
-	outRow         int // tracked row of cursor in output region
-	outCol         int // tracked col of cursor in output region
+	outRow         int      // tracked row of cursor in output region
+	outCol         int      // tracked col of cursor in output region
 	queuedMsgs     []string // messages queued while agent is busy
 	scrollEnd      int      // last row of the scroll region (dynamic)
 	peakBottomRows int      // high-water mark for bottom area (grow-only)
@@ -517,4 +517,3 @@ func (ui *TerminalUI) RemoveQueuedMessage() {
 		ui.drawInputLocked()
 	}
 }
-
