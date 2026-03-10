@@ -20,6 +20,7 @@ All notable changes to YOLO will be documented in this file.
   - Drive: list files/folders, upload/download content
 - **GOG documentation** (`GOOGLE_INTEGRATION.md`): Setup instructions, OAuth2 configuration, and usage examples
 - **GOG tests** (`gog_test.go`): Integration tests verifying Gmail, Calendar, and Drive functionality
+- **Enhanced web_search**: Now uses DuckDuckGo's Instant Answer API with proper Wikipedia fallback for better search results
 
 ### Fixed
 - **Output line overwrite glitch**: `rawWrite()` was converting standalone
@@ -30,6 +31,7 @@ All notable changes to YOLO will be documented in this file.
 
 ### Changed
 - **Test coverage**: Added GOG integration tests with realistic golden files for calendar and Drive operations
+- **Documentation**: Updated tools.md to reflect DuckDuckGo + Wikipedia search implementation
 
 ### Removed
 - **Spinner**: The animated "thinking..." spinner has been removed. It was
