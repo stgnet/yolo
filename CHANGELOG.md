@@ -5,6 +5,29 @@ All notable changes to YOLO will be documented in this file.
 ## [Unreleased] - 2026-03-10
 
 ### Added
+- **Multi-line input**: The input area now expands upward to show the full
+  message as it's being typed, with word wrapping instead of horizontal
+  scrolling. The scroll region, divider, and input area resize dynamically.
+- **Visible queued messages**: Messages typed while the agent is busy are
+  displayed as `[queued] text` between the divider and input prompt. They
+  remain visible until processed, making it clear what's pending.
+- **Agent nudge on queued input**: During tool-calling loops, if the user
+  has queued a message, the agent is nudged via a system message to wrap up
+  and process it.
+
+### Fixed
+- **Output line overwrite glitch**: `rawWrite()` was converting standalone
+  `\r` (carriage return) to `\r\n`, causing the cursor position tracker to
+  drift from the actual terminal cursor. This made output sometimes write
+  over the same line twice. Standalone `\r` is now preserved as-is.
+
+### Removed
+- **Spinner**: The animated "thinking..." spinner has been removed. It was
+  the primary source of `\r`-based cursor positioning issues.
+
+## [Unreleased] - 2026-03-10 (earlier)
+
+### Added
 - **ARCHITECTURE.md**: Comprehensive system design document with component
   diagrams, data-flow descriptions, and file layout reference.
 - **CONTRIBUTING.md**: Development workflow, code style, testing guide, and
