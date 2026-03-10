@@ -272,11 +272,15 @@ func (lm *LearningManager) generateTitle(content string, category string) string
 	// Take first sentence or first 100 chars
 	sentences := strings.Split(content, ". ")
 	if len(sentences) > 0 && len(sentences[0]) < 150 {
-		return sentences[0] + "."
+		title := sentences[0]
+		if !strings.HasSuffix(title, ".") {
+			title += "."
+		}
+		return title
 	}
 
 	if len(content) > 100 {
-		return content[:97] + "...*"
+		return content[:97] + "..*"
 	}
 	return content
 }
@@ -359,7 +363,8 @@ func truncateText(text string, maxLen int) string {
 	if len(text) <= maxLen {
 		return text
 	}
-	return text[:maxLen-3] + "...*"
+	suffix := "...*"
+	return text[:maxLen-len(suffix)] + suffix
 }
 
 func generateImprovementID(title string) string {
