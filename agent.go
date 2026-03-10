@@ -234,7 +234,9 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 
 	roundNum := 0
 	for {
-		allMsgs := append(baseMsgs, roundMsgs...)
+		allMsgs := make([]ChatMessage, 0, len(baseMsgs)+len(roundMsgs))
+		allMsgs = append(allMsgs, baseMsgs...)
+		allMsgs = append(allMsgs, roundMsgs...)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		a.mu.Lock()
