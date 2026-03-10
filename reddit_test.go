@@ -26,10 +26,10 @@ func TestRedditToolStructure(t *testing.T) {
 			limit:  5,
 		},
 		{
-			name:      "valid search action",
-			action:    "search",
-			query:     "go programming",
-			limit:     10,
+			name:   "valid search action",
+			action: "search",
+			query:  "go programming",
+			limit:  10,
 		},
 		{
 			name:   "valid thread action",
@@ -101,7 +101,7 @@ func TestRedditToolStructure(t *testing.T) {
 
 func TestRedditActionValidation(t *testing.T) {
 	validActions := []string{"search", "subreddit", "thread"}
-	
+
 	for _, action := range validActions {
 		t.Run(action, func(t *testing.T) {
 			// Verify that the action is one of the expected types

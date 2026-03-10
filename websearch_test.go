@@ -65,7 +65,7 @@ func TestWebSearchWikipediaFallback(t *testing.T) {
 
 	// Test Wikipedia search directly via the private method
 	result := executor.searchWikipedia("Go programming language", 3)
-	
+
 	if strings.Contains(result, "Error:") {
 		t.Logf("Wikipedia search returned error (may be network issue): %s", result[:min(200, len(result))])
 	} else if result == "" {
@@ -83,7 +83,7 @@ func TestWebSearchDuckDuckGo(t *testing.T) {
 
 	// Test DuckDuckGo search directly via the private method
 	result := executor.searchDuckDuckGo("golang testing patterns", 5)
-	
+
 	if strings.Contains(result, "Error:") {
 		t.Logf("DuckDuckGo search returned error (may be network issue): %s", result[:min(200, len(result))])
 	} else if result == "" {
