@@ -13,14 +13,6 @@ const (
 	// history, sub-agent results, and other state files are stored.
 	YoloDir = ".yolo"
 
-	// IdleThinkDelay is the number of seconds of no user input before the
-	// agent triggers an autonomous thinking cycle.
-	IdleThinkDelay = 30
-
-	// ThinkLoopDelay is the interval in seconds between consecutive
-	// autonomous think cycles once idle thinking has started.
-	ThinkLoopDelay = 120
-
 	// MaxContextMessages caps how many history messages are included in the
 	// context window sent to the LLM.
 	MaxContextMessages = 40
