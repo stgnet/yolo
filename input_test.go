@@ -10,13 +10,13 @@ func TestUtf8ByteLen(t *testing.T) {
 		lead byte
 		want int
 	}{
-		{"2-byte (latin)", 0xC3, 2},      // e.g., é
+		{"2-byte (latin)", 0xC3, 2}, // e.g., é
 		{"2-byte low", 0xC0, 2},
 		{"2-byte high", 0xDF, 2},
-		{"3-byte (CJK)", 0xE4, 3},        // e.g., 中
+		{"3-byte (CJK)", 0xE4, 3}, // e.g., 中
 		{"3-byte low", 0xE0, 3},
 		{"3-byte high", 0xEF, 3},
-		{"4-byte (emoji)", 0xF0, 4},       // e.g., 😀
+		{"4-byte (emoji)", 0xF0, 4}, // e.g., 😀
 		{"4-byte high", 0xF4, 4},
 	}
 

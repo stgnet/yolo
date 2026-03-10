@@ -4,9 +4,13 @@
 
 package main
 
+import "fmt"
+
 // ─── Entry Point ──────────────────────────────────────────────────────
 
 func main() {
+	fmt.Println("YOLO - Your Own Living Operator")
+	fmt.Println("Starting agent...")
 	agent := NewYoloAgent()
 	agent.Run()
 }

@@ -65,7 +65,7 @@ func TestMakeDir(t *testing.T) {
 					}
 				}
 
-	}
+			}
 		})
 	}
 }

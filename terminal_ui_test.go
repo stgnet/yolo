@@ -349,18 +349,18 @@ func TestTerminalUI_MultiLineQueuedMessages(t *testing.T) {
 // Test multi-line input row calculation
 func TestInputRowCount(t *testing.T) {
 	tests := []struct {
-		name          string
-		promptWidth   int
-		inputLen      int
-		cols          int
-		wantRowCount  int
+		name         string
+		promptWidth  int
+		inputLen     int
+		cols         int
+		wantRowCount int
 	}{
 		{"empty input", 5, 0, 80, 1},
-		{"short input", 5, 10, 80, 1},          // 15 chars total, fits in 1 row
-		{"fills one row", 5, 75, 80, 2},         // 80 chars = 1 full row, cursor wraps → 2
-		{"just over one row", 5, 76, 80, 2},     // 81 chars → 2 rows
-		{"two full rows", 5, 155, 80, 3},        // 160 chars → 2 full rows + cursor → 3
-		{"narrow terminal", 5, 10, 10, 2},       // 15 chars / 10 cols → 2 rows
+		{"short input", 5, 10, 80, 1},       // 15 chars total, fits in 1 row
+		{"fills one row", 5, 75, 80, 2},     // 80 chars = 1 full row, cursor wraps → 2
+		{"just over one row", 5, 76, 80, 2}, // 81 chars → 2 rows
+		{"two full rows", 5, 155, 80, 3},    // 160 chars → 2 full rows + cursor → 3
+		{"narrow terminal", 5, 10, 10, 2},   // 15 chars / 10 cols → 2 rows
 	}
 
 	for _, tt := range tests {

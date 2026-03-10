@@ -130,7 +130,7 @@ func (c *OllamaClient) ListModels() []string {
 
 // ChatMessage is a single message in an Ollama chat conversation.
 type ChatMessage struct {
-	Role      string     `json:"role"`               // "system", "user", "assistant", or "tool"
+	Role      string     `json:"role"` // "system", "user", "assistant", or "tool"
 	Content   string     `json:"content"`
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
 }

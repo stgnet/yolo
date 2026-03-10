@@ -211,9 +211,9 @@ func TestExecuteDispatcher(t *testing.T) {
 
 func TestGetStringArg(t *testing.T) {
 	args := map[string]any{
-		"str":    "hello",
-		"num":    42,
-		"float":  3.14,
+		"str":   "hello",
+		"num":   42,
+		"float": 3.14,
 	}
 
 	if v := getStringArg(args, "str", ""); v != "hello" {
