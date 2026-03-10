@@ -38,15 +38,12 @@ go test ./...
 # Verbose output
 go test -v ./...
 
-# A specific package
-go test -v ./internal/mcp/...
-
 # With race detection
 go test -race ./...
 ```
 
 Tests do not require a running Ollama instance — they use file-system
-operations, in-memory structs, and the MCP protocol layer directly.
+operations and in-memory structs.
 
 ## Code style
 
