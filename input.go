@@ -101,6 +101,22 @@ func (im *InputManager) ShowPrompt(prompt string) {
 	im.syncAndRedraw()
 }
 
+// SyncToUI updates the TerminalUI's copy of the input buffer without
+// triggering a redraw.  Call this before operations that will redraw
+// themselves (e.g. RemoveQueuedMessage) to ensure the displayed input
+// reflects the latest typing.
+func (im *InputManager) SyncToUI() {
+	im.mu.Lock()
+	prompt := im.prompt
+	buf := make([]byte, len(im.buf))
+	copy(buf, im.buf)
+	im.mu.Unlock()
+
+	if globalUI != nil {
+		globalUI.UpdateInput(prompt, buf)
+	}
+}
+
 // syncAndRedraw updates the TerminalUI's copy and redraws the input line.
 func (im *InputManager) syncAndRedraw() {
 	im.mu.Lock()
@@ -194,11 +210,13 @@ func (im *InputManager) processLoop() {
 				busy := im.agent.busy
 				im.agent.mu.Unlock()
 				trimmed := strings.TrimSpace(line)
+				// Sync the now-empty buffer to the UI BEFORE adding the
+				// queued message so the redraw shows a clean input line
+				// instead of the just-submitted text.
+				im.syncAndRedraw()
 				if busy && trimmed != "" && globalUI != nil {
 					globalUI.AddQueuedMessage(trimmed)
 				}
-				// Clear input line after submit
-				im.syncAndRedraw()
 				im.Lines <- InputLine{Text: line, OK: true}
 			case ch == 127 || ch == 8: // Backspace
 				if len(im.buf) > 0 {
