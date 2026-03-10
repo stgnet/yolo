@@ -275,6 +275,10 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 			toolCalls = a.parseTextToolCalls(result.DisplayText)
 		}
 
+		// Deduplicate: streaming or text-parsing may yield duplicate calls
+		// that would cause the agent to write the same file twice.
+		toolCalls = deduplicateToolCalls(toolCalls)
+
 		if len(toolCalls) == 0 {
 			finalText = result.DisplayText
 			break
