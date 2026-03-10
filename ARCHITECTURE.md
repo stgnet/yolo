@@ -251,6 +251,76 @@ YoloAgent.spawnSubagent(task, model)
         └── agent_*.json
 ```
 
+## Concurrency Package (`concurrency/`)
+
+The concurrency package provides advanced synchronization primitives for managing
+goroutines safely and efficiently.
+
+### ThreadPool
+
+A worker pool pattern that limits concurrent execution to a fixed number of goroutines.
+
+```go
+pool := concurrency.NewThreadPool(10)
+pool.Submit(func() { /* work */ })
+pool.Close() // Waits for all jobs to complete
+```
+
+Features:
+- Fixed worker count prevents resource exhaustion
+- Context-aware job submission with `SubmitWithContext`
+- Graceful shutdown via `Close()`
+
+### Group (Structured Concurrency)
+
+Inspired by Java's structured concurrency and Go's sync.WaitGroup, Groups ensure
+all goroutines complete before the parent returns.
+
+```go
+g := concurrency.NewGroup(ctx)
+g.Go(func(c context.Context) error { return work() })
+g.Run() // Waits and cancels context
+errors := g.Errors()
+```
+
+Features:
+- Automatic error collection from child goroutines
+- Context propagation for cancellation
+- Fan-out/fan-in patterns built-in
+- Pipeline composition support
+
+### Limiter (Semaphore-based Rate Limiting)
+
+Controls maximum concurrent operations using a semaphore pattern. Useful for
+rate limiting API calls, connection pooling, or resource management.
+
+```go
+limiter := concurrency.NewLimiter(5).WithTimeout(10 * time.Second)
+limiter.Execute(func() error { return work() })
+// Or with context:
+limiter.ExecuteWithContext(ctx, func(c context.Context) error { return work() })
+```
+
+Features:
+- `TryAcquire()` for non-blocking slot acquisition
+- `Acquire()` with configurable timeout
+- Automatic acquire/release via `Execute()` wrappers
+- Slot monitoring: `AvailableSlots()`, `InUseSlots()`, `MaxSlots()`
+
+### LimiterGroup
+
+Combines Group structured concurrency with rate limiting. All goroutines respect
+the same concurrency limit.
+
+```go
+lg := concurrency.NewLimiterGroup(ctx, 5)
+lg.Go(func(c context.Context) error { return work() })
+lg.Run()
+```
+
+This is ideal for scenarios where you need both structured concurrency guarantees
+and resource-aware rate limiting (e.g., parallel API calls with rate limits).
+
 ## Design principles
 
 1. **Safety first**: `safePath` prevents directory traversal. Shell commands
@@ -258,7 +328,8 @@ YoloAgent.spawnSubagent(task, model)
 2. **Graceful degradation**: tool call parsing tries five formats before
    giving up. History corruption resets to empty rather than crashing.
 3. **Concurrency**: InputManager and sub-agents run in their own goroutines.
-   Shared state is protected by mutexes.
+   Shared state is protected by mutexes. Advanced concurrency patterns available
+   via the `concurrency` package.
 4. **Minimal dependencies**: only `golang.org/x/term` beyond the standard
    library.
 5. **Self-modification**: the agent can read and edit its own source, rebuild
