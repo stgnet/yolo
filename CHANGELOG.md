@@ -10,8 +10,8 @@ All notable changes to YOLO will be documented in this file.
 - **CONTRIBUTING.md**: Development workflow, code style, testing guide, and
   instructions for adding new tools.
 - **Expanded test coverage**: ~100 new test cases across 6 new test files
-  covering HistoryManager, ToolExecutor, TerminalUI, InputManager, agent
-  tool-call parsing, and MCP server handlers.
+  covering HistoryManager, ToolExecutor, TerminalUI, InputManager, and agent
+  tool-call parsing.
 - **UTF-8 terminal input**: Multi-byte characters (accented letters, CJK,
   emoji) are now correctly assembled from the raw byte stream.
 
