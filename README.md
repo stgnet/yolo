@@ -1,170 +1,138 @@
 # YOLO - Your Own Living Operator
 
-A self-evolving AI agent for software development that continuously runs, thinks, and improves—even when you're not typing.
+A self-evolving AI agent for software development that continuously runs,
+thinks, and improves — even when you're not typing.
 
 ## Features
 
-- **Autonomous Operation**: Runs in the background and responds to terminal input
-- **Context-Aware**: Maintains conversation history and project context
-- **Self-Improving**: Can analyze and modify its own codebase
-- **Tool Integration**: Built-in tools for file operations, command execution, and more
-- **Subagent System**: Creates specialized sub-agents for focused tasks
-- **Terminal UI**: Split-screen interface with scrolling output and input line
-  - Word wrapping for long messages (intelligent word boundaries)
-  - Horizontal scrolling for very long input lines (shows rightmost portion)
-  - Automatic terminal resize handling
-  - Clean ANSI escape sequence handling
+- **Autonomous operation** — runs in the background, thinks on its own after
+  30 seconds of idle, and acts without asking for permission.
+- **18 built-in tools** — file I/O, shell commands, regex search, sub-agent
+  spawning, model switching, and self-restart.
+- **Conversation history** — persisted to `.yolo/history.json`; sessions
+  resume automatically.
+- **Sub-agents** — background goroutines that run focused LLM tasks in
+  parallel.
+- **Split-screen terminal UI** — scrollable output on top, fixed input line
+  on the bottom, with word wrapping, horizontal scrolling, and resize
+  handling.
+- **Self-improving** — can read and modify its own source code, rebuild, and
+  replace the running binary.
+- **UTF-8 input** — full support for multi-byte characters (accented
+  letters, CJK, emoji).
 
-## Installation
+## Quick start
 
 ```bash
-# Clone the repository
+# Requires Go 1.24+ and a running Ollama instance
 git clone https://github.com/yourusername/yolo.git
 cd yolo
-
-# Build the binary
-go build -o yolo main.go
-
-# Run the agent
+go build -o yolo .
 ./yolo
 ```
 
+On first launch YOLO connects to Ollama, lists available models, and asks
+you to pick one. After that, just type what you want done.
+
 ## Configuration
 
-YOLO reads configuration from environment variables:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
+| Environment variable | Default | Description |
+|---|---|---|
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama API endpoint |
+| `YOLO_NUM_CTX` | *(auto-detected)* | Override the model's context window size |
 
-### Runtime Constants
+Compile-time constants are in [`config.go`](config.go):
 
-The following constants control agent behavior (modify in `main.go`):
-
-```go
-const (
-    YoloDir           = ".yolo"          // Directory for storing state
-    IdleThinkDelay    = 30              // Seconds of idle time before autonomous thinking
-    ThinkLoopDelay    = 120             // Seconds between think cycles
-    MaxContextMessages = 40            // Maximum messages in context window
-    MaxToolOutput     = 0               // Tool output truncation (0 = disabled)
-    ToolNudgeAfter    = 0               // Disabled by default
-    CommandTimeout    = 30              // Shell command timeout in seconds
-)
-```
+| Constant | Default | Purpose |
+|---|---|---|
+| `YoloDir` | `.yolo` | State directory |
+| `IdleThinkDelay` | 30 s | Idle time before autonomous thinking |
+| `ThinkLoopDelay` | 120 s | Interval between think cycles |
+| `MaxContextMessages` | 40 | Max messages sent to the LLM |
+| `CommandTimeout` | 30 s | Shell command timeout |
+| `DefaultNumCtx` | 8192 | Fallback context window size |
 
 ## Usage
 
-### Basic Commands
+### Interactive commands
 
-Once YOLO is running, you can interact with it via the terminal input line:
+| Command | Action |
+|---|---|
+| `/help` | Show available commands |
+| `/model` | Show current model |
+| `/models` | List available Ollama models |
+| `/switch <name>` | Switch to a different model |
+| `/history` | Show message and evolution counts |
+| `/clear` | Clear conversation history |
+| `/status` | Show agent status |
+| `/restart` | Rebuild and restart YOLO |
+| `/exit`, `/quit` | Exit |
 
-1. **Start Task**: Describe what you want to accomplish
-2. **Interrupt**: Press Enter without typing to interrupt current operation
-3. **Clear Input**: Use `esc` to clear the input line
-4. **Quit**: Type `quit` or press Ctrl+C
+### Keyboard shortcuts
 
-### Example Session
-
-```
-$ ./yolo
-[YOLO] Starting agent...
-[UI] Terminal UI initialized
-
-> Create a test file for the main package
-[THINKING] Analyzing task: create a test file for the main package
-[TOOL] read_file called on /Users/sgriepentrog/src/yolo/main.go
-[TOOL] write_file called to /Users/sgriepentrog/src/yolo/main_test.go
-[DONE] Created test file successfully
-
-> Run the tests
-[THINKING] Analyzing task: run the tests
-[TOOL] run_command called with "go test -v"
-[DONE] All tests passing!
-
-> Improve the documentation
-[THINKING] Analyzing task: improve the documentation
-...
-```
+| Key | Action |
+|---|---|
+| `Enter` | Submit input |
+| `Ctrl-C` | Cancel current operation (or exit if idle) |
+| `Ctrl-D` | Exit (when input is empty) |
+| `Ctrl-U` | Clear entire input line |
+| `Ctrl-W` | Delete last word |
 
 ## Architecture
 
-### Core Components
+See [ARCHITECTURE.md](ARCHITECTURE.md) for a full design document. The
+short version:
 
-#### TerminalUI
-Manages split terminal output with:
-- Scrollable output region (top)
-- Fixed input line (bottom)
-- Automatic resizing support
-- ANSI code handling
+```
+User input ──► YoloAgent ──► OllamaClient ──► Ollama /api/chat
+                  │                                   │
+                  │◄────── tool calls ◄───────────────┘
+                  │
+                  ├──► ToolExecutor (file ops, shell, sub-agents)
+                  ├──► HistoryManager (.yolo/history.json)
+                  └──► TerminalUI (split-screen output)
+```
 
-#### OllamaClient
-Handles communication with Ollama:
-- Model listing (`ollama list`)
-- Chat completions (`/api/chat`)
-- Tool definitions and responses
+### State directory
 
-#### ToolExecutor
-Provides built-in tools:
-- `read_file`: Read file contents
-- `write_file`: Write files (with safety checks)
-- `run_command`: Execute shell commands
-- `create_subagent`: Spawn specialized agents
-- And more...
+YOLO stores all runtime state in `.yolo/`:
 
-#### YoloAgent
-Main agent logic:
-- Input processing
-- Context management
-- Tool invocation
-- Autonomous thinking cycles
+```
+.yolo/
+├── history.json          # Conversation history and config
+└── subagents/
+    ├── agent_1.json      # Sub-agent results
+    └── agent_2.json
+```
 
-### State Management
+## Safety
 
-YOLO stores state in `.yolo/` directory:
-- `history.json`: Conversation history
-- `state.json`: Current agent state
-- `subagents/`: Subagent directories
-
-## Safety Features
-
-1. **Path Validation**: File operations restricted to project directory
-2. **Command Timeout**: Prevents hung processes (30s default)
-3. **Output Truncation**: Configurable limits on tool output size
-4. **Graceful Shutdown**: Cleanup on Ctrl+C or exit
+- **Path sandboxing** — all file operations are validated by `safePath()` to
+  stay within the working directory.
+- **Command timeout** — shell commands are killed after 30 seconds.
+- **stdin isolation** — child processes get `/dev/null` as stdin so they
+  can't steal terminal input.
+- **Atomic history writes** — write-to-temp then rename prevents corruption.
+- **Graceful shutdown** — Ctrl-C cancels the in-flight LLM request, saves
+  history, and restores the terminal.
 
 ## Development
 
-### Running Tests
-
 ```bash
-go test -v ./...
+# Run all tests
+go test ./...
+
+# Verbose with race detection
+go test -race -v ./...
+
+# Cross-compile
+GOOS=linux  GOARCH=amd64 go build -o yolo-linux  .
+GOOS=darwin GOARCH=arm64 go build -o yolo-darwin  .
 ```
 
-### Building for Distribution
-
-```bash
-# Cross-compile for different platforms
-GOOS=linux GOARCH=amd64 go build -o yolo-linux main.go
-GOOS=darwin GOARCH=amd64 go build -o yolo-darwin main.go
-GOOS=windows GOARCH=amd64 go build -o yolo.exe main.go
-```
-
-### Adding New Tools
-
-1. Define tool schema in `ToolDef` struct
-2. Implement handler in `ToolExecutor.Execute()`
-3. Add validation and error handling
-4. Update tests in `main_test.go`
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow, code style,
+and how to add new tools.
 
 ## License
 
-MIT License - See LICENSE file for details
-
-## Contributing
-
-Contributions welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Write tests for new functionality
-4. Submit a pull request
+MIT License — see LICENSE file for details.
