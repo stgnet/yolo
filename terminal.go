@@ -134,6 +134,7 @@ type TerminalUI struct {
 	scrollEnd      int      // last row of the scroll region (dynamic)
 	peakBottomRows int      // high-water mark for bottom area (grow-only)
 	streaming      bool     // true while inline output is in progress (prevents scroll region changes)
+	pendingWrap    bool     // true when last output char filled the last column (terminal pending wrap state)
 }
 
 // wrapText wraps text to the given width, inserting newlines at word boundaries.
@@ -294,17 +295,44 @@ func (ui *TerminalUI) trackCursorMovement(stripped string) {
 			}
 		}
 	}
-	// Resolve any trailing pending wrap so that (outRow, outCol) is a valid
-	// position for the explicit ANSI cursor-positioning on the next call.
-	// The next OutputPrint/OutputPrintInline will \033[row;colH to this
-	// position, which cancels the terminal's pending wrap and moves there.
+	// Resolve trailing pending wrap: advance to the next row.
+	// When the next row would be beyond scrollEnd, we must NOT eagerly
+	// resolve here because the terminal hasn't actually scrolled yet —
+	// it's still in "pending wrap" state. An explicit \033[row;colH on
+	// the next output call would cancel the pending wrap WITHOUT scrolling,
+	// causing new text to overwrite the current line (the "CR without LF" bug).
+	// Instead, store the pending wrap so the next output call can force the
+	// scroll before repositioning the cursor.
 	if pendingWrap {
-		ui.outCol = 1
-		ui.outRow++
-		if ui.outRow > ui.scrollEnd {
-			ui.outRow = ui.scrollEnd
+		if ui.outRow < ui.scrollEnd {
+			// Safe to resolve: the next row is within the scroll region,
+			// and \033[row+1;1H will correctly position there.
+			ui.outCol = 1
+			ui.outRow++
+		} else {
+			// At the bottom of the scroll region. Defer to resolvePendingWrap().
+			ui.pendingWrap = true
 		}
 	}
+}
+
+// resolvePendingWrap forces the terminal to scroll when the last output
+// character filled the final column at the bottom of the scroll region.
+// Without this, the next explicit cursor-positioning (\033[row;colH) would
+// cancel the terminal's internal pending-wrap flag WITHOUT scrolling,
+// causing subsequent text to overwrite the current line.
+func (ui *TerminalUI) resolvePendingWrap() {
+	if !ui.pendingWrap {
+		return
+	}
+	// Move to the last column of the bottom row (cancels any stale terminal
+	// pending-wrap if the cursor was moved away by drawInputLocked), then
+	// emit Index (ESC D) which advances one line — scrolling the region if
+	// the cursor is at the bottom — then CR to return to column 1.
+	fmt.Printf("\033[%d;%dH\033D\r", ui.scrollEnd, ui.cols)
+	ui.pendingWrap = false
+	ui.outRow = ui.scrollEnd // scroll kept us at the bottom
+	ui.outCol = 1
 }
 
 // OutputPrint writes text to the output (scrolling) region.
@@ -315,6 +343,7 @@ func (ui *TerminalUI) OutputPrint(text string) {
 	// Wrap text to terminal width before outputting
 	text = ui.wrapText(text)
 
+	ui.resolvePendingWrap()
 	// Move cursor to tracked output position within the scroll region
 	fmt.Printf("\033[%d;%dH", ui.outRow, ui.outCol)
 	// Write the text (rawWrite converts \n to \r\n for raw terminal mode)
@@ -323,8 +352,12 @@ func (ui *TerminalUI) OutputPrint(text string) {
 	// Strip ANSI codes before counting to avoid off-by-several errors from color codes.
 	stripped := stripAnsiCodes(text)
 	ui.trackCursorMovement(stripped)
-	// Redraw input line (output may have scrolled and clobbered it)
-	ui.drawInputLocked()
+	// Redraw input line (output may have scrolled and clobbered it).
+	// Skip during streaming to avoid resizing the scroll region mid-stream
+	// which would desync the cursor tracker.
+	if !ui.streaming {
+		ui.drawInputLocked()
+	}
 }
 
 // OutputPrintInline writes text without moving cursor back to input line.
@@ -340,6 +373,7 @@ func (ui *TerminalUI) OutputPrintInline(text string) {
 	// The terminal handles character-level wrapping, and trackCursorMovement
 	// already accounts for it.
 
+	ui.resolvePendingWrap()
 	fmt.Printf("\033[%d;%dH", ui.outRow, ui.outCol)
 	// rawWrite converts \n to \r\n for raw terminal mode
 	rawWrite(text)
@@ -454,6 +488,9 @@ func (ui *TerminalUI) drawInputLocked() {
 	}
 
 	// Update scroll region
+	if newScrollEnd != ui.scrollEnd {
+		ui.pendingWrap = false // scroll region changed; pending wrap is stale
+	}
 	ui.scrollEnd = newScrollEnd
 	fmt.Printf("\033[1;%dr", ui.scrollEnd)
 	if ui.outRow > ui.scrollEnd {
@@ -512,8 +549,14 @@ func (ui *TerminalUI) UpdateInput(prompt string, buf []byte) {
 // RedrawInput redraws just the input line.
 func (ui *TerminalUI) RedrawInput() {
 	ui.mu.Lock()
+	defer ui.mu.Unlock()
+	if ui.streaming {
+		// During streaming, skip full redraw to avoid resizing the scroll
+		// region (which desyncs the cursor tracker). The input area will be
+		// refreshed when OutputFinishLine is called after streaming ends.
+		return
+	}
 	ui.drawInputLocked()
-	ui.mu.Unlock()
 }
 
 // WriteToInputLine writes directly to the input line area (for character echo).
