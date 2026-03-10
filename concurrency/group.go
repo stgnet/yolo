@@ -255,38 +255,6 @@ func (b *Barrier) Reset() {
 	}
 }
 
-// LimitedConcurrency runs goroutines with a limit on how many can run concurrently.
-// This is similar to a semaphore pattern using channels.
-func LimitedConcurrency(ctx context.Context, maxWorkers int, jobs []func(context.Context) error) []error {
-	sem := make(chan struct{}, maxWorkers)
-	var wg sync.WaitGroup
-	errsMu := sync.Mutex{}
-	errs := make([]error, 0, len(jobs))
-
-	for _, job := range jobs {
-		wg.Add(1)
-		go func(f func(context.Context) error) {
-			defer wg.Done()
-			
-			select {
-			case <-ctx.Done():
-				return
-			case sem <- struct{}{}: // Acquire semaphore
-			}
-			defer func() { <-sem }() // Release semaphore
-
-			if err := f(ctx); err != nil {
-				errsMu.Lock()
-				errs = append(errs, err)
-				errsMu.Unlock()
-			}
-		}(job)
-	}
-
-	wg.Wait()
-	return errs
-}
-
 // RetryWithBackoff retries a function with exponential backoff until it succeeds
 // or maxRetries is reached. Respects context cancellation.
 func RetryWithBackoff(ctx context.Context, maxRetries int, initialDelay time.Duration, f func(context.Context) error) error {
@@ -316,4 +284,38 @@ func RetryWithBackoff(ctx context.Context, maxRetries int, initialDelay time.Dur
 	}
 
 	return lastErr
+}
+
+// LimitedConcurrency runs goroutines with a limit on how many can run concurrently.
+// This is similar to a semaphore pattern using channels.
+func LimitedConcurrency(ctx context.Context, maxWorkers int, jobs []func(context.Context) error) []error {
+	sem := make(chan struct{}, maxWorkers)
+	var wg sync.WaitGroup
+	errsMu := sync.Mutex{}
+	errs := make([]error, 0, len(jobs))
+
+	for _, job := range jobs {
+		wg.Add(1)
+		go func(f func(context.Context) error) {
+			sem <- struct{}{} // Acquire semaphore first (blocks if at capacity)
+			defer wg.Done()
+			defer func() { <-sem }() // Release semaphore
+
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				// Context not cancelled, proceed with job
+			}
+
+			if err := f(ctx); err != nil {
+				errsMu.Lock()
+				errs = append(errs, err)
+				errsMu.Unlock()
+			}
+		}(job)
+	}
+
+	wg.Wait()
+	return errs
 }

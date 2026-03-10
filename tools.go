@@ -112,6 +112,17 @@ var ollamaTools = []ToolDef{
 		}, []string{"query"}),
 	toolDef("learn", "Autonomously research and discover self-improvement opportunities from the internet. Uses web search and Reddit to find new features, best practices, and improvements for the YOLO agent.",
 		map[string]ToolParam{}, nil),
+	toolDef("send_email", "Send an email via SMTP from yolo@b-haven.org. Requires EMAIL_PASSWORD to be configured.",
+		map[string]ToolParam{
+			"to":      {Type: "string", Description: "Recipient email address (default: scott@stg.net)"},
+			"subject": {Type: "string", Description: "Email subject (required)"},
+			"body":    {Type: "string", Description: "Email body (required)"},
+		}, []string{"subject", "body"}),
+	toolDef("send_report", "Send a progress report email to scott@stg.net. Requires EMAIL_PASSWORD to be configured.",
+		map[string]ToolParam{
+			"subject": {Type: "string", Description: "Report subject (default: YOLO Progress Report)"},
+			"body":    {Type: "string", Description: "Report body (required)"},
+		}, []string{"body"}),
 }
 
 // ─── Tool Executor ───────────────────────────────────────────────────
@@ -123,7 +134,7 @@ var validTools = []string{
 	"search_files", "run_command", "spawn_subagent",
 	"list_subagents", "read_subagent_result", "summarize_subagents",
 	"list_models", "switch_model", "think", "restart",
-	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "learn",
+	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "learn", "send_email", "send_report",
 }
 
 // ToolExecutor dispatches tool calls from the LLM to concrete
@@ -208,6 +219,10 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 		return t.webSearch(args)
 	case "learn":
 		return t.learn(args)
+	case "send_email":
+		return t.sendEmail(args)
+	case "send_report":
+		return t.sendReport(args)
 	default:
 		return fmt.Sprintf("Error: unknown tool '%s'. Available tools: %s", name, strings.Join(validTools, ", "))
 	}

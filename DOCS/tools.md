@@ -52,6 +52,8 @@ YOLO (Your Own Living Operator) has these powerful tools for autonomous software
 | `web_search` | Search DuckDuckGo Instant Answer API with Wikipedia fallback | [below](#web_search-tool) |
 | `reddit` | Search Reddit, list subreddit posts, get threads | [reddit-tool.md](./reddit-tool.md) |
 | `gog` | Google Workspace: Gmail, Calendar, Drive, Contacts, Sheets, Docs | [gog-tool.md](./gog-tool.md) |
+| `send_email` | Send emails via SMTP from yolo@b-haven.org | [below](#email-tools) |
+| `send_report` | Send progress reports to scott@stg.net | [below](#email-tools) |
 
 ---
 
