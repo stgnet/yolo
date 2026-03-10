@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -76,20 +77,25 @@ func (h *HistoryManager) Load() bool {
 	return true
 }
 
-func (h *HistoryManager) Save() {
+func (h *HistoryManager) Save() error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	os.MkdirAll(h.yoloDir, 0o755)
+	if err := os.MkdirAll(h.yoloDir, 0o755); err != nil {
+		return fmt.Errorf("create history dir: %w", err)
+	}
 	data, err := json.MarshalIndent(h.Data, "", "  ")
 	if err != nil {
-		return
+		return fmt.Errorf("marshal history: %w", err)
 	}
 	tmp := h.historyFile + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return
+		return fmt.Errorf("write history: %w", err)
 	}
-	os.Rename(tmp, h.historyFile)
+	if err := os.Rename(tmp, h.historyFile); err != nil {
+		return fmt.Errorf("rename history: %w", err)
+	}
+	return nil
 }
 
 func (h *HistoryManager) AddMessage(role, content string, meta map[string]any) {
