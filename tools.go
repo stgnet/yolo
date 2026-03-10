@@ -737,26 +737,32 @@ func (t *ToolExecutor) runCommand(args map[string]any) string {
 	cmd := exec.Command("sh", "-c", command)
 	cmd.Dir = t.baseDir
 
+	// Run in a new session so child processes have no controlling terminal.
+	// This prevents programs like ssh/git from opening /dev/tty directly to
+	// prompt for passwords/passphrases, which would steal keystrokes from
+	// yolo and leak output onto the user's terminal.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+
 	// Explicitly connect stdin to /dev/null so child processes that try to
-	// read input will get immediate EOF instead of hanging or stealing the
-	// terminal's stdin.
+	// read input will get immediate EOF instead of hanging.
 	devNull, err := os.Open(os.DevNull)
 	if err == nil {
 		cmd.Stdin = devNull
 		defer devNull.Close()
 	}
 
+	// Capture stderr explicitly so it is always available, not just on
+	// non-zero exit.  This also ensures stderr never leaks to the terminal.
+	var stderrBuf strings.Builder
+	cmd.Stderr = &stderrBuf
+
 	done := make(chan struct{})
-	var stdout, stderr []byte
+	var stdout []byte
 	var cmdErr error
 
 	go func() {
 		defer close(done)
 		stdout, cmdErr = cmd.Output()
-		if exitErr, ok := cmdErr.(*exec.ExitError); ok {
-			stderr = exitErr.Stderr
-			cmdErr = exitErr
-		}
 	}()
 
 	select {
@@ -764,7 +770,8 @@ func (t *ToolExecutor) runCommand(args map[string]any) string {
 		// Command completed
 	case <-time.After(time.Duration(CommandTimeout) * time.Second):
 		if cmd.Process != nil {
-			cmd.Process.Kill()
+			// Kill the entire process group (negative PID) since we used Setsid.
+			syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		}
 		return fmt.Sprintf("Error: command timed out (%ds)", CommandTimeout)
 	}
@@ -773,12 +780,13 @@ func (t *ToolExecutor) runCommand(args map[string]any) string {
 	if len(stdout) > 0 {
 		out.Write(stdout)
 	}
-	if len(stderr) > 0 {
+	stderrStr := stderrBuf.String()
+	if len(stderrStr) > 0 {
 		if out.Len() > 0 {
 			out.WriteString("\n")
 		}
 		out.WriteString("STDERR: ")
-		out.Write(stderr)
+		out.WriteString(stderrStr)
 	}
 	if cmdErr != nil {
 		if exitErr, ok := cmdErr.(*exec.ExitError); ok {
@@ -973,6 +981,13 @@ func (t *ToolExecutor) restart(args map[string]any) string {
 	// Build command - build the whole package (not just main.go) to the same executable name
 	buildCmd := exec.Command("go", "build", "-o", filepath.Base(exePath), ".")
 	buildCmd.Dir = cwd
+
+	// Fully isolate: new session (no controlling terminal) + stdin from /dev/null.
+	buildCmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if devNull, derr := os.Open(os.DevNull); derr == nil {
+		buildCmd.Stdin = devNull
+		defer devNull.Close()
+	}
 
 	output, err := buildCmd.CombinedOutput()
 	if err != nil {
