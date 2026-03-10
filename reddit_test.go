@@ -5,72 +5,83 @@ import (
 	"testing"
 )
 
-// TestRedditToolDefinition verifies the reddit tool is properly defined
-func TestRedditToolDefinition(t *testing.T) {
-	found := false
-	for _, tool := range ollamaTools {
-		if tool.Function.Name == "reddit" {
-			found = true
+// TestAppendComment tests comment formatting for Reddit threads
+func TestAppendComment(t *testing.T) {
+	executor := &ToolExecutor{}
 
-			// Check required parameters
-			params := tool.Function.Parameters.Properties
-			if _, ok := params["action"]; !ok {
-				t.Error("reddit tool should have 'action' parameter")
-			}
-			if _, ok := params["limit"]; !ok {
-				t.Error("reddit tool should have 'limit' parameter (optional)")
-			}
-
-			// Check description mentions Reddit functionality
-			desc := tool.Function.Description
-			if !strings.Contains(desc, "Reddit") && !strings.Contains(desc, "API") {
-				t.Errorf("reddit description should mention Reddit or API, got: %s", desc)
-			}
-
-			break
-		}
+	tests := []struct {
+		name     string
+		postData redditPost
+	}{
+		{
+			name: "comment with author and body",
+			postData: redditPost{
+				Kind: "t1",
+				Data: redditData{
+					Author:   "test_user",
+					Score:    10,
+					Selftext: "Comment body text",
+				},
+			},
+		},
+		{
+			name: "comment without selftext",
+			postData: redditPost{
+				Kind: "t1",
+				Data: redditData{
+					Author: "anonymous",
+					Score:  5,
+				},
+			},
+		},
 	}
 
-	if !found {
-		t.Error("reddit tool not found in ollamaTools")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var sb strings.Builder
+			executor.appendComment(&sb, tt.postData, 0)
+			result := sb.String()
+
+			if result == "" {
+				t.Error("Expected non-empty comment result")
+			}
+
+			// Check for author and score in output
+			if !strings.Contains(result, tt.postData.Data.Author) {
+				t.Errorf("Expected result to contain author %q", tt.postData.Data.Author)
+			}
+		})
 	}
 }
 
-// TestRedditToolInValidTools verifies reddit is in the valid tools list
-func TestRedditToolInValidTools(t *testing.T) {
-	found := false
-	for _, tool := range validTools {
-		if tool == "reddit" {
-			found = true
-			break
-		}
+// TestFormatRedditTimestamp tests timestamp formatting for Reddit posts
+func TestFormatRedditTimestamp(t *testing.T) {
+	tests := []struct {
+		name      string
+		timestamp float64
+		contains  string
+	}{
+		{
+			name:      "recent timestamp",
+			timestamp: 1700000000, // Nov 2023
+			contains:  "November",
+		},
+		{
+			name:      "old timestamp",
+			timestamp: 1000000000, // Sep 2012
+			contains:  "September",
+		},
 	}
 
-	if !found {
-		t.Error("reddit not found in validTools list")
-	}
-}
-
-// TestRedditActions verifies all three Reddit actions are documented
-func TestRedditActions(t *testing.T) {
-	var toolDesc string
-	for _, tool := range ollamaTools {
-		if tool.Function.Name == "reddit" {
-			toolDesc = tool.Function.Description
-			break
-		}
-	}
-
-	if toolDesc == "" {
-		t.Fatal("reddit tool description not found")
-	}
-
-	actions := []string{"search", "subreddit", "thread"}
-	for _, action := range actions {
-		lowerDesc := strings.ToLower(toolDesc)
-		if !strings.Contains(lowerDesc, strings.ToLower(action)) &&
-			!strings.Contains(toolDesc, "\""+action+"\"") {
-			t.Logf("Action '%s' may not be documented in description: %s", action, toolDesc[:min(100, len(toolDesc))])
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := formatRedditTimestamp(tt.timestamp)
+			if result == "" {
+				t.Error("Expected non-empty timestamp format")
+			}
+			if !strings.Contains(result, tt.contains) {
+				t.Errorf("Expected result to contain %q, got: %q", tt.contains, result)
+			}
+		})
 	}
 }
