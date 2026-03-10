@@ -52,12 +52,15 @@ func toolDef(name, desc string, props map[string]ToolParam, required []string) T
 
 // ─── Ollama Client ────────────────────────────────────────────────────
 
+// OllamaClient communicates with the Ollama REST API for model listing,
+// context-length detection, and streaming chat completions.
 type OllamaClient struct {
 	baseURL  string
 	client   *http.Client
 	ctxCache map[string]int // cached context lengths per model
 }
 
+// NewOllamaClient creates a client pointing at the given Ollama API base URL.
 func NewOllamaClient(baseURL string) *OllamaClient {
 	return &OllamaClient{
 		baseURL:  strings.TrimRight(baseURL, "/"),
@@ -104,6 +107,7 @@ func (c *OllamaClient) GetModelContextLength(model string) int {
 	return 0
 }
 
+// ListModels returns the names of all models available in Ollama, or nil on error.
 func (c *OllamaClient) ListModels() []string {
 	resp, err := c.client.Get(c.baseURL + "/api/tags")
 	if err != nil {
@@ -122,23 +126,28 @@ func (c *OllamaClient) ListModels() []string {
 	return models
 }
 
-// Chat message types
+// ─── Chat types ──────────────────────────────────────────────────────
+
+// ChatMessage is a single message in an Ollama chat conversation.
 type ChatMessage struct {
-	Role      string     `json:"role"`
+	Role      string     `json:"role"`               // "system", "user", "assistant", or "tool"
 	Content   string     `json:"content"`
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
 }
 
+// ToolCall is a tool invocation returned by the model.
 type ToolCall struct {
 	ID       string       `json:"id,omitempty"`
 	Function ToolCallFunc `json:"function"`
 }
 
+// ToolCallFunc carries the name and raw JSON arguments of a tool call.
 type ToolCallFunc struct {
 	Name      string          `json:"name"`
 	Arguments json.RawMessage `json:"arguments"`
 }
 
+// ChatRequest is the JSON body sent to POST /api/chat.
 type ChatRequest struct {
 	Model    string         `json:"model"`
 	Messages []ChatMessage  `json:"messages"`
@@ -147,38 +156,46 @@ type ChatRequest struct {
 	Options  map[string]any `json:"options,omitempty"`
 }
 
+// StreamResponse is a single JSON object in the streaming /api/chat response.
 type StreamResponse struct {
 	Message StreamMessage `json:"message"`
 	Done    bool          `json:"done"`
 }
 
+// StreamMessage holds the incremental content from one streamed chunk.
 type StreamMessage struct {
 	Thinking  string     `json:"thinking,omitempty"`
 	Content   string     `json:"content"`
 	ToolCalls []StreamTC `json:"tool_calls,omitempty"`
 }
 
+// StreamTC is a tool call within a streamed response chunk.
 type StreamTC struct {
 	Function StreamTCFunc `json:"function"`
 }
 
+// StreamTCFunc carries the parsed name and arguments of a streamed tool call.
 type StreamTCFunc struct {
 	Name      string         `json:"name"`
 	Arguments map[string]any `json:"arguments"`
 }
 
-// ChatResult holds the result of a chat call
+// ChatResult is the aggregated result of a complete streaming chat call.
 type ChatResult struct {
-	DisplayText string
-	ContentText string
-	ToolCalls   []ParsedToolCall
+	DisplayText string           // text shown to the user (may include thinking)
+	ContentText string           // raw content from the model
+	ToolCalls   []ParsedToolCall // tool calls extracted from the response
 }
 
+// ParsedToolCall is a tool name + arguments ready for ToolExecutor.Execute.
 type ParsedToolCall struct {
 	Name string
 	Args map[string]any
 }
 
+// Chat sends a streaming chat request to Ollama and returns the accumulated
+// result.  Display text is printed to the terminal as it arrives.  The ctx
+// parameter allows the caller to cancel the request (e.g. on Ctrl-C).
 func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMessage, tools []ToolDef) (*ChatResult, error) {
 	numCtx := DefaultNumCtx
 	if NumCtxOverride != "" {
