@@ -23,6 +23,7 @@ All notable changes to YOLO will be documented in this file.
 - **Enhanced web_search**: Now uses DuckDuckGo's Instant Answer API with proper Wikipedia fallback for better search results
 
 ### Fixed
+- **web_search DuckDuckGo empty result detection**: `isEmptySearchResult()` now properly detects when DuckDuckGo returns "Try a different search term" messages, allowing correct fallback to Wikipedia. This fixes queries like "golang dependency injection" that previously returned unhelpful empty responses.
 - **Output line overwrite glitch**: `rawWrite()` was converting standalone
   `\r` (carriage return) to `\r\n`, causing the cursor position tracker to
   drift from the actual terminal cursor. This made output sometimes write
@@ -31,6 +32,7 @@ All notable changes to YOLO will be documented in this file.
 
 ### Changed
 - **Test coverage**: Added GOG integration tests with realistic golden files for calendar and Drive operations
+- **Test coverage**: Enhanced web_search tests with multiple DuckDuckGo query scenarios and isEmptySearchResult validation cases
 - **Documentation**: Updated tools.md to reflect DuckDuckGo + Wikipedia search implementation
 
 ### Removed
