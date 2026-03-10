@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -89,6 +90,23 @@ var ollamaTools = []ToolDef{
 			"source": {Type: "string", Description: "Relative path to source file"},
 			"dest":   {Type: "string", Description: "Relative path for destination"},
 		}, []string{"source", "dest"}),
+	toolDef("reddit", "Fetch posts from Reddit using the public API (no auth required). Can search, list subreddit posts, or get thread details.",
+		map[string]ToolParam{
+			"action": {Type: "string", Description: "Action: 'search' (query Reddit), 'subreddit' (list posts from subreddit), 'thread' (get specific post/comments)"},
+			"subreddit": {Type: "string", Description: "Subreddit name without 'r/' (e.g., 'golang') - required for 'subreddit' action"},
+			"query": {Type: "string", Description: "Search query - required for 'search' action"},
+			"post_id": {Type: "string", Description: "Post/comment ID for 'thread' action"},
+			"limit": {Type: "integer", Description: "Max results to return (default: 25, max: 100)"},
+		}, []string{"action"}),
+	toolDef("gog", "Google CLI tool for Gmail, Calendar, Drive, Docs, Sheets, Slides, Contacts, Tasks, People, Chat, Classroom. Use 'command' parameter to pass gog subcommands (e.g., 'gmail search inbox:unread', 'calendar list events', 'drive list'). Output is JSON by default.",
+		map[string]ToolParam{
+			"command": {Type: "string", Description: "gog subcommand and arguments (e.g., 'gmail search newer_than:1d --max 5', 'calendar list events', 'drive list')"},
+		}, []string{"command"}),
+	toolDef("web_search", "Search the web using DuckDuckGo. Returns instant answers, related topics, and abstract snippets from search results.",
+		map[string]ToolParam{
+			"query": {Type: "string", Description: "Search query (required)"},
+			"count": {Type: "integer", Description: "Number of results to return (default: 5, max: 10)"},
+		}, []string{"query"}),
 }
 
 // ─── Tool Executor ───────────────────────────────────────────────────
@@ -100,7 +118,7 @@ var validTools = []string{
 	"search_files", "run_command", "spawn_subagent",
 	"list_subagents", "read_subagent_result", "summarize_subagents",
 	"list_models", "switch_model", "think", "restart",
-	"make_dir", "remove_dir", "copy_file", "move_file",
+	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search",
 }
 
 // ToolExecutor dispatches tool calls from the LLM to concrete
@@ -177,6 +195,12 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 		return t.copyFile(args)
 	case "move_file":
 		return t.moveFile(args)
+	case "reddit":
+		return t.reddit(args)
+	case "gog":
+		return t.gog(args)
+	case "web_search":
+		return t.webSearch(args)
 	default:
 		return fmt.Sprintf("Error: unknown tool '%s'. Available tools: %s", name, strings.Join(validTools, ", "))
 	}
@@ -980,3 +1004,269 @@ func (t *ToolExecutor) restart(args map[string]any) string {
 	return "Process replaced"
 }
 
+// ─── Reddit Tool Implementation ────────────────────────────────────────
+
+// redditPost represents a Reddit post/comment structure for parsing API responses
+type redditPost struct {
+	Kind    string      `json:"kind"`
+	Data    redditData  `json:"data"`
+	IsSelf  bool        `json:"is_self"`
+	Subreddit string    `json:"subreddit"`
+	Title   string      `json:"title,omitempty"`
+	Selftext string     `json:"selftext,omitempty"`
+	URL     string      `json:"url,omitempty"`
+	Score   int         `json:"score,omitempty"`
+	NumComments int     `json:"num_comments,omitempty"`
+	Created float64     `json:"created_utc,omitempty"`
+	ID      string      `json:"id,omitempty"`
+	Author  string      `json:"author,omitempty"`
+}
+
+type redditData struct {
+	Title     string  `json:"title,omitempty"`
+	Selftext  string  `json:"selftext,omitempty"`
+	URL       string  `json:"url,omitempty"`
+	Score     int     `json:"score,omitempty"`
+	NumComments int   `json:"num_comments,omitempty"`
+	Created   float64 `json:"created_utc,omitempty"`
+	ID        string  `json:"id,omitempty"`
+	Author    string  `json:"author,omitempty"`
+	Subreddit string  `json:"subreddit,omitempty"`
+}
+
+type redditListing struct {
+	Kind string         `json:"kind"`
+	Data redditChildren `json:"data"`
+}
+
+type redditChildren struct {
+	Children []redditPostWrapper `json:"children"`
+	After    string              `json:"after"`
+	Before   string              `json:"before"`
+}
+
+type redditPostWrapper struct {
+	Kind string     `json:"kind"`
+	Data redditPost `json:"data"`
+}
+
+// reddit fetches data from Reddit's public API
+func (t *ToolExecutor) reddit(args map[string]any) string {
+	action := getStringArg(args, "action", "")
+	if action == "" {
+		return "Error: 'action' parameter is required. Options: 'search', 'subreddit', 'thread'"
+	}
+
+	limit := getIntArg(args, "limit", 25)
+	if limit > 100 {
+		limit = 100
+	}
+	if limit < 1 {
+		limit = 25
+	}
+
+	var url string
+	var err error
+
+	switch action {
+	case "search":
+		query := getStringArg(args, "query", "")
+		if query == "" {
+			return "Error: 'query' parameter is required for 'search' action"
+		}
+		url = fmt.Sprintf("https://www.reddit.com/search.json?q=%s&limit=%d", 
+			strings.ReplaceAll(query, " ", "+"), limit)
+
+	case "subreddit":
+		subreddit := getStringArg(args, "subreddit", "")
+		if subreddit == "" {
+			return "Error: 'subreddit' parameter is required for 'subreddit' action"
+		}
+		// Clean subreddit name - remove r/ prefix if present
+		subreddit = strings.TrimPrefix(subreddit, "r/")
+		url = fmt.Sprintf("https://www.reddit.com/r/%s/hot.json?limit=%d", subreddit, limit)
+
+	case "thread":
+		postID := getStringArg(args, "post_id", "")
+		if postID == "" {
+			return "Error: 'post_id' parameter is required for 'thread' action"
+		}
+		url = fmt.Sprintf("https://www.reddit.com/comments/%s/.json", postID)
+
+	default:
+		return fmt.Sprintf("Error: unknown action '%s'. Options: 'search', 'subreddit', 'thread'", action)
+	}
+
+	// Make HTTP request with timeout
+	client := &http.Client{Timeout: 15 * time.Second}
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return fmt.Sprintf("Error creating request: %v", err)
+	}
+	
+	// Add User-Agent header (Reddit requires it)
+	req.Header.Set("User-Agent", "YOLO-Agent/1.0 (by /u/yolo)")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Sprintf("Error fetching from Reddit: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Sprintf("Error: Reddit returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Sprintf("Error reading response: %v", err)
+	}
+
+	// Parse based on action type
+	switch action {
+	case "thread":
+		return t.parseThreadResponse(action, body)
+	default:
+		return t.parseListingResponse(action, body)
+	}
+}
+
+func (t *ToolExecutor) parseListingResponse(action string, data []byte) string {
+	var listing redditListing
+	
+	if err := json.Unmarshal(data, &listing); err != nil {
+		return fmt.Sprintf("Error parsing JSON: %v", err)
+	}
+
+	if len(listing.Data.Children) == 0 {
+		return "No results found"
+	}
+
+	var sb strings.Builder
+	
+	switch action {
+	case "search":
+		sb.WriteString(fmt.Sprintf("Search results (showing %d of available):\n\n", len(listing.Data.Children)))
+	case "subreddit":
+		subreddit := listing.Data.Children[0].Data.Subreddit
+		sb.WriteString(fmt.Sprintf("Hot posts in r/%s (showing %d):\n\n", subreddit, len(listing.Data.Children)))
+	}
+
+	for i, post := range listing.Data.Children {
+		if i > 0 {
+			sb.WriteString("\n---\n\n")
+		}
+		
+		title := post.Data.Title
+		if title == "" && post.Data.Selftext != "" {
+			// Self post without title - use first line of content
+			lines := strings.SplitN(post.Data.Selftext, "\n", 2)
+			title = "[Self Post] " + lines[0]
+		}
+		
+		sb.WriteString(fmt.Sprintf("**%s**\n", title))
+		
+		if post.Data.Author != "" {
+			sb.WriteString(fmt.Sprintf("By: u/%s | Score: %d | Comments: %d\n", 
+				post.Data.Author, post.Data.Score, post.Data.NumComments))
+		}
+		
+		if post.Data.URL != "" && !strings.Contains(post.Data.URL, "reddit.com") {
+			sb.WriteString(fmt.Sprintf("URL: %s\n", post.Data.URL))
+		}
+		
+		if post.Data.Selftext != "" {
+			// Truncate selftext if too long
+			text := strings.TrimSpace(post.Data.Selftext)
+			if len(text) > 500 {
+				text = text[:500] + "..."
+			}
+			sb.WriteString(fmt.Sprintf("\n%s\n", text))
+		}
+		
+		// Add Reddit link
+		postURL := fmt.Sprintf("https://www.reddit.com%s", post.Data.URL)
+		if !strings.HasPrefix(post.Data.URL, "/") {
+			postURL = fmt.Sprintf("https://www.reddit.com/r/%s/comments/%s/", 
+				post.Data.Subreddit, post.Data.ID)
+		}
+		sb.WriteString(fmt.Sprintf("\n[Read more](%s)", postURL))
+	}
+
+	return sb.String()
+}
+
+func (t *ToolExecutor) parseThreadResponse(action string, data []byte) string {
+	// Thread responses are nested - we get the post + comments tree
+	var listing redditListing
+	
+	if err := json.Unmarshal(data, &listing); err != nil {
+		return fmt.Sprintf("Error parsing JSON: %v", err)
+	}
+
+	if len(listing.Data.Children) == 0 {
+		return "No results found"
+	}
+
+	// First child is usually the original post
+	originalPost := listing.Data.Children[0]
+	
+	var sb strings.Builder
+	
+	sb.WriteString(fmt.Sprintf("# %s\n", originalPost.Data.Title))
+	sb.WriteString(fmt.Sprintf("By: u/%s | Score: %d | Posted: %s\n\n", 
+		originalPost.Data.Author, 
+		originalPost.Data.Score,
+		formatRedditTimestamp(originalPost.Data.Created)))
+
+	if originalPost.Data.Selftext != "" {
+		sb.WriteString(fmt.Sprintf("%s\n\n", strings.TrimSpace(originalPost.Data.Selftext)))
+	}
+
+	if originalPost.Data.URL != "" && !strings.Contains(originalPost.Data.URL, "reddit.com") {
+		sb.WriteString(fmt.Sprintf("[External Link](%s)\n\n", originalPost.Data.URL))
+	}
+
+	// Now process comments (remaining children are top-level comments)
+	if len(listing.Data.Children) > 1 {
+		sb.WriteString("\n## Top Comments:\n\n")
+		
+		for i := 1; i < len(listing.Data.Children); i++ {
+			comment := listing.Data.Children[i]
+			t.appendComment(&sb, comment.Data, 0)
+			if i < len(listing.Data.Children)-1 {
+				sb.WriteString("\n---\n\n")
+			}
+		}
+	}
+
+	return sb.String()
+}
+
+func (t *ToolExecutor) appendComment(sb *strings.Builder, post redditPost, depth int) {
+	if depth > 3 {
+		return // Limit nesting depth
+	}
+
+	indent := strings.Repeat("  ", depth)
+	
+	body := strings.TrimSpace(post.Data.Selftext)
+	if body == "" && post.Kind != "t1" {
+		body = "[Deleted or removed]"
+	}
+	
+	sb.WriteString(fmt.Sprintf("%s**%s** (%d points)\n", indent, post.Data.Author, post.Data.Score))
+	if body != "" {
+		// Truncate long comments
+		if len(body) > 1000 {
+			body = body[:1000] + "..."
+		}
+		sb.WriteString(fmt.Sprintf("%s%s\n", indent, body))
+	}
+}
+
+func formatRedditTimestamp(timestamp float64) string {
+	t := time.Unix(int64(timestamp), 0)
+	return t.Format("January 2, 2006 at 3:04 PM MST")
+}
