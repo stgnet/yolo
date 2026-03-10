@@ -22,6 +22,21 @@ import (
 // to the LLM via OllamaClient, dispatches tool calls through ToolExecutor,
 // and persists conversation state with HistoryManager. When no user input is
 // pending it immediately enters autonomous thinking.
+// handoffResult holds the outcome of a background tool execution that was
+// forked from the main agent when a user message arrived mid-tool-loop.
+type handoffResult struct {
+	ID      int              // monotonic handoff ID
+	Results []toolExecResult // tool name + output for each executed tool
+	Done    chan struct{}     // closed when the background executor finishes
+}
+
+// toolExecResult is a single tool call's name, arguments, and output string.
+type toolExecResult struct {
+	Name   string
+	Args   map[string]any
+	Result string
+}
+
 type YoloAgent struct {
 	baseDir         string             // working directory; all file operations are relative to this
 	scriptPath      string             // path to the running binary (used for self-restart)
@@ -32,7 +47,9 @@ type YoloAgent struct {
 	running         bool               // false signals the main loop to exit
 	busy            bool               // true while the agent is processing a chat round
 	subagentCounter int                // monotonic ID for spawned sub-agents
-	mu              sync.Mutex         // protects busy, cancelChat, and subagentCounter
+	handoffCounter  int                // monotonic ID for background handoffs
+	pendingHandoffs []*handoffResult   // in-flight background tool executions
+	mu              sync.Mutex         // protects busy, cancelChat, subagentCounter, handoffCounter, pendingHandoffs
 	cancelChat      context.CancelFunc // cancels the in-flight Chat HTTP request
 }
 
@@ -212,6 +229,10 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		a.inputMgr.ClearLine()
 	}
 
+	// Ingest any completed background handoff results so the agent has
+	// full context of work that was forked earlier.
+	a.ingestHandoffResults()
+
 	if userMessage != "" {
 		a.history.AddMessage("user", userMessage, nil)
 	}
@@ -302,20 +323,29 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 			ToolCalls: nativeTCs,
 		})
 
-		// Execute each tool and add tool-role result
-		nudged := false
-		for _, call := range toolCalls {
-			// Check for queued input before each tool (not just after the batch)
-			if !nudged && len(a.inputMgr.Lines) > 0 {
-				cprint(Cyan, "  [nudge] User input queued — asking agent to wrap up")
+		// Execute each tool and add tool-role result.
+		// If the user has typed a message, hand off remaining tools to a
+		// background executor so the main agent can respond immediately.
+		handedOff := false
+		for i, call := range toolCalls {
+			// Check for queued input before each tool
+			if len(a.inputMgr.Lines) > 0 {
+				remaining := toolCalls[i:]
+				cprint(Cyan, fmt.Sprintf("  [handoff] User input queued — forking %d remaining tool(s) to background", len(remaining)))
+				a.handoffRemainingTools(remaining)
+				// Tell the agent what happened so it has context
 				roundMsgs = append(roundMsgs, ChatMessage{
 					Role: "system",
-					Content: "IMPORTANT: The user has typed a new message and is waiting for you. " +
-						"You MUST finish immediately. Do NOT call any more tools. " +
-						"Provide a brief summary of what you've done so far, then stop so " +
-						"the user's message can be processed.",
+					Content: fmt.Sprintf(
+						"IMPORTANT: The user has typed a new message and is waiting for you. "+
+							"The %d remaining tool call(s) in this batch have been handed off to a "+
+							"background executor — they will complete automatically and their results "+
+							"will be available in your next turn. You do NOT need to re-run them. "+
+							"Respond to the user's message now. Briefly mention that background work "+
+							"is still in progress if relevant.", len(remaining)),
 				})
-				nudged = true
+				handedOff = true
+				break
 			}
 
 			name := call.Name
@@ -346,9 +376,33 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 			toolLog = append(toolLog, toolLogEntry{name: name, args: args, result: cleanResult})
 		}
 
-		// Also check after the batch completes (in case no tools were in this round
-		// or the queue filled during execution)
-		if !nudged && len(a.inputMgr.Lines) > 0 {
+		// If tools were handed off, do one final LLM call so the agent can
+		// acknowledge the handoff and wrap up, then break the tool loop.
+		if handedOff {
+			allMsgs := make([]ChatMessage, 0, len(baseMsgs)+len(roundMsgs))
+			allMsgs = append(allMsgs, baseMsgs...)
+			allMsgs = append(allMsgs, roundMsgs...)
+
+			ctx, cancel := context.WithCancel(context.Background())
+			a.mu.Lock()
+			a.cancelChat = cancel
+			a.mu.Unlock()
+
+			wrapResult, wrapErr := a.ollama.Chat(ctx, a.history.GetModel(), allMsgs, nil) // no tools — just respond
+			cancel()
+			a.mu.Lock()
+			a.cancelChat = nil
+			a.mu.Unlock()
+
+			if wrapErr == nil && wrapResult != nil {
+				finalText = wrapResult.DisplayText
+			}
+			break
+		}
+
+		// Also check after the batch completes (in case the queue filled
+		// during execution of the last tool)
+		if len(a.inputMgr.Lines) > 0 {
 			cprint(Cyan, "  [nudge] User input queued — asking agent to wrap up")
 			roundMsgs = append(roundMsgs, ChatMessage{
 				Role: "system",
@@ -601,6 +655,108 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 	}()
 
 	return fmt.Sprintf("Sub-agent #%d spawned (%s). Results -> %s", aid, useModel, resultFile)
+}
+
+// handoffRemainingTools forks the remaining unexecuted tool calls to a
+// background goroutine so the main agent can immediately process user input.
+// The results are collected in a handoffResult struct that the main agent
+// ingests after its next conversation turn.
+func (a *YoloAgent) handoffRemainingTools(remaining []ParsedToolCall) *handoffResult {
+	a.mu.Lock()
+	a.handoffCounter++
+	hid := a.handoffCounter
+	a.mu.Unlock()
+
+	hr := &handoffResult{
+		ID:   hid,
+		Done: make(chan struct{}),
+	}
+
+	a.mu.Lock()
+	a.pendingHandoffs = append(a.pendingHandoffs, hr)
+	a.mu.Unlock()
+
+	go func() {
+		defer close(hr.Done)
+		cprint(Magenta, fmt.Sprintf("  [handoff #%d] executing %d remaining tool(s) in background", hid, len(remaining)))
+
+		var results []toolExecResult
+		for _, call := range remaining {
+			args := call.Args
+			if args == nil {
+				args = map[string]any{}
+			}
+
+			shortArgs, _ := json.Marshal(args)
+			shortStr := string(shortArgs)
+			if len(shortStr) > 80 {
+				shortStr = shortStr[:80] + "..."
+			}
+			cprint(Magenta, fmt.Sprintf("  [handoff #%d] [%s] %s", hid, call.Name, shortStr))
+
+			resultStr := a.tools.Execute(call.Name, args)
+
+			preview := resultStr
+			if len(preview) > 200 {
+				preview = preview[:200] + "..."
+			}
+			preview = strings.ReplaceAll(preview, "\r", "")
+			preview = strings.ReplaceAll(preview, "\n", " ")
+			cprint(Gray, fmt.Sprintf("  [handoff #%d] => %s", hid, preview))
+
+			results = append(results, toolExecResult{
+				Name:   call.Name,
+				Args:   args,
+				Result: filterToolActivityMarkers(resultStr),
+			})
+		}
+
+		hr.Results = results
+		cprint(Magenta, fmt.Sprintf("  [handoff #%d] complete (%d tools executed)", hid, len(results)))
+	}()
+
+	return hr
+}
+
+// ingestHandoffResults collects completed background handoff results and
+// injects them into the conversation history so the main agent has full
+// context of what happened. Returns the number of handoffs ingested.
+func (a *YoloAgent) ingestHandoffResults() int {
+	a.mu.Lock()
+	pending := a.pendingHandoffs
+	a.mu.Unlock()
+
+	if len(pending) == 0 {
+		return 0
+	}
+
+	ingested := 0
+	var remaining []*handoffResult
+	for _, hr := range pending {
+		select {
+		case <-hr.Done:
+			// Handoff complete — build a summary for the agent's context
+			var summary strings.Builder
+			summary.WriteString(fmt.Sprintf("[Background handoff #%d completed]\n", hr.ID))
+			summary.WriteString("The following tools were executed in the background while you were responding to the user:\n\n")
+			for _, r := range hr.Results {
+				argsJSON, _ := json.Marshal(r.Args)
+				summary.WriteString(fmt.Sprintf("Tool: %s\nArgs: %s\nResult: %s\n\n", r.Name, string(argsJSON), r.Result))
+			}
+			a.history.AddMessage("system", summary.String(), nil)
+			cprint(Cyan, fmt.Sprintf("  [handoff #%d] results injected into context", hr.ID))
+			ingested++
+		default:
+			// Still running — keep it in the pending list
+			remaining = append(remaining, hr)
+		}
+	}
+
+	a.mu.Lock()
+	a.pendingHandoffs = remaining
+	a.mu.Unlock()
+
+	return ingested
 }
 
 // ── Slash commands ──
