@@ -117,16 +117,14 @@ func (im *InputManager) syncAndRedraw() {
 	}
 }
 
-// ClearLine clears the input line.
+// ClearLine clears the input buffer but keeps the prompt visible.
 func (im *InputManager) ClearLine() string {
 	im.mu.Lock()
 	text := string(im.buf)
+	im.buf = im.buf[:0]
 	im.mu.Unlock()
-	if globalUI != nil {
-		globalUI.ClearInputLine()
-	} else {
-		fmt.Printf("\r\033[K")
-	}
+	// Redraw with empty buffer so the prompt stays visible
+	im.syncAndRedraw()
 	return text
 }
 
@@ -185,9 +183,6 @@ func (im *InputManager) processLoop() {
 	for {
 		select {
 		case ch := <-im.rawBytes:
-			im.agent.lastActivity = time.Now()
-			im.agent.thinkDelay = IdleThinkDelay
-
 			im.mu.Lock()
 			switch {
 			case ch == '\r' || ch == '\n': // Enter
