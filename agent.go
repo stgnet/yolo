@@ -280,7 +280,7 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		a.cancelChat = cancel
 		a.mu.Unlock()
 
-		result, err := a.ollama.Chat(ctx, a.config.GetModel(), allMsgs, ollamaTools)
+		result, err := a.ollama.Chat(ctx, a.config.GetModel(), allMsgs, ollamaTools, nil)
 		cancel()
 		a.mu.Lock()
 		a.cancelChat = nil
@@ -605,7 +605,12 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 	resultFile := filepath.Join(SubagentDir, fmt.Sprintf("agent_%d.json", aid))
 
 	go func() {
+		// Create a dedicated window for this subagent
+		if globalUI != nil {
+			globalUI.AddSubagentWindow(aid, fmt.Sprintf("subagent #%d", aid))
+		}
 		cprint(Magenta, fmt.Sprintf("  [sub-agent #%d] started (%s)", aid, useModel))
+
 		msgs := []ChatMessage{
 			{
 				Role: "system",
@@ -614,9 +619,17 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 			},
 		}
 
+		// Output function that writes to the subagent's window
+		var outFn func(string)
+		if globalUI != nil {
+			outFn = func(text string) {
+				globalUI.WriteToSubagentWindow(aid, text)
+			}
+		}
+
 		status := "complete"
 		result := ""
-		chatResult, err := a.ollama.Chat(context.Background(), useModel, msgs, nil)
+		chatResult, err := a.ollama.Chat(context.Background(), useModel, msgs, nil, outFn)
 		if err != nil {
 			result = err.Error()
 			status = "error"
@@ -637,6 +650,11 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 		}, "", "  ")
 		os.WriteFile(resultFile, data, 0o644)
 		cprint(Magenta, fmt.Sprintf("\n  [sub-agent #%d] %s. See %s", aid, status, resultFile))
+
+		// Mark window as complete (starts 300s removal timer)
+		if globalUI != nil {
+			globalUI.MarkSubagentComplete(aid)
+		}
 	}()
 
 	return fmt.Sprintf("Sub-agent #%d spawned (%s). Results -> %s", aid, useModel, resultFile)
