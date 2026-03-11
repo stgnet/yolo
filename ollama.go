@@ -294,6 +294,8 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 		// Strip carriage returns from LLM output to prevent line overwrites.
 		// \r\n becomes \n (rawWrite will re-add \r\n for raw mode);
 		// standalone \r is simply removed.
+		// Tab expansion is handled by OutputPrintInline (for the UI path)
+		// so the cursor tracker and terminal agree on column positions.
 		thinking = strings.ReplaceAll(thinking, "\r", "")
 		content = strings.ReplaceAll(content, "\r", "")
 

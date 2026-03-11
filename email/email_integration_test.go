@@ -1,17 +1,26 @@
-// Integration tests for email package (skipped by default if sendmail not available)
+// Integration tests for email package.
+// Gated behind YOLO_TEST_EMAIL=1 to prevent accidentally sending real emails.
 
 package email
 
 import (
+	"os"
 	"os/exec"
 	"testing"
 )
 
-func TestSend_Integration(t *testing.T) {
-	// Check if sendmail is available
-	if _, err := exec.LookPath("/usr/sbin/sendmail"); err != nil {
-		t.Skip("Skipping integration test: sendmail not available")
+func skipUnlessEmailEnabled(t *testing.T) {
+	t.Helper()
+	if os.Getenv("YOLO_TEST_EMAIL") != "1" {
+		t.Skip("Skipping email integration test: set YOLO_TEST_EMAIL=1 to enable")
 	}
+	if _, err := exec.LookPath("/usr/sbin/sendmail"); err != nil {
+		t.Skip("Skipping email integration test: sendmail not available")
+	}
+}
+
+func TestSend_Integration(t *testing.T) {
+	skipUnlessEmailEnabled(t)
 
 	cfg := DefaultConfig()
 	msg := &Message{
@@ -29,10 +38,7 @@ func TestSend_Integration(t *testing.T) {
 }
 
 func TestSendReport_Integration(t *testing.T) {
-	// Check if sendmail is available
-	if _, err := exec.LookPath("/usr/sbin/sendmail"); err != nil {
-		t.Skip("Skipping integration test: sendmail not available")
-	}
+	skipUnlessEmailEnabled(t)
 
 	cfg := DefaultConfig()
 	subject := "YOLO Progress Report Test"

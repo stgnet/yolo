@@ -184,6 +184,35 @@ func TestTrackCursorMovementExtended(t *testing.T) {
 	}
 }
 
+func TestExpandTabs(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		startCol int
+		expected string
+	}{
+		{"no tabs", "hello", 1, "hello"},
+		{"tab at col 1", "\thello", 1, "        hello"},           // 8 spaces to reach col 9
+		{"tab at col 5", "\thello", 5, "    hello"},               // 4 spaces to reach col 9
+		{"tab at col 8", "\thello", 8, " hello"},                  // 1 space to reach col 9
+		{"tab at col 9", "\thello", 9, "        hello"},           // 8 spaces to reach col 17
+		{"two tabs", "\t\thi", 1, "                hi"},           // 8+8 spaces
+		{"tab after text", "ab\tcd", 1, "ab      cd"},             // col 3 after "ab", 6 spaces to col 9
+		{"tab after newline", "a\n\tb", 1, "a\n        b"},        // \n resets to col 1, then 8 spaces
+		{"empty", "", 1, ""},
+		{"no tab fast path", "abcdef", 3, "abcdef"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := expandTabs(tt.input, tt.startCol)
+			if got != tt.expected {
+				t.Errorf("expandTabs(%q, %d) = %q, want %q", tt.input, tt.startCol, got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestWrapTextZeroCols(t *testing.T) {
 	ui := &TerminalUI{cols: 0}
 	result := ui.wrapText("hello world")
