@@ -176,9 +176,9 @@ type TerminalUI struct {
 	pendingWrap    bool     // true when last output char filled the last column (terminal pending wrap state)
 
 	// Rate-limited redraw support
-	inputDirty  atomic.Bool // set when input changes; cleared by redraw tick
-	redrawStop  chan struct{}
-	redrawDone  chan struct{}
+	inputDirty atomic.Bool // set when input changes; cleared by redraw tick
+	redrawStop chan struct{}
+	redrawDone chan struct{}
 }
 
 // wrapText wraps text to the given width, inserting newlines at word boundaries.
@@ -277,8 +277,8 @@ func (ui *TerminalUI) Setup() {
 
 	// Build the entire setup sequence in a buffer, flush once
 	var buf strings.Builder
-	buf.WriteString("\033[2J")                            // clear screen
-	fmt.Fprintf(&buf, "\033[1;%dr", ui.scrollEnd)        // set scroll region
+	buf.WriteString("\033[2J")                    // clear screen
+	fmt.Fprintf(&buf, "\033[1;%dr", ui.scrollEnd) // set scroll region
 	ui.writeDividerTo(&buf)
 	ui.outRow = 1
 	ui.outCol = 1

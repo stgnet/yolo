@@ -9,8 +9,8 @@ import (
 
 // Config holds email configuration settings
 type Config struct {
-	From       string
-	UseSendmail bool
+	From         string
+	UseSendmail  bool
 	SendmailPath string
 }
 
@@ -24,8 +24,8 @@ type Message struct {
 // DefaultConfig returns default email configuration using sendmail
 func DefaultConfig() *Config {
 	return &Config{
-		From:       "yolo@b-haven.org",
-		UseSendmail: true,
+		From:         "yolo@b-haven.org",
+		UseSendmail:  true,
 		SendmailPath: "/usr/sbin/sendmail",
 	}
 }
@@ -61,7 +61,7 @@ func (c *Client) Send(msg *Message) error {
 func (c *Client) sendViaSendmail(msg *Message) error {
 	// Build RFC 2822 email format
 	var emailContent bytes.Buffer
-	
+
 	emailContent.WriteString(fmt.Sprintf("From: %s\r\n", c.config.From))
 	emailContent.WriteString(fmt.Sprintf("To: %s\r\n", strings.Join(msg.To, ", ")))
 	emailContent.WriteString(fmt.Sprintf("Subject: %s\r\n", msg.Subject))
@@ -75,7 +75,7 @@ func (c *Client) sendViaSendmail(msg *Message) error {
 	args := append([]string{"-f", c.config.From}, msg.To...)
 	cmd := exec.Command(c.config.SendmailPath, args...)
 	cmd.Stdin = &emailContent
-	
+
 	err := cmd.Run()
 	if err != nil {
 		return fmt.Errorf("sendmail failed: %w", err)
