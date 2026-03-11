@@ -961,8 +961,8 @@ func (ui *TerminalUI) recalcLayoutLocked() {
 	var buf strings.Builder
 
 	// Clear entire screen
-	buf.WriteString("\033[r")       // reset scroll region temporarily
-	buf.WriteString("\033[2J")      // clear screen
+	buf.WriteString("\033[r")  // reset scroll region temporarily
+	buf.WriteString("\033[2J") // clear screen
 
 	// Render subagent windows and agent divider
 	ui.renderAllFixedRowsTo(&buf)
@@ -981,4 +981,3 @@ func (ui *TerminalUI) recalcLayoutLocked() {
 
 	os.Stdout.WriteString(buf.String())
 }
-

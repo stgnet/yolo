@@ -21,7 +21,7 @@ type BufferUI struct {
 	buffering      bool            // true once transition to input mode is complete
 	buffer         strings.Builder // agent output accumulated while user types
 	promptShown    bool            // true once input prompt is ready
-	promptReady    chan struct{}    // closed when prompt becomes ready
+	promptReady    chan struct{}   // closed when prompt becomes ready
 	midLine        bool            // true if last Write did not end with \n
 }
 

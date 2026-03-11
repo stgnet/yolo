@@ -28,15 +28,15 @@ type InputLine struct {
 // line), the entire buffer is sent as one block. Slash commands and
 // exit/quit are sent immediately on Enter.
 type InputManager struct {
-	Lines    chan InputLine
-	rawBytes chan byte  // raw bytes from stdin reader goroutine
-	rawErr   chan error // errors from stdin reader goroutine
-	buf      []byte     // multiline buffer (may contain \n characters)
-	mu       sync.Mutex // protects buf and prompt state
-	prompt   string     // kept for compatibility (unused in new UI)
-	agent    *YoloAgent
-	oldState *term.State
-	fd       int
+	Lines     chan InputLine
+	rawBytes  chan byte  // raw bytes from stdin reader goroutine
+	rawErr    chan error // errors from stdin reader goroutine
+	buf       []byte     // multiline buffer (may contain \n characters)
+	mu        sync.Mutex // protects buf and prompt state
+	prompt    string     // kept for compatibility (unused in new UI)
+	agent     *YoloAgent
+	oldState  *term.State
+	fd        int
 	sendDelay time.Duration
 }
 
