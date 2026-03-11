@@ -199,7 +199,7 @@ func TestLimiterGroup_Running(t *testing.T) {
 	lg := NewLimiterGroup(ctx, 3)
 
 	var started int32
-	
+
 	// Start some goroutines
 	for i := 0; i < 5; i++ {
 		lg.Go(func(ctx context.Context) error {

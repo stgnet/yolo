@@ -7,6 +7,13 @@ import (
 	"testing"
 )
 
+// isError checks if result string indicates an error
+func isError(result string) bool {
+	return strings.HasPrefix(result, "Error:") ||
+		strings.HasPrefix(result, "error:") ||
+		strings.Contains(result, "cannot")
+}
+
 func TestIsBinaryData(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -205,6 +212,78 @@ func TestExecuteDispatcher(t *testing.T) {
 		result := executor.Execute("make_dir", map[string]any{"path": "testdir"})
 		if !strings.Contains(result, "Created directory") {
 			t.Errorf("Expected success, got: %s", result)
+		}
+	})
+
+	t.Run("search_files dispatches", func(t *testing.T) {
+		os.WriteFile(filepath.Join(tmpDir, "search_me.txt"), []byte("this is a test search query"), 0o644)
+		result := executor.Execute("search_files", map[string]any{"query": "test search"})
+		if !strings.Contains(result, "search_me.txt") {
+			t.Errorf("Expected search_me.txt in results, got: %s", result)
+		}
+	})
+
+	t.Run("move_file dispatches", func(t *testing.T) {
+		os.WriteFile(filepath.Join(tmpDir, "to_move.txt"), []byte("moving me"), 0o644)
+		result := executor.Execute("move_file", map[string]any{"source": "to_move.txt", "dest": "moved.txt"})
+		if !strings.Contains(result, "moved") {
+			t.Errorf("Expected move confirmation, got: %s", result)
+		}
+		// Verify source is gone
+		if _, err := os.Stat(filepath.Join(tmpDir, "to_move.txt")); err == nil {
+			t.Error("Source file should be moved (not exist)")
+		}
+		// Verify dest exists
+		if _, err := os.Stat(filepath.Join(tmpDir, "moved.txt")); err != nil {
+			t.Errorf("Dest file should exist: %v", err)
+		}
+	})
+
+	t.Run("remove_dir dispatches", func(t *testing.T) {
+		testDir := filepath.Join(tmpDir, "to_remove")
+		os.MkdirAll(testDir, 0o755)
+		result := executor.Execute("remove_dir", map[string]any{"path": "to_remove"})
+		if !strings.Contains(result, "Removed") {
+			t.Errorf("Expected remove confirmation, got: %s", result)
+		}
+		if _, err := os.Stat(testDir); err == nil {
+			t.Error("Directory should be removed")
+		}
+	})
+
+	t.Run("edit_file dispatches", func(t *testing.T) {
+		testFile := filepath.Join(tmpDir, "edit_me.txt")
+		initialContent := "before text after"
+		os.WriteFile(testFile, []byte(initialContent), 0o644)
+		result := executor.Execute("edit_file", map[string]any{
+			"path":     "edit_me.txt",
+			"old_text": "text",
+			"new_text": "replaced",
+		})
+		if !strings.Contains(result, "Edited") {
+			t.Errorf("Expected edit confirmation, got: %s", result)
+		}
+		// Verify content was changed
+		content, err := os.ReadFile(testFile)
+		if err != nil {
+			t.Fatalf("Failed to read edited file: %v", err)
+		}
+		if string(content) != "before replaced after" {
+			t.Errorf("Content not edited correctly, got: %q", content)
+		}
+	})
+
+	t.Run("run_command dispatches", func(t *testing.T) {
+		result := executor.Execute("run_command", map[string]any{"command": "echo 'run test'"})
+		if !strings.Contains(result, "run test") && !strings.Contains(result, "Error") {
+			t.Errorf("Expected command output or error, got: %s", result)
+		}
+	})
+
+	t.Run("empty_tool_name", func(t *testing.T) {
+		result := executor.Execute("", map[string]any{})
+		if !strings.Contains(result, "unknown tool") {
+			t.Errorf("Expected unknown tool error, got: %s", result)
 		}
 	})
 }
