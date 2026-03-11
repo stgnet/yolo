@@ -504,6 +504,41 @@ func (a *YoloAgent) parseTextToolCalls(text string) []ParsedToolCall {
 		}
 	}
 
+	// Format 2c: <function=name><parameter=key>value without proper closing tags
+	// Some models emit <tool_call><function=name><parameter=key>\nvalue\n but never
+	// close with </parameter>, </function>, or </tool_call>.
+	if len(calls) == 0 {
+		re2c := regexp.MustCompile(`(?s)<function=(\w+)>(.*?)(?:</function>|\z)`)
+		reParamHeader := regexp.MustCompile(`<parameter=(\w+)>`)
+		for _, match := range re2c.FindAllStringSubmatch(text, -1) {
+			name := match[1]
+			body := match[2]
+			args := map[string]any{}
+			// Find all parameter start positions
+			paramMatches := reParamHeader.FindAllStringSubmatchIndex(body, -1)
+			for i, pm := range paramMatches {
+				paramName := body[pm[2]:pm[3]]
+				valueStart := pm[1] // right after <parameter=name>
+				var valueEnd int
+				if i+1 < len(paramMatches) {
+					valueEnd = paramMatches[i+1][0] // start of next <parameter=
+				} else {
+					valueEnd = len(body)
+				}
+				val := body[valueStart:valueEnd]
+				// Strip optional </parameter> closing tag from value
+				val = strings.TrimSuffix(strings.TrimSpace(val), "</parameter>")
+				val = strings.TrimSpace(val)
+				if val != "" {
+					args[paramName] = convertParamValue(val)
+				}
+			}
+			if len(args) > 0 {
+				calls = append(calls, ParsedToolCall{Name: name, Args: args})
+			}
+		}
+	}
+
 	// Format 3: [tool_name] {"key": "value", ...} or [tool_name] => result
 	if len(calls) == 0 {
 		re3 := regexp.MustCompile(`(?m)\[(\w+)\]\s*(?:=>[^{]*)?\s*(\{.*?\})`)
@@ -649,6 +684,12 @@ func stripTextToolCalls(text string) string {
 	// Remove bare <function=name>...</function> blocks (without <tool_call> wrapper)
 	reBareFunc := regexp.MustCompile(`(?s)<function=\w+>.*?</function>`)
 	text = reBareFunc.ReplaceAllString(text, "")
+
+	// Remove unclosed <tool_call> or <function=name> blocks (no closing tags)
+	reUnclosedToolCall := regexp.MustCompile(`(?s)<tool_call>\s*<function=\w+>.*?\z`)
+	text = reUnclosedToolCall.ReplaceAllString(text, "")
+	reUnclosedFunc := regexp.MustCompile(`(?s)<function=\w+>\s*<parameter=.*?\z`)
+	text = reUnclosedFunc.ReplaceAllString(text, "")
 
 	// Collapse multiple blank lines into one
 	reBlank := regexp.MustCompile(`\n{3,}`)

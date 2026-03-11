@@ -187,6 +187,107 @@ main_test.go
 	}
 }
 
+// TestUnclosedTagToolCallFormat tests Format 2c parsing where closing tags are missing
+func TestUnclosedTagToolCallFormat(t *testing.T) {
+	tests := []struct {
+		name     string
+		content  string
+		expected []ParsedToolCall
+	}{
+		{
+			name: "unclosed parameter and function tags",
+			content: `<tool_call>
+<function=run_command>
+<parameter=command>
+head -n 149 /Users/user/src/yolo/tools.go > /tmp/tools_temp.go && cat >> /tmp/tools_temp.go << 'EOF'
+	toolDef("interrupt", "Pause execution")
+EOF`,
+			expected: []ParsedToolCall{
+				{Name: "run_command", Args: map[string]any{"command": "head -n 149 /Users/user/src/yolo/tools.go > /tmp/tools_temp.go && cat >> /tmp/tools_temp.go << 'EOF'\n\ttoolDef(\"interrupt\", \"Pause execution\")\nEOF"}},
+			},
+		},
+		{
+			name: "unclosed tags with single parameter inline",
+			content: `<function=read_file>
+<parameter=path>main.go`,
+			expected: []ParsedToolCall{
+				{Name: "read_file", Args: map[string]any{"path": "main.go"}},
+			},
+		},
+		{
+			name: "unclosed tags with multiple parameters",
+			content: `<tool_call>
+<function=read_file>
+<parameter=path>main.go
+<parameter=limit>100`,
+			expected: []ParsedToolCall{
+				{Name: "read_file", Args: map[string]any{"path": "main.go", "limit": int64(100)}},
+			},
+		},
+		{
+			name: "properly closed tags still work via earlier formats",
+			content: `<function=read_file><parameter=path>main.go</parameter></function>`,
+			expected: []ParsedToolCall{
+				{Name: "read_file", Args: map[string]any{"path": "main.go"}},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := &YoloAgent{}
+			calls := a.parseTextToolCalls(tt.content)
+
+			if len(calls) != len(tt.expected) {
+				t.Fatalf("Expected %d calls, got %d. Calls: %+v", len(tt.expected), len(calls), calls)
+			}
+
+			for i, call := range calls {
+				if call.Name != tt.expected[i].Name {
+					t.Errorf("Call %d: expected name '%s', got '%s'", i, tt.expected[i].Name, call.Name)
+				}
+				if !reflect.DeepEqual(call.Args, tt.expected[i].Args) {
+					t.Errorf("Call %d: expected args %+v, got %+v", i, tt.expected[i].Args, call.Args)
+				}
+			}
+		})
+	}
+}
+
+// TestStripUnclosedToolCalls tests that stripTextToolCalls handles unclosed tags
+func TestStripUnclosedToolCalls(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "strip unclosed tool_call with function",
+			input:    "Here is my plan:\n<tool_call>\n<function=run_command>\n<parameter=command>\nls -la",
+			expected: "Here is my plan:",
+		},
+		{
+			name:     "strip unclosed bare function",
+			input:    "Let me read that file.\n<function=read_file>\n<parameter=path>main.go",
+			expected: "Let me read that file.",
+		},
+		{
+			name:     "properly closed tags still stripped",
+			input:    "Done.\n<function=read_file><parameter=path>main.go</parameter></function>",
+			expected: "Done.",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := stripTextToolCalls(tt.input)
+			if result != tt.expected {
+				t.Errorf("Expected %q, got %q", tt.expected, result)
+			}
+		})
+	}
+}
+
 // TestToolActivityFormatWithModelResponse tests parsing within a realistic model response
 func TestToolActivityFormatWithModelResponse(t *testing.T) {
 	content := `Here's my plan for this task:
