@@ -2,6 +2,7 @@ package main
 
 import (
 	"testing"
+	"time"
 )
 
 func TestUtf8ByteLen(t *testing.T) {
@@ -55,6 +56,17 @@ func TestNewInputManagerChannelCapacity(t *testing.T) {
 	}
 	if cap(im.rawErr) != 1 {
 		t.Errorf("rawErr channel capacity = %d, want 1", cap(im.rawErr))
+	}
+}
+
+func TestNewInputManagerSendDelay(t *testing.T) {
+	agent := &YoloAgent{}
+	im := NewInputManager(agent)
+
+	// Default delay should be DefaultInputDelay seconds
+	expected := time.Duration(DefaultInputDelay) * time.Second
+	if im.sendDelay != expected {
+		t.Errorf("sendDelay = %v, want %v", im.sendDelay, expected)
 	}
 }
 

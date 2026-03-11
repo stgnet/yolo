@@ -49,12 +49,15 @@ func TestShowHelpHint(t *testing.T) {
 	a.showHelpHint()
 }
 
-// TestDrainQueuedInput tests draining of queued input
-func TestDrainQueuedInput(t *testing.T) {
+// TestEchoUserInput tests multiline user input echo
+func TestEchoUserInput(t *testing.T) {
 	a := NewYoloAgent()
 
-	// inputMgr is nil until Run() is called, so drainQueuedInput should not panic
-	a.drainQueuedInput()
+	// Should not panic with single-line input
+	a.echoUserInput("hello world")
+
+	// Should not panic with multiline input
+	a.echoUserInput("line 1\nline 2\nline 3")
 }
 
 // TestSetupFirstRun verifies first run setup
