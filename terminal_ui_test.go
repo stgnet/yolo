@@ -402,9 +402,9 @@ func TestInputRowCount(t *testing.T) {
 	ui := &TerminalUI{cols: 80}
 
 	tests := []struct {
-		name      string
-		input     string
-		wantRows  int
+		name     string
+		input    string
+		wantRows int
 	}{
 		{"empty", "", 1},
 		{"short", "hello", 1},
