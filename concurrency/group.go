@@ -223,14 +223,15 @@ func (b *Barrier) Wait() {
 	b.mu.Lock()
 	mustCreate := atomic.LoadInt32(&b.arrived) == 0
 	count := b.count
-	b.mu.Unlock()
 
 	if mustCreate {
 		b.done = make(chan struct{})
 	}
+	arrivalNum := atomic.AddInt32(&b.arrived, 1)
+	isLast := arrivalNum == int32(count)
+	b.mu.Unlock()
 
-	// Atomically increment arrival counter
-	if atomic.AddInt32(&b.arrived, 1) == int32(count) {
+	if isLast {
 		// Last one to arrive - close the barrier for everyone
 		close(b.done)
 		return
