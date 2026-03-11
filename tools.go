@@ -122,6 +122,10 @@ var ollamaTools = []ToolDef{
 			"query": {Type: "string", Description: "Search query (required)"},
 			"count": {Type: "integer", Description: "Number of results to return (default: 5, max: 10)"},
 		}, []string{"query"}),
+	toolDef("read_webpage", "Fetch a webpage URL and return its text content. HTML is converted to plain text. Useful for reading documentation, articles, or any web page.",
+		map[string]ToolParam{
+			"url": {Type: "string", Description: "URL to fetch (required). Will be prefixed with https:// if no scheme is provided."},
+		}, []string{"url"}),
 	toolDef("learn", "Autonomously research and discover self-improvement opportunities from the internet. Uses web search and Reddit to find new features, best practices, and improvements for the YOLO agent.",
 		map[string]ToolParam{}, nil),
 	toolDef("send_email", "Send an email via sendmail from yolo@b-haven.org. Postfix handles DKIM signing automatically.",
@@ -153,7 +157,7 @@ var validTools = []string{
 	"search_files", "run_command", "spawn_subagent",
 	"list_subagents", "read_subagent_result", "summarize_subagents",
 	"list_models", "switch_model", "think", "restart",
-	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "learn", "send_email", "send_report", "check_inbox", "process_inbox_with_response",
+	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "read_webpage", "learn", "send_email", "send_report", "check_inbox", "process_inbox_with_response",
 }
 
 // subagentTools is the subset of ollamaTools exposed to sub-agents.
@@ -165,7 +169,7 @@ var subagentToolNames = map[string]bool{
 	"list_files": true, "search_files": true, "run_command": true,
 	"think": true, "make_dir": true, "remove_dir": true,
 	"copy_file": true, "move_file": true, "reddit": true,
-	"gog": true, "web_search": true,
+	"gog": true, "web_search": true, "read_webpage": true,
 }
 
 // SubagentTools returns the ToolDef slice for sub-agents.
@@ -266,6 +270,8 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 		return t.gog(args)
 	case "web_search":
 		return t.webSearch(args)
+	case "read_webpage":
+		return t.readWebpage(args)
 	case "learn":
 		return t.learn(args)
 	case "send_email":
