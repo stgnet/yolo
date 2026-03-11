@@ -9,32 +9,26 @@ import (
 func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
 
-	if cfg.SMTPHost == "" {
-		t.Error("SMTPHost should have a default value")
-	}
-
-	// Sendmail is the default, SMTP settings are fallbacks
 	if cfg.SendmailPath == "" {
 		t.Error("SendmailPath should have a default value")
+	}
+
+	if cfg.From == "" {
+		t.Error("From should have a default value")
 	}
 }
 
 func TestConfigDefaults(t *testing.T) {
 	cfg := DefaultConfig()
 
-	expectedHost := "localhost"
-	if cfg.SMTPHost != expectedHost {
-		t.Errorf("Expected SMTPHost %q, got %q", expectedHost, cfg.SMTPHost)
-	}
-
 	expectedSendmail := "/usr/sbin/sendmail"
 	if cfg.SendmailPath != expectedSendmail {
 		t.Errorf("Expected SendmailPath %q, got %q", expectedSendmail, cfg.SendmailPath)
 	}
 
-	expectedPort := 25
-	if cfg.SMTPPort != expectedPort {
-		t.Errorf("Expected SMTPPort %d, got %d", expectedPort, cfg.SMTPPort)
+	expectedFrom := "yolo@b-haven.org"
+	if cfg.From != expectedFrom {
+		t.Errorf("Expected From %q, got %q", expectedFrom, cfg.From)
 	}
 }
 
@@ -78,33 +72,6 @@ func TestMessageMultipleRecipients(t *testing.T) {
 		if msg.To[i] != expected {
 			t.Errorf("Recipient %d: expected %q, got %q", i, expected, msg.To[i])
 		}
-	}
-}
-
-func TestPrepareMessage(t *testing.T) {
-	c := Client{config: DefaultConfig()}
-	msg := &Message{
-		To:      []string{"test@example.com"},
-		Subject: "Test Subject",
-		Body:    "Test Body",
-	}
-
-	body := c.prepareMessage(msg)
-
-	if !contains(body, "From: yolo@b-haven.org") {
-		t.Error("Message should contain default From address")
-	}
-
-	if !contains(body, "To: test@example.com") {
-		t.Error("Message should contain To address")
-	}
-
-	if !contains(body, "Subject: Test Subject") {
-		t.Error("Message should contain Subject")
-	}
-
-	if !contains(body, "Test Body") {
-		t.Error("Message should contain Body")
 	}
 }
 

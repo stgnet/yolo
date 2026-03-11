@@ -16,12 +16,14 @@ import (
 )
 
 type EmailMessage struct {
-	From        string `json:"from"`
-	Subject     string `json:"subject"`
-	Date        string `json:"date"`
-	Content     string `json:"content"`
-	Filename    string `json:"filename"`
-	ContentType string `json:"content_type"`
+	From        string   `json:"from"`
+	Subject     string   `json:"subject"`
+	Date        string   `json:"date"`
+	Content     string   `json:"content"`
+	Filename    string   `json:"filename"`
+	ContentType string   `json:"content_type"`
+	Size        int64    `json:"size"`
+	To          []string `json:"to,omitempty"`
 }
 
 type CheckInboxResult struct {
