@@ -135,14 +135,14 @@ main_test.go
 			},
 		},
 		{
-			name: "inline parameter values",
+			name:    "inline parameter values",
 			content: `<tool_call><function=read_file><parameter=path>main.go</parameter><parameter=limit>100</parameter></function></tool_call>`,
 			expected: []ParsedToolCall{
 				{Name: "read_file", Args: map[string]any{"path": "main.go", "limit": int64(100)}},
 			},
 		},
 		{
-			name: "bare function without tool_call wrapper",
+			name:    "bare function without tool_call wrapper",
 			content: `<function=write_file><parameter=path>out.txt</parameter><parameter=content>hello world</parameter></function>`,
 			expected: []ParsedToolCall{
 				{Name: "write_file", Args: map[string]any{"path": "out.txt", "content": "hello world"}},
