@@ -558,3 +558,67 @@ func TestGroup_Pipeline_MultipleStages(t *testing.T) {
 	
 	g.Run()
 }
+
+func TestGroup_GoWithErr_Success(t *testing.T) {
+	g := NewGroup(context.Background())
+
+	var executed int32
+	
+	g.GoWithErr(func(ctx context.Context, errChan chan<- error) {
+		atomic.AddInt32(&executed, 1)
+		errChan <- nil
+	})
+
+	g.Run()
+
+	if atomic.LoadInt32(&executed) != 1 {
+		t.Error("Expected worker to execute")
+	}
+
+	if g.Error() != nil {
+		t.Errorf("Expected no error, got %v", g.Error())
+	}
+}
+
+func TestGroup_GoWithErr_Error(t *testing.T) {
+	g := NewGroup(context.Background())
+
+	testErr := errors.New("test error")
+	
+	g.GoWithErr(func(ctx context.Context, errChan chan<- error) {
+		errChan <- testErr
+	})
+
+	g.Run()
+
+	if g.Error() != testErr {
+		t.Errorf("Expected testErr, got %v", g.Error())
+	}
+
+	errs := g.Errors()
+	if len(errs) != 1 {
+		t.Errorf("Expected 1 error, got %d", len(errs))
+	}
+}
+
+func TestGroup_GoWithErr_NoErrorSent(t *testing.T) {
+	g := NewGroup(context.Background())
+
+	var executed int32
+	
+	// Don't send anything to the channel - should return nil
+	g.GoWithErr(func(ctx context.Context, errChan chan<- error) {
+		atomic.AddInt32(&executed, 1)
+		// Intentionally not sending to errChan
+	})
+
+	g.Run()
+
+	if atomic.LoadInt32(&executed) != 1 {
+		t.Error("Expected worker to execute")
+	}
+
+	if g.Error() != nil {
+		t.Errorf("Expected no error when channel is empty, got %v", g.Error())
+	}
+}
