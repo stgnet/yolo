@@ -1564,7 +1564,7 @@ func (t *ToolExecutor) searchWikipediaWithRetry(query string, count int, maxRetr
 			continue
 		}
 
-		req.Header.Set("User-Agent", "YOLO-Search-Bot/1.0 (contact@yolo.local)")
+		req.Header.Set("User-Agent", "YOLO-Search-Bot/1.0 (yolo@b-haven.org)")
 
 		resp, err := client.Do(req)
 		if err != nil {

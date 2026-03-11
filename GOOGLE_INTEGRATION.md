@@ -73,17 +73,17 @@ gog drive download id="file_id" path="./local_file.pdf"
 ```bash
 $ gog calendar list --limit 5
 ID  START                      END                        SUMMARY
-6cq32db1c9im4b9n64s3gb9kc9ij4b9pcgom4b9k69h32d1i70qj0o9m74  2026-03-10T08:45:00-04:00  2026-03-10T09:00:00-04:00  Mos
-... (shows recurring "Mos" events)
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  2026-03-10T08:45:00-04:00  2026-03-10T09:00:00-04:00  xxxx
+... (shows recurring events)
 ```
 
 ### Drive Test ✅
 ```bash
 $ gog drive ls --limit 5
 ID  NAME                                          TYPE  SIZE      MODIFIED
-1E2ey0QhWO4DJ8buF7972z7r0eKlhuqpr_DRjTypI2vY  B-Haven CRM                                  file  261.7 KB  2026-03-09
-1qw0b9Xz5WJZGa3YVKEMqYRojMD4_cxKYEOhXIfpzKWk  B-Haven Pricing                              file  104.8 KB  2026-03-09
-... (lists actual Google Drive files)
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  xxxx xxxx                                      file  261.7 KB  2026-03-09
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  xxxx xxxx                                      file  104.8 KB  2026-03-09
+... (lists Google Drive files)
 ```
 
 ## Authentication
