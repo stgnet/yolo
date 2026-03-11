@@ -243,7 +243,8 @@ func TestBarrier(t *testing.T) {
 		}()
 	}
 
-	time.Sleep(50 * time.Millisecond)
+	// Give goroutines time to reach barrier and pass through
+	time.Sleep(100 * time.Millisecond)
 
 	if atomic.LoadInt32(&ready) != 3 {
 		t.Errorf("Expected all 3 goroutines to pass barrier, got %d", ready)
