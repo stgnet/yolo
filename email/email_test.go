@@ -1,4 +1,12 @@
 // Email package tests
+//
+// **************************************************************************
+// ** WARNING: SENDING REAL EMAILS IN TESTS IS STRICTLY FORBIDDEN.         **
+// ** All tests in this file MUST validate logic WITHOUT invoking sendmail  **
+// ** or any real email transport. Tests that need to send actual emails    **
+// ** belong ONLY in email_integration_test.go, gated behind               **
+// ** YOLO_TEST_EMAIL=1. DO NOT bypass this restriction.                   **
+// **************************************************************************
 
 package email
 
@@ -112,6 +120,11 @@ func TestNewClient(t *testing.T) {
 	}
 }
 
+// **************************************************************************
+// ** VALIDATION TESTS BELOW — THESE MUST NEVER SEND REAL EMAILS.         **
+// ** They test error paths that reject the message before sendmail runs.  **
+// **************************************************************************
+
 func TestClientSendNoRecipients(t *testing.T) {
 	cfg := DefaultConfig()
 	client := New(cfg)
@@ -214,8 +227,9 @@ func TestGetRFC2822Date(t *testing.T) {
 	}
 }
 
+// TestSendViaSendmailError verifies error handling when sendmail binary is
+// missing. This uses a non-existent path so NO real email is sent.
 func TestSendViaSendmailError(t *testing.T) {
-	// Use a non-existent sendmail path to trigger error
 	cfg := &Config{
 		From:         "yolo@b-haven.org",
 		UseSendmail:  true,
