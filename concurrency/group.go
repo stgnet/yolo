@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -200,10 +201,10 @@ func (g *Group) Pipeline(stages ...func(context.Context, <-chan interface{}) <-c
 // Barrier is a synchronization primitive that blocks goroutines until
 // a specified number of goroutines reach the barrier.
 type Barrier struct {
-	chans []chan struct{}
-	count int
-	index int
-	mu    sync.Mutex
+	arrived int32         // Atomic counter of arrivals
+	done    chan struct{} // Channel closed when all arrive
+	count   int
+	mu      sync.Mutex
 }
 
 // NewBarrier creates a new barrier for the specified number of goroutines.
@@ -212,47 +213,38 @@ func NewBarrier(n int) *Barrier {
 		n = 1
 	}
 	return &Barrier{
-		chans: make([]chan struct{}, n),
 		count: n,
+		done:  nil, // Created on first Wait call
 	}
 }
 
 // Wait blocks until all goroutines have reached the barrier.
 func (b *Barrier) Wait() {
 	b.mu.Lock()
-	idx := b.index
-	b.index++
+	mustCreate := atomic.LoadInt32(&b.arrived) == 0
+	count := b.count
 	b.mu.Unlock()
 
-	if idx >= len(b.chans) {
+	if mustCreate {
+		b.done = make(chan struct{})
+	}
+
+	// Atomically increment arrival counter
+	if atomic.AddInt32(&b.arrived, 1) == int32(count) {
+		// Last one to arrive - close the barrier for everyone
+		close(b.done)
 		return
 	}
 
-	// First goroutine to reach index creates channel and waits
-	ch := make(chan struct{})
-	b.chans[idx] = ch
-
-	// Last goroutine closes all channels
-	if idx == b.count-1 {
-		for _, ch := range b.chans {
-			if ch != nil {
-				close(ch)
-			}
-		}
-	} else {
-		<-ch // Wait for barrier to be released
-	}
+	// Wait for barrier to be released
+	<-b.done
 }
 
 // Reset resets the barrier for reuse. Must not be called while goroutines
 // are waiting at the barrier.
 func (b *Barrier) Reset() {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.index = 0
-	for i := range b.chans {
-		b.chans[i] = nil
-	}
+	atomic.StoreInt32(&b.arrived, 0)
+	b.done = nil
 }
 
 // RetryWithBackoff retries a function with exponential backoff until it succeeds
