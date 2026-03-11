@@ -321,7 +321,8 @@ func (ui *TerminalUI) writeDividerTo(buf *strings.Builder) {
 	fmt.Fprintf(buf, "\033[%d;1H%s%s%s", dividerRow, Gray, divider, Reset)
 }
 
-// Teardown restores the full scroll region and stops the redraw goroutine.
+// Teardown restores the full scroll region, resets terminal attributes, and
+// stops the redraw goroutine.
 func (ui *TerminalUI) Teardown() {
 	// Stop the redraw goroutine first (outside the lock)
 	close(ui.redrawStop)
@@ -330,8 +331,10 @@ func (ui *TerminalUI) Teardown() {
 	ui.mu.Lock()
 	defer ui.mu.Unlock()
 	var buf strings.Builder
-	fmt.Fprintf(&buf, "\033[1;%dr", ui.rows)
-	fmt.Fprintf(&buf, "\033[%d;1H\n", ui.rows)
+	buf.WriteString("\033[r")                       // reset scroll region to full terminal
+	buf.WriteString("\033[0m")                      // reset all text attributes
+	buf.WriteString("\033[?25h")                    // ensure cursor is visible
+	fmt.Fprintf(&buf, "\033[%d;1H\n", ui.rows)     // position cursor at bottom
 	os.Stdout.WriteString(buf.String())
 }
 

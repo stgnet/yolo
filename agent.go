@@ -42,6 +42,7 @@ type YoloAgent struct {
 	scriptPath      string             // path to the running binary (used for self-restart)
 	ollama          *OllamaClient      // LLM communication
 	history         *HistoryManager    // persistent conversation and evolution log
+	config          *YoloConfig        // persistent configuration (model, etc.)
 	tools           *ToolExecutor      // tool dispatcher
 	inputMgr        *InputManager      // async terminal input
 	running         bool               // false signals the main loop to exit
@@ -64,6 +65,7 @@ func NewYoloAgent() *YoloAgent {
 		scriptPath: execPath,
 		ollama:     NewOllamaClient(OllamaURL),
 		history:    NewHistoryManager(YoloDir),
+		config:     NewYoloConfig(YoloDir),
 		running:    true,
 	}
 	a.tools = NewToolExecutor(baseDir, a)
@@ -93,7 +95,7 @@ func (a *YoloAgent) getSystemPrompt() string {
 	prompt := string(templateContent)
 	prompt = strings.ReplaceAll(prompt, "{baseDir}", a.baseDir)
 	prompt = strings.ReplaceAll(prompt, "{scriptPath}", a.scriptPath)
-	prompt = strings.ReplaceAll(prompt, "{model}", a.history.GetModel())
+	prompt = strings.ReplaceAll(prompt, "{model}", a.config.GetModel())
 	prompt = strings.ReplaceAll(prompt, "{timestamp}", time.Now().Format(time.RFC3339))
 	prompt = strings.ReplaceAll(prompt, "{knowledgeBase}", kbSection)
 
@@ -140,7 +142,7 @@ func (a *YoloAgent) setupFirstRun() {
 			fmt.Println("  Invalid selection, try again.")
 			continue
 		}
-		a.history.SetModel(models[idx-1])
+		a.config.SetModel(models[idx-1])
 		if err := a.history.Save(); err != nil {
 			cprint(Red, fmt.Sprintf("  Warning: could not save history: %v\n", err))
 		}
@@ -154,7 +156,7 @@ func (a *YoloAgent) setupFirstRun() {
 // displaySessionResumption shows the resuming message with formatting
 func (a *YoloAgent) displaySessionResumption() {
 	cprint(Cyan+Bold, "\n  YOLO - Your Own Living Operator")
-	cprint(Green, fmt.Sprintf("  Resuming — model: %s%s%s", Bold, a.history.GetModel(), Reset))
+	cprint(Green, fmt.Sprintf("  Resuming — model: %s%s%s", Bold, a.config.GetModel(), Reset))
 	n := len(a.history.Data.Messages)
 	cprint(Gray, fmt.Sprintf("  History: %d messages loaded", n))
 
@@ -274,7 +276,7 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		a.cancelChat = cancel
 		a.mu.Unlock()
 
-		result, err := a.ollama.Chat(ctx, a.history.GetModel(), allMsgs, ollamaTools)
+		result, err := a.ollama.Chat(ctx, a.config.GetModel(), allMsgs, ollamaTools)
 		cancel()
 		a.mu.Lock()
 		a.cancelChat = nil
@@ -556,8 +558,8 @@ func parseParamString(paramStr string) map[string]any {
 // ── Model switching ──
 
 // switchModel validates that model is available in Ollama, updates the
-// history config, and logs an evolution event. Returns an error string if
-// the model is not found.
+// config, and logs an evolution event. Returns an error string if the
+// model is not found.
 func (a *YoloAgent) switchModel(model string) string {
 	models := a.ollama.ListModels()
 	found := false
@@ -570,8 +572,8 @@ func (a *YoloAgent) switchModel(model string) string {
 	if !found {
 		return fmt.Sprintf("Model '%s' not found. Available: %s", model, strings.Join(models, ", "))
 	}
-	old := a.history.GetModel()
-	a.history.SetModel(model)
+	old := a.config.GetModel()
+	a.config.SetModel(model)
 	a.history.AddEvolution("model_switch", fmt.Sprintf("%s -> %s", old, model))
 	cprint(Cyan, fmt.Sprintf("  Switched model: %s -> %s", old, model))
 	return fmt.Sprintf("Switched from %s to %s", old, model)
@@ -589,7 +591,7 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 
 	useModel := model
 	if useModel == "" {
-		useModel = a.history.GetModel()
+		useModel = a.config.GetModel()
 	}
 	os.MkdirAll(SubagentDir, 0o755)
 	resultFile := filepath.Join(SubagentDir, fmt.Sprintf("agent_%d.json", aid))
@@ -761,14 +763,14 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		cprint(Reset, "  /exit, /quit     Exit YOLO")
 
 	case "/model":
-		cprint(Cyan, fmt.Sprintf("  Model: %s", a.history.GetModel()))
+		cprint(Cyan, fmt.Sprintf("  Model: %s", a.config.GetModel()))
 
 	case "/models":
 		models := a.ollama.ListModels()
 		cprint(Cyan, "  Available models:")
 		for _, m := range models {
 			marker := ""
-			if m == a.history.GetModel() {
+			if m == a.config.GetModel() {
 				marker = fmt.Sprintf(" %s<- current%s", Green, Reset)
 			}
 			cprint(Reset, fmt.Sprintf("    %s%s", m, marker))
@@ -807,7 +809,7 @@ func (a *YoloAgent) handleCommand(cmd string) {
 
 	case "/status":
 		cprint(Cyan, "Status:")
-		cprint(Reset, fmt.Sprintf("  Model:       %s", a.history.GetModel()))
+		cprint(Reset, fmt.Sprintf("  Model:       %s", a.config.GetModel()))
 		cprint(Reset, fmt.Sprintf("  Messages:    %d", len(a.history.Data.Messages)))
 		cprint(Reset, fmt.Sprintf("  Evolutions:  %d", len(a.history.Data.EvolutionLog)))
 		cprint(Reset, fmt.Sprintf("  Working dir: %s", a.baseDir))
@@ -874,10 +876,12 @@ func (a *YoloAgent) showPrompt() {
 // initialises the terminal UI and input manager, registers signal handlers,
 // and enters the main event loop. It blocks until the user exits.
 func (a *YoloAgent) Run() {
+	a.config.Load()
 	hasHistory := a.history.Load()
 
-	if hasHistory && a.history.GetModel() != "" {
-		// History loaded; display happens later via displaySessionResumption()
+	hasModel := a.config.GetModel() != ""
+	if hasModel {
+		// Config has a model; display happens later via displaySessionResumption()
 	} else {
 		a.setupFirstRun()
 	}
@@ -891,7 +895,7 @@ func (a *YoloAgent) Run() {
 	}()
 
 	// Display session resumption message AFTER terminal is set up
-	if hasHistory && a.history.GetModel() != "" {
+	if hasModel && hasHistory {
 		a.displaySessionResumption()
 	}
 
