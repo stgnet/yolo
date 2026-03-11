@@ -156,6 +156,13 @@ var validTools = []string{
 	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "learn", "send_email", "send_report", "check_inbox", "process_inbox_with_response",
 }
 
+// errorMessage creates a standardized error message by extracting the error details
+// from the fmt.Sprintf format string. This ensures consistent error reporting
+// across all tool implementations.
+func errorMessage(format string, args ...any) string {
+	return fmt.Sprintf("Error: "+format, args...)
+}
+
 // ToolExecutor dispatches tool calls from the LLM to concrete
 // implementations.  All file operations are sandboxed under baseDir
 // via safePath.
@@ -247,7 +254,7 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 	case "process_inbox_with_response":
 		return t.processInboxWithResponse(args)
 	default:
-		return fmt.Sprintf("Error: unknown tool '%s'. Available tools: %s", name, strings.Join(validTools, ", "))
+		return errorMessage("unknown tool '%s'. Available tools: %s", name, strings.Join(validTools, ", "))
 	}
 }
 
@@ -299,6 +306,9 @@ func getBoolArg(args map[string]any, key string, fallback bool) bool {
 	return fallback
 }
 
+// isBinaryData checks if the given data appears to be binary (not text).
+// It scans the first 8KB for null bytes or a high ratio of non-text characters.
+// Returns true if the data is likely binary, false if it's text.
 func isBinaryData(data []byte) bool {
 	// Check the first 8KB for null bytes or high ratio of non-text bytes
 	size := len(data)
@@ -326,23 +336,23 @@ func isBinaryData(data []byte) bool {
 func (t *ToolExecutor) readFile(args map[string]any) string {
 	path := getStringArg(args, "path", "")
 	if path == "" {
-		return "Error: path is required"
+		return errorMessage("path is required")
 	}
 	offset := getIntArg(args, "offset", 1)
 	limit := getIntArg(args, "limit", 200)
 
 	full, err := t.safePath(path)
 	if err != nil {
-		return fmt.Sprintf("Error: %v", err)
+		return errorMessage("%v", err)
 	}
 
 	data, err := os.ReadFile(full)
 	if err != nil {
-		return fmt.Sprintf("Error reading %s: %v", path, err)
+		return errorMessage("could not read %s: %v", path, err)
 	}
 
 	if isBinaryData(data) {
-		return fmt.Sprintf("Error: %s is a binary file, not a text file. Cannot read binary files as source code.", path)
+		return errorMessage("%s is a binary file, not a text file. Cannot read binary files as source code.", path)
 	}
 
 	allLines := strings.Split(string(data), "\n")
@@ -372,21 +382,21 @@ func (t *ToolExecutor) writeFile(args map[string]any) string {
 	path := getStringArg(args, "path", "")
 	content := getStringArg(args, "content", "")
 	if path == "" {
-		return "Error: path is required"
+		return errorMessage("path is required")
 	}
 
 	full, err := t.safePath(path)
 	if err != nil {
-		return fmt.Sprintf("Error: %v", err)
+		return errorMessage("%v", err)
 	}
 
 	dir := filepath.Dir(full)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Sprintf("Error creating directory: %v", err)
+		return errorMessage("could not create directory %s: %v", dir, err)
 	}
 
 	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
-		return fmt.Sprintf("Error writing %s: %v", path, err)
+		return errorMessage("could not write to %s: %v", path, err)
 	}
 	return fmt.Sprintf("Wrote %d chars to %s", len(content), path)
 }
@@ -396,27 +406,27 @@ func (t *ToolExecutor) editFile(args map[string]any) string {
 	oldText := getStringArg(args, "old_text", "")
 	newText := getStringArg(args, "new_text", "")
 	if path == "" {
-		return "Error: path is required"
+		return errorMessage("path is required")
 	}
 
 	full, err := t.safePath(path)
 	if err != nil {
-		return fmt.Sprintf("Error: %v", err)
+		return errorMessage("%v", err)
 	}
 
 	data, err := os.ReadFile(full)
 	if err != nil {
-		return fmt.Sprintf("Error reading %s: %v", path, err)
+		return errorMessage("could not read %s: %v", path, err)
 	}
 
 	content := string(data)
 	if !strings.Contains(content, oldText) {
-		return fmt.Sprintf("Error: old_text not found in %s", path)
+		return errorMessage("old_text not found in %s", path)
 	}
 
 	content = strings.Replace(content, oldText, newText, 1)
 	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
-		return fmt.Sprintf("Error writing %s: %v", path, err)
+		return errorMessage("could not write to %s: %v", path, err)
 	}
 
 	return fmt.Sprintf("Edited %s", path)
@@ -436,7 +446,7 @@ func (t *ToolExecutor) listFiles(args map[string]any) string {
 	}
 
 	if err != nil {
-		return fmt.Sprintf("Error: %v", err)
+		return errorMessage("%v", err)
 	}
 
 	var files, dirs []string
@@ -476,16 +486,16 @@ func (t *ToolExecutor) listFiles(args map[string]any) string {
 func (t *ToolExecutor) makeDir(args map[string]any) string {
 	path := getStringArg(args, "path", "")
 	if path == "" {
-		return "Error: path is required"
+		return errorMessage("path is required")
 	}
 
 	full, err := t.safePath(path)
 	if err != nil {
-		return fmt.Sprintf("Error: %v", err)
+		return errorMessage("%v", err)
 	}
 
 	if err := os.MkdirAll(full, 0o755); err != nil {
-		return fmt.Sprintf("Error creating directory %s: %v", path, err)
+		return errorMessage("could not create directory %s: %v", path, err)
 	}
 
 	return fmt.Sprintf("Created directory: %s", path)
@@ -494,29 +504,29 @@ func (t *ToolExecutor) makeDir(args map[string]any) string {
 func (t *ToolExecutor) removeDir(args map[string]any) string {
 	path := getStringArg(args, "path", "")
 	if path == "" {
-		return "Error: path is required"
+		return errorMessage("path is required")
 	}
 
 	full, err := t.safePath(path)
 	if err != nil {
-		return fmt.Sprintf("Error: %v", err)
+		return errorMessage("%v", err)
 	}
 
 	// Check if path exists and is a directory
 	info, err := os.Stat(full)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Sprintf("Error: %s does not exist", path)
+			return errorMessage("%s does not exist", path)
 		}
-		return fmt.Sprintf("Error: %v", err)
+		return errorMessage("%v", err)
 	}
 
 	if !info.IsDir() {
-		return fmt.Sprintf("Error: %s is not a directory", path)
+		return errorMessage("%s is not a directory", path)
 	}
 
 	if err := os.RemoveAll(full); err != nil {
-		return fmt.Sprintf("Error removing directory %s: %v", path, err)
+		return errorMessage("could not remove directory %s: %v", path, err)
 	}
 
 	return fmt.Sprintf("Removed directory: %s", path)
@@ -526,50 +536,50 @@ func (t *ToolExecutor) copyFile(args map[string]any) string {
 	source := getStringArg(args, "source", "")
 	dest := getStringArg(args, "dest", "")
 	if source == "" {
-		return "Error: 'source' parameter is required"
+		return errorMessage("'source' parameter is required")
 	}
 	if dest == "" {
-		return "Error: 'dest' parameter is required"
+		return errorMessage("'dest' parameter is required")
 	}
 
 	fullSource, err := t.safePath(source)
 	if err != nil {
-		return fmt.Sprintf("Error: %v", err)
+		return errorMessage("%v", err)
 	}
 
 	fullDest, err := t.safePath(dest)
 	if err != nil {
-		return fmt.Sprintf("Error: %v", err)
+		return errorMessage("%v", err)
 	}
 
 	// Check if source exists and is a file
 	info, err := os.Stat(fullSource)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Sprintf("Error: source file %s does not exist", source)
+			return errorMessage("source file %s does not exist", source)
 		}
-		return fmt.Sprintf("Error: %v", err)
+		return errorMessage("%v", err)
 	}
 
 	if info.IsDir() {
-		return fmt.Sprintf("Error: cannot move directories, source %s is a directory", source)
+		return errorMessage("cannot copy directories, source %s is a directory", source)
 	}
 
 	// Create destination directory if it doesn't exist
 	destDir := filepath.Dir(fullDest)
 	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return fmt.Sprintf("Error creating destination directory: %v", err)
+		return errorMessage("could not create destination directory: %v", err)
 	}
 
 	// Read source file
 	content, err := os.ReadFile(fullSource)
 	if err != nil {
-		return fmt.Sprintf("Error reading source file: %v", err)
+		return errorMessage("could not read source file %s: %v", source, err)
 	}
 
 	// Write to destination
 	if err := os.WriteFile(fullDest, content, 0644); err != nil {
-		return fmt.Sprintf("Error writing destination file: %v", err)
+		return errorMessage("could not write to destination %s: %v", dest, err)
 	}
 
 	return fmt.Sprintf("Copied %s -> %s", source, dest)
@@ -579,39 +589,39 @@ func (t *ToolExecutor) moveFile(args map[string]any) string {
 	source := getStringArg(args, "source", "")
 	dest := getStringArg(args, "dest", "")
 	if source == "" {
-		return "Error: 'source' parameter is required"
+		return errorMessage("'source' parameter is required")
 	}
 	if dest == "" {
-		return "Error: 'dest' parameter is required"
+		return errorMessage("'dest' parameter is required")
 	}
 
 	fullSource, err := t.safePath(source)
 	if err != nil {
-		return fmt.Sprintf("Error: %v", err)
+		return errorMessage("%v", err)
 	}
 
 	fullDest, err := t.safePath(dest)
 	if err != nil {
-		return fmt.Sprintf("Error: %v", err)
+		return errorMessage("%v", err)
 	}
 
 	// Check if source exists and is a file
 	info, err := os.Stat(fullSource)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Sprintf("Error: source file %s does not exist", source)
+			return errorMessage("source file %s does not exist", source)
 		}
-		return fmt.Sprintf("Error: %v", err)
+		return errorMessage("%v", err)
 	}
 
 	if info.IsDir() {
-		return "Error: cannot move directories"
+		return errorMessage("cannot move directories, source %s is a directory", source)
 	}
 
 	// Create destination directory if it doesn't exist
 	destDir := filepath.Dir(fullDest)
 	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return fmt.Sprintf("Error creating destination directory: %v", err)
+		return errorMessage("could not create destination directory: %v", err)
 	}
 
 	// Try os.Rename first (fast, works within same filesystem)
@@ -619,13 +629,13 @@ func (t *ToolExecutor) moveFile(args map[string]any) string {
 		// Rename fails across filesystems; fall back to copy+delete
 		data, readErr := os.ReadFile(fullSource)
 		if readErr != nil {
-			return fmt.Sprintf("Error reading source file: %v", readErr)
+			return errorMessage("could not read source file %s: %v", source, readErr)
 		}
 		if writeErr := os.WriteFile(fullDest, data, info.Mode()); writeErr != nil {
-			return fmt.Sprintf("Error writing destination file: %v", writeErr)
+			return errorMessage("could not write to destination %s: %v", dest, writeErr)
 		}
 		if removeErr := os.Remove(fullSource); removeErr != nil {
-			return fmt.Sprintf("Warning: copied to %s but failed to remove source: %v", dest, removeErr)
+			return errorMessage("warning: copied to %s but failed to remove source: %v", dest, removeErr)
 		}
 	}
 
@@ -731,12 +741,12 @@ func (t *ToolExecutor) searchFiles(args map[string]any) string {
 	query := getStringArg(args, "query", "")
 	pattern := getStringArg(args, "pattern", "**/*")
 	if query == "" {
-		return "Error: query is required"
+		return errorMessage("query is required")
 	}
 
 	re, err := regexp.Compile(query)
 	if err != nil {
-		return fmt.Sprintf("Error: invalid regex: %v", err)
+		return errorMessage("invalid regex: %v", err)
 	}
 
 	var hits []string
@@ -795,7 +805,7 @@ func (t *ToolExecutor) searchFiles(args map[string]any) string {
 func (t *ToolExecutor) runCommand(args map[string]any) string {
 	command := getStringArg(args, "command", "")
 	if command == "" {
-		return "Error: command is required"
+		return errorMessage("command is required")
 	}
 
 	cmd := exec.Command("sh", "-c", command)
@@ -837,7 +847,7 @@ func (t *ToolExecutor) runCommand(args map[string]any) string {
 			// Kill the entire process group (negative PID) since we used Setsid.
 			syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		}
-		return fmt.Sprintf("Error: command timed out (%ds)", CommandTimeout)
+		return errorMessage("command timed out (%ds)", CommandTimeout)
 	}
 
 	var out strings.Builder
@@ -872,7 +882,7 @@ func (t *ToolExecutor) runCommand(args map[string]any) string {
 func (t *ToolExecutor) listSubagents(args map[string]any) string {
 	files, err := filepath.Glob(filepath.Join(SubagentDir, "agent_*.json"))
 	if err != nil {
-		return fmt.Sprintf("Error reading subagent directory: %v", err)
+		return errorMessage("could not read subagent directory: %v", err)
 	}
 
 	if len(files) == 0 {
@@ -917,18 +927,18 @@ func (t *ToolExecutor) listSubagents(args map[string]any) string {
 func (t *ToolExecutor) readSubagentResult(args map[string]any) string {
 	agentID := getIntArg(args, "id", 0)
 	if agentID == 0 {
-		return "Error: required parameter 'id' is missing"
+		return errorMessage("required parameter 'id' is missing")
 	}
 
 	resultFile := filepath.Join(SubagentDir, fmt.Sprintf("agent_%d.json", agentID))
 	data, err := os.ReadFile(resultFile)
 	if err != nil {
-		return fmt.Sprintf("Error reading subagent result: %v", err)
+		return errorMessage("could not read subagent result: %v", err)
 	}
 
 	var result map[string]any
 	if err := json.Unmarshal(data, &result); err != nil {
-		return fmt.Sprintf("Error parsing result: %v", err)
+		return errorMessage("error parsing result: %v", err)
 	}
 
 	output := fmt.Sprintf("Sub-agent #%d Result:\n", agentID)
@@ -943,7 +953,7 @@ func (t *ToolExecutor) readSubagentResult(args map[string]any) string {
 func (t *ToolExecutor) summarizeSubagents(args map[string]any) string {
 	files, err := filepath.Glob(filepath.Join(SubagentDir, "agent_*.json"))
 	if err != nil {
-		return fmt.Sprintf("Error reading subagent directory: %v", err)
+		return errorMessage("could not read subagent directory: %v", err)
 	}
 
 	if len(files) == 0 {
@@ -990,7 +1000,7 @@ func (t *ToolExecutor) spawnSubagent(args map[string]any) string {
 	// The tool definition uses "prompt" as the parameter name
 	prompt := getStringArg(args, "prompt", "")
 	if prompt == "" {
-		return "Error: 'prompt' parameter is required"
+		return errorMessage("'prompt' parameter is required")
 	}
 
 	name := getStringArg(args, "name", "")
@@ -1005,7 +1015,7 @@ func (t *ToolExecutor) spawnSubagent(args map[string]any) string {
 		return t.agent.spawnSubagent(task, "")
 	}
 
-	return "Error: no agent context"
+	return errorMessage("no agent context")
 }
 
 func (t *ToolExecutor) listModels() string {
@@ -1016,7 +1026,7 @@ func (t *ToolExecutor) listModels() string {
 		}
 		return strings.Join(models, "\n")
 	}
-	return "Error: no agent context"
+	return errorMessage("no agent context")
 }
 
 func (t *ToolExecutor) switchModel(args map[string]any) string {
@@ -1024,20 +1034,20 @@ func (t *ToolExecutor) switchModel(args map[string]any) string {
 	if t.agent != nil {
 		return t.agent.switchModel(model)
 	}
-	return "Error: no agent context"
+	return errorMessage("no agent context")
 }
 
 func (t *ToolExecutor) restart(args map[string]any) string {
 	// Get the current executable path
 	exePath, err := os.Executable()
 	if err != nil {
-		return fmt.Sprintf("Error getting executable path: %v", err)
+		return errorMessage("could not get executable path: %v", err)
 	}
 
 	// Get the directory containing main.go (current working directory)
 	cwd, err := os.Getwd()
 	if err != nil {
-		return fmt.Sprintf("Error getting current directory: %v", err)
+		return errorMessage("could not get current directory: %v", err)
 	}
 
 	fmt.Fprintf(os.Stderr, "[RESTART] Rebuilding YOLO from source...\n")
@@ -1055,7 +1065,7 @@ func (t *ToolExecutor) restart(args map[string]any) string {
 
 	output, err := buildCmd.CombinedOutput()
 	if err != nil {
-		return fmt.Sprintf("Build failed: %v\n%s", err, string(output))
+		return errorMessage("build failed: %v\n%s", err, string(output))
 	}
 
 	fmt.Fprintf(os.Stderr, "[RESTART] Build successful. Replacing current process...\n")
@@ -1080,7 +1090,7 @@ func (t *ToolExecutor) restart(args map[string]any) string {
 	// This properly replaces the process without spawning a child
 	err = syscall.Exec(newExePath, append([]string{filepath.Base(exePath)}, executableArgs...), os.Environ())
 	if err != nil {
-		return fmt.Sprintf("Failed to exec new process: %v", err)
+		return errorMessage("could not start new process: %v", err)
 	}
 
 	// Should never reach here if exec succeeds
@@ -1139,7 +1149,7 @@ type redditPostWrapper struct {
 func (t *ToolExecutor) reddit(args map[string]any) string {
 	action := getStringArg(args, "action", "")
 	if action == "" {
-		return "Error: 'action' parameter is required. Options: 'search', 'subreddit', 'thread'"
+		return errorMessage("'action' parameter is required. Options: 'search', 'subreddit', 'thread'")
 	}
 
 	limit := getIntArg(args, "limit", 25)
@@ -1157,7 +1167,7 @@ func (t *ToolExecutor) reddit(args map[string]any) string {
 	case "search":
 		query := getStringArg(args, "query", "")
 		if query == "" {
-			return "Error: 'query' parameter is required for 'search' action"
+			return errorMessage("'query' parameter is required for 'search' action")
 		}
 		requestURL = fmt.Sprintf("https://www.reddit.com/search.json?q=%s&limit=%d",
 			url.QueryEscape(query), limit)
@@ -1165,7 +1175,7 @@ func (t *ToolExecutor) reddit(args map[string]any) string {
 	case "subreddit":
 		subreddit := getStringArg(args, "subreddit", "")
 		if subreddit == "" {
-			return "Error: 'subreddit' parameter is required for 'subreddit' action"
+			return errorMessage("'subreddit' parameter is required for 'subreddit' action")
 		}
 		// Clean subreddit name - remove r/ prefix if present
 		subreddit = strings.TrimPrefix(subreddit, "r/")
@@ -1174,19 +1184,19 @@ func (t *ToolExecutor) reddit(args map[string]any) string {
 	case "thread":
 		postID := getStringArg(args, "post_id", "")
 		if postID == "" {
-			return "Error: 'post_id' parameter is required for 'thread' action"
+			return errorMessage("'post_id' parameter is required for 'thread' action")
 		}
 		requestURL = fmt.Sprintf("https://www.reddit.com/comments/%s/.json", postID)
 
 	default:
-		return fmt.Sprintf("Error: unknown action '%s'. Options: 'search', 'subreddit', 'thread'", action)
+		return errorMessage("unknown action '%s'. Options: 'search', 'subreddit', 'thread'", action)
 	}
 
 	// Make HTTP request with timeout
 	client := &http.Client{Timeout: 15 * time.Second}
 	req, err := http.NewRequest("GET", requestURL, nil)
 	if err != nil {
-		return fmt.Sprintf("Error creating request: %v", err)
+		return errorMessage("could not create request: %v", err)
 	}
 
 	// Add User-Agent header (Reddit requires it)
@@ -1194,18 +1204,18 @@ func (t *ToolExecutor) reddit(args map[string]any) string {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Sprintf("Error fetching from Reddit: %v", err)
+		return errorMessage("could not fetch from Reddit: %v", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Sprintf("Error: Reddit returned status %d: %s", resp.StatusCode, string(body))
+		return errorMessage("Reddit returned status %d: %s", resp.StatusCode, string(body))
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Sprintf("Error reading response: %v", err)
+		return errorMessage("could not read response: %v", err)
 	}
 
 	// Parse based on action type
@@ -1429,7 +1439,7 @@ func (t *ToolExecutor) addToSearchCache(key, result string) {
 func (t *ToolExecutor) webSearch(args map[string]any) string {
 	query := getStringArg(args, "query", "")
 	if query == "" {
-		return "Error: 'query' parameter is required"
+		return errorMessage("'query' parameter is required")
 	}
 
 	count := getIntArg(args, "count", 5)
@@ -1513,7 +1523,7 @@ func (t *ToolExecutor) searchDuckDuckGoWithRetry(query string, count int, maxRet
 		client := &http.Client{Timeout: 15 * time.Second}
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
-			lastErr = fmt.Errorf("error creating DuckDuckGo request: %v", err)
+			lastErr = fmt.Errorf("could not create DuckDuckGo request: %v", err)
 			continue
 		}
 
@@ -1521,7 +1531,7 @@ func (t *ToolExecutor) searchDuckDuckGoWithRetry(query string, count int, maxRet
 
 		resp, err := client.Do(req)
 		if err != nil {
-			lastErr = fmt.Errorf("error fetching from DuckDuckGo: %v", err)
+			lastErr = fmt.Errorf("could not fetch from DuckDuckGo: %v", err)
 			if attempt < maxRetries {
 				delay := time.Duration(attempt+1) * 2 * time.Second
 				time.Sleep(delay)
@@ -1532,7 +1542,7 @@ func (t *ToolExecutor) searchDuckDuckGoWithRetry(query string, count int, maxRet
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			lastErr = fmt.Errorf("error reading DuckDuckGo response: %v", err)
+			lastErr = fmt.Errorf("could not read DuckDuckGo response: %v", err)
 			if attempt < maxRetries {
 				delay := time.Duration(attempt+1) * 2 * time.Second
 				time.Sleep(delay)
@@ -1554,7 +1564,7 @@ func (t *ToolExecutor) searchDuckDuckGoWithRetry(query string, count int, maxRet
 	}
 
 	if lastErr != nil {
-		return fmt.Sprintf("Error: DuckDuckGo search failed after %d retries: %v", maxRetries+1, lastErr)
+		return errorMessage("DuckDuckGo search failed after %d retries: %v", maxRetries+1, lastErr)
 	}
 
 	return ""
@@ -1577,7 +1587,7 @@ func (t *ToolExecutor) searchWikipediaWithRetry(query string, count int, maxRetr
 		client := &http.Client{Timeout: 15 * time.Second}
 		req, err := http.NewRequest("GET", urlStr, nil)
 		if err != nil {
-			lastErr = fmt.Errorf("error creating Wikipedia request: %v", err)
+			lastErr = fmt.Errorf("could not create Wikipedia request: %v", err)
 			continue
 		}
 
@@ -1585,7 +1595,7 @@ func (t *ToolExecutor) searchWikipediaWithRetry(query string, count int, maxRetr
 
 		resp, err := client.Do(req)
 		if err != nil {
-			lastErr = fmt.Errorf("error fetching from Wikipedia: %v", err)
+			lastErr = fmt.Errorf("could not fetch from Wikipedia: %v", err)
 			if attempt < maxRetries {
 				delay := time.Duration(attempt+1) * 2 * time.Second
 				time.Sleep(delay)
@@ -1596,7 +1606,7 @@ func (t *ToolExecutor) searchWikipediaWithRetry(query string, count int, maxRetr
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			lastErr = fmt.Errorf("error reading Wikipedia response: %v", err)
+			lastErr = fmt.Errorf("could not read Wikipedia response: %v", err)
 			if attempt < maxRetries {
 				delay := time.Duration(attempt+1) * 2 * time.Second
 				time.Sleep(delay)
@@ -1616,7 +1626,7 @@ func (t *ToolExecutor) searchWikipediaWithRetry(query string, count int, maxRetr
 		}
 
 		if err := json.Unmarshal(body, &result); err != nil {
-			lastErr = fmt.Errorf("error parsing Wikipedia JSON: %v", err)
+			lastErr = fmt.Errorf("could not parse Wikipedia JSON: %v", err)
 			continue
 		}
 
@@ -1656,7 +1666,7 @@ func (t *ToolExecutor) searchWikipediaWithRetry(query string, count int, maxRetr
 	}
 
 	if lastErr != nil {
-		return fmt.Sprintf("Error: Wikipedia search failed after %d retries: %v", maxRetries+1, lastErr)
+		return errorMessage("Wikipedia search failed after %d retries: %v", maxRetries+1, lastErr)
 	}
 
 	return ""
