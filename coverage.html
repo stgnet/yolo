@@ -71,7 +71,7 @@
 				
 				<option value="file7">yolo/input.go (4.4%)</option>
 				
-				<option value="file8">yolo/learning.go (74.6%)</option>
+				<option value="file8">yolo/learning.go (76.8%)</option>
 				
 				<option value="file9">yolo/main.go (0.0%)</option>
 				
@@ -2721,9 +2721,9 @@ func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result 
         for _, line := range lines </span><span class="cov8" title="1">{
                 line = strings.TrimSpace(line)
                 // Filter: must be substantial, relevant, and not generic
-                if len(line) &gt; 150 &amp;&amp; !containsGenericPattern(line, genericPatterns) &amp;&amp; lm.isRelevant(line, area.Keywords) </span><span class="cov0" title="0">{
+                if len(line) &gt; 150 &amp;&amp; !containsGenericPattern(line, genericPatterns) &amp;&amp; lm.isRelevant(line, area.Keywords) </span><span class="cov8" title="1">{
                         imp := lm.createImprovement(area, truncateText(line, 500), "web", "", "search_result")
-                        if imp != nil </span><span class="cov0" title="0">{
+                        if imp != nil </span><span class="cov8" title="1">{
                                 improvements = append(improvements, *imp)
                         }</span>
                 }
