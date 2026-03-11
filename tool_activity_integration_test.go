@@ -106,6 +106,87 @@ func TestToolActivityFormatParsing(t *testing.T) {
 	}
 }
 
+// TestXMLParameterToolCallFormat tests Format 2 parsing with <tool_call><function=name><parameter=key>value</parameter></function></tool_call>
+func TestXMLParameterToolCallFormat(t *testing.T) {
+	tests := []struct {
+		name     string
+		content  string
+		expected []ParsedToolCall
+	}{
+		{
+			name: "multiline parameter values",
+			content: `
+<tool_call>
+<function=read_file>
+<parameter=path>
+main_test.go
+</parameter>
+<parameter=offset>
+800
+</parameter>
+<parameter=limit>
+50
+</parameter>
+</function>
+</tool_call>
+`,
+			expected: []ParsedToolCall{
+				{Name: "read_file", Args: map[string]any{"path": "main_test.go", "offset": int64(800), "limit": int64(50)}},
+			},
+		},
+		{
+			name: "inline parameter values",
+			content: `<tool_call><function=read_file><parameter=path>main.go</parameter><parameter=limit>100</parameter></function></tool_call>`,
+			expected: []ParsedToolCall{
+				{Name: "read_file", Args: map[string]any{"path": "main.go", "limit": int64(100)}},
+			},
+		},
+		{
+			name: "bare function without tool_call wrapper",
+			content: `<function=write_file><parameter=path>out.txt</parameter><parameter=content>hello world</parameter></function>`,
+			expected: []ParsedToolCall{
+				{Name: "write_file", Args: map[string]any{"path": "out.txt", "content": "hello world"}},
+			},
+		},
+		{
+			name: "mixed whitespace in parameters",
+			content: `
+<tool_call>
+<function=read_file>
+<parameter=path>  main_test.go  </parameter>
+<parameter=offset>800</parameter>
+<parameter=limit>
+50
+</parameter>
+</function>
+</tool_call>`,
+			expected: []ParsedToolCall{
+				{Name: "read_file", Args: map[string]any{"path": "main_test.go", "offset": int64(800), "limit": int64(50)}},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := &YoloAgent{}
+			calls := a.parseTextToolCalls(tt.content)
+
+			if len(calls) != len(tt.expected) {
+				t.Fatalf("Expected %d calls, got %d. Calls: %+v", len(tt.expected), len(calls), calls)
+			}
+
+			for i, call := range calls {
+				if call.Name != tt.expected[i].Name {
+					t.Errorf("Call %d: expected name '%s', got '%s'", i, tt.expected[i].Name, call.Name)
+				}
+				if !reflect.DeepEqual(call.Args, tt.expected[i].Args) {
+					t.Errorf("Call %d: expected args %+v, got %+v", i, tt.expected[i].Args, call.Args)
+				}
+			}
+		})
+	}
+}
+
 // TestToolActivityFormatWithModelResponse tests parsing within a realistic model response
 func TestToolActivityFormatWithModelResponse(t *testing.T) {
 	content := `Here's my plan for this task:
