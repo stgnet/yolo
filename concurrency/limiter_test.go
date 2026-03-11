@@ -194,6 +194,36 @@ func TestLimiterGroupCancellation(t *testing.T) {
 	}
 }
 
+func TestLimiterGroup_Running(t *testing.T) {
+	ctx := context.Background()
+	lg := NewLimiterGroup(ctx, 3)
+
+	var started int32
+	
+	// Start some goroutines
+	for i := 0; i < 5; i++ {
+		lg.Go(func(ctx context.Context) error {
+			atomic.AddInt32(&started, 1)
+			time.Sleep(50 * time.Millisecond) // Simulate work
+			return nil
+		})
+	}
+
+	// Check running count while goroutines are active
+	time.Sleep(10 * time.Millisecond)
+	running := lg.Running()
+	if running == 0 {
+		t.Error("Expected some goroutines to be running")
+	}
+
+	lg.Run()
+
+	// After all complete, running should be 0
+	if lg.Running() != 0 {
+		t.Errorf("Expected 0 running after completion, got %d", lg.Running())
+	}
+}
+
 func TestLimiterAvailableSlots(t *testing.T) {
 	l := NewLimiter(3)
 
