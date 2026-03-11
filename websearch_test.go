@@ -236,8 +236,8 @@ func TestWebSearchCaching(t *testing.T) {
 
 	// First search - should NOT be cached
 	result1 := executor.webSearch(map[string]any{"query": query, "count": count})
-	if strings.Contains(result1, "Error:") {
-		t.Skip("Skipping cache test due to network error")
+	if strings.Contains(result1, "Error:") || strings.Contains(result1, "No search results found") {
+		t.Skip("Skipping cache test due to network error or no results")
 	}
 
 	// Result should NOT have [Cached] prefix on first call
