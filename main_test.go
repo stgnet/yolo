@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -829,5 +830,173 @@ func TestToolExecutorMoveFileValidation(t *testing.T) {
 				t.Errorf("Expected error message to contain %q, got: %s", tt.errMsg, result)
 			}
 		})
+	}
+}
+
+// ─── Main Package Tests ──────────────────────────────────
+// These tests verify the entry point behavior for agent initialization.
+// Note: We can't easily test TTY validation in unit tests, so we focus on
+// testing the agent creation which is what actually matters.
+
+func TestMainEntryBehavior(t *testing.T) {
+	agent := NewYoloAgent()
+	if agent == nil {
+		t.Fatal("Expected non-nil agent from NewYoloAgent")
+	}
+
+	if agent.tools == nil {
+		t.Error("Expected tools to be initialized")
+	}
+
+	if agent.baseDir == "" {
+		t.Error("Expected baseDir to be initialized")
+	}
+
+	if agent.history == nil {
+		t.Error("Expected history manager to be initialized")
+	}
+
+	if agent.config == nil {
+		t.Error("Expected config to be initialized")
+	}
+}
+
+func TestAgentInitialization(t *testing.T) {
+	tests := []struct {
+		name string
+		fn   func() error
+	}{
+		{
+			name: "NewYoloAgent creates valid agent",
+			fn: func() error {
+				agent := NewYoloAgent()
+				if agent == nil {
+					return fmt.Errorf("agent is nil")
+				}
+				return nil
+			},
+		},
+		{
+			name: "Agent has tools initialized",
+			fn: func() error {
+				agent := NewYoloAgent()
+				if agent.tools == nil {
+					return fmt.Errorf("tools is nil")
+				}
+				return nil
+			},
+		},
+		{
+			name: "Agent has Ollama client",
+			fn: func() error {
+				agent := NewYoloAgent()
+				if agent.ollama == nil {
+					return fmt.Errorf("ollama is nil")
+				}
+				return nil
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.fn()
+			if err != nil {
+				t.Errorf("%v", err)
+			}
+		})
+	}
+}
+
+func TestAgentProperties(t *testing.T) {
+	agent := NewYoloAgent()
+
+	properties := []struct {
+		name string
+		cond bool
+	}{
+		{"has Ollama client", agent.ollama != nil},
+		{"has config", agent.config != nil},
+	}
+
+	for _, prop := range properties {
+		t.Run(prop.name, func(t *testing.T) {
+			if !prop.cond {
+				t.Errorf("Agent missing property: %s", prop.name)
+			}
+		})
+	}
+}
+
+func TestNewYoloAgentInitialization(t *testing.T) {
+	tests := []struct {
+		name string
+		fn   func(*YoloAgent) error
+	}{
+		{
+			name: "Agent is not nil",
+			fn: func(agent *YoloAgent) error {
+				if agent == nil {
+					return fmt.Errorf("agent is nil")
+				}
+				return nil
+			},
+		},
+		{
+			name: "Agent has valid baseDir",
+			fn: func(agent *YoloAgent) error {
+				if agent.baseDir == "" {
+					return fmt.Errorf("baseDir is empty")
+				}
+				info, err := os.Stat(agent.baseDir)
+				if err != nil {
+					return fmt.Errorf("baseDir not accessible: %v", err)
+				}
+				if !info.IsDir() {
+					return fmt.Errorf("baseDir is not a directory")
+				}
+				return nil
+			},
+		},
+		{
+			name: "Agent has initialized tools",
+			fn: func(agent *YoloAgent) error {
+				if agent.tools == nil {
+					return fmt.Errorf("tools is nil")
+				}
+				return nil
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agent := NewYoloAgent()
+			err := tt.fn(agent)
+			if err != nil {
+				t.Errorf("%v", err)
+			}
+		})
+	}
+}
+
+func TestGetEnvDefaultWithMissingVar(t *testing.T) {
+	testKey := "UNSET_VAR_test_" + fmt.Sprint(os.Getpid())
+	os.Unsetenv(testKey)
+
+	result := getEnvDefault(testKey, "default_value")
+	if result != "default_value" {
+		t.Errorf("getEnvDefault(%q, %q) = %q; want %q", testKey, "default_value", result, "default_value")
+	}
+}
+
+func TestGetEnvDefaultWithEmptyVar(t *testing.T) {
+	testKey := "EMPTY_VAR_" + fmt.Sprint(os.Getpid())
+	os.Setenv(testKey, "")
+	defer os.Unsetenv(testKey)
+
+	result := getEnvDefault(testKey, "fallback")
+	if result != "fallback" {
+		t.Errorf("getEnvDefault(%q, %q) = %q; want %q", testKey, "fallback", result, "fallback")
 	}
 }
