@@ -38,9 +38,12 @@ func TestNewTerminalUI(t *testing.T) {
 	if ui.rows == 0 || ui.cols == 0 {
 		t.Error("TerminalUI initialized with 0 rows or cols")
 	}
-	if ui.outRow != 1 || ui.outCol != 1 {
-		t.Errorf("Initial cursor position: outRow=%d, outCol=%d; want outRow=1, outCol=1",
+	if ui.outRow != 2 || ui.outCol != 1 {
+		t.Errorf("Initial cursor position: outRow=%d, outCol=%d; want outRow=2, outCol=1 (row 1 is agent divider)",
 			ui.outRow, ui.outCol)
+	}
+	if ui.scrollStart != 2 {
+		t.Errorf("Initial scrollStart=%d; want 2 (below agent divider)", ui.scrollStart)
 	}
 	if ui.scrollEnd != ui.rows-2 {
 		t.Errorf("Initial scrollEnd=%d; want rows-2=%d", ui.scrollEnd, ui.rows-2)

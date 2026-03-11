@@ -280,7 +280,7 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		a.cancelChat = cancel
 		a.mu.Unlock()
 
-		result, err := a.ollama.Chat(ctx, a.config.GetModel(), allMsgs, ollamaTools)
+		result, err := a.ollama.Chat(ctx, a.config.GetModel(), allMsgs, ollamaTools, nil)
 		cancel()
 		a.mu.Lock()
 		a.cancelChat = nil
@@ -590,7 +590,9 @@ func (a *YoloAgent) switchModel(model string) string {
 // ── Sub-agents ──
 
 // spawnSubagent launches a background goroutine that sends task to the LLM
-// (without tool access) and writes the result to .yolo/subagents/agent_{id}.json.
+// with tool access and writes the result to .yolo/subagents/agent_{id}.json.
+// The sub-agent runs a tool-calling loop (up to MaxSubagentRounds) using the
+// safe subset of tools defined by SubagentTools().
 func (a *YoloAgent) spawnSubagent(task, model string) string {
 	a.mu.Lock()
 	a.subagentCounter++
@@ -605,26 +607,108 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 	resultFile := filepath.Join(SubagentDir, fmt.Sprintf("agent_%d.json", aid))
 
 	go func() {
+		// Create a dedicated window for this subagent
+		if globalUI != nil {
+			globalUI.AddSubagentWindow(aid, fmt.Sprintf("subagent #%d", aid))
+		}
 		cprint(Magenta, fmt.Sprintf("  [sub-agent #%d] started (%s)", aid, useModel))
+
+		prefix := fmt.Sprintf("  [sub-agent #%d]", aid)
+		saTools := SubagentTools()
+
 		msgs := []ChatMessage{
 			{
 				Role: "system",
-				Content: fmt.Sprintf("You are a sub-agent. Complete this task concisely:\n\n%s\n\nWorking directory: %s",
+				Content: fmt.Sprintf("You are a sub-agent with tool access. Use the provided tools to complete this task concisely:\n\n%s\n\nWorking directory: %s",
 					task, a.baseDir),
 			},
 		}
 
-		status := "complete"
-		result := ""
-		chatResult, err := a.ollama.Chat(context.Background(), useModel, msgs, nil)
-		if err != nil {
-			result = err.Error()
-			status = "error"
-		} else if chatResult != nil {
-			result = chatResult.DisplayText
+		// Output function that writes to the subagent's window
+		var outFn func(string)
+		if globalUI != nil {
+			outFn = func(text string) {
+				globalUI.WriteToSubagentWindow(aid, text)
+			}
 		}
-		if result == "" {
-			result = "(no output)"
+
+		status := "complete"
+		finalText := ""
+
+		// Tool-calling loop
+		var roundMsgs []ChatMessage
+		for round := 0; round < MaxSubagentRounds; round++ {
+			allMsgs := make([]ChatMessage, 0, len(msgs)+len(roundMsgs))
+			allMsgs = append(allMsgs, msgs...)
+			allMsgs = append(allMsgs, roundMsgs...)
+
+			chatResult, err := a.ollama.Chat(context.Background(), useModel, allMsgs, saTools, outFn)
+			if err != nil {
+				finalText = err.Error()
+				status = "error"
+				break
+			}
+
+			toolCalls := chatResult.ToolCalls
+			if len(toolCalls) == 0 {
+				toolCalls = a.parseTextToolCalls(chatResult.DisplayText)
+			}
+			toolCalls = deduplicateToolCalls(toolCalls)
+
+			if len(toolCalls) == 0 {
+				finalText = chatResult.DisplayText
+				break
+			}
+
+			// Build assistant message with tool_calls
+			var nativeTCs []ToolCall
+			for i, tc := range toolCalls {
+				argsJSON, _ := json.Marshal(tc.Args)
+				nativeTCs = append(nativeTCs, ToolCall{
+					ID: fmt.Sprintf("sa%d_call_%d_%d", aid, round, i),
+					Function: ToolCallFunc{
+						Name:      tc.Name,
+						Arguments: json.RawMessage(argsJSON),
+					},
+				})
+			}
+			roundMsgs = append(roundMsgs, ChatMessage{
+				Role:      "assistant",
+				Content:   chatResult.ContentText,
+				ToolCalls: nativeTCs,
+			})
+
+			// Execute each tool
+			for _, call := range toolCalls {
+				args := call.Args
+				if args == nil {
+					args = map[string]any{}
+				}
+
+				shortArgs, _ := json.Marshal(args)
+				shortStr := string(shortArgs)
+				if len(shortStr) > 80 {
+					shortStr = shortStr[:80] + "..."
+				}
+				cprint(Yellow, fmt.Sprintf("%s [%s] %s", prefix, call.Name, shortStr))
+
+				resultStr := a.tools.Execute(call.Name, args)
+
+				preview := resultStr
+				if len(preview) > 200 {
+					preview = preview[:200] + "..."
+				}
+				preview = strings.ReplaceAll(preview, "\r", "")
+				preview = strings.ReplaceAll(preview, "\n", " ")
+				cprint(Gray, fmt.Sprintf("%s => %s", prefix, preview))
+
+				cleanResult := filterToolActivityMarkers(resultStr)
+				roundMsgs = append(roundMsgs, ChatMessage{Role: "tool", Content: cleanResult})
+			}
+		}
+
+		if finalText == "" {
+			finalText = "(no output)"
 		}
 
 		data, _ := json.MarshalIndent(map[string]any{
@@ -632,11 +716,16 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 			"task":   task,
 			"model":  useModel,
 			"status": status,
-			"result": result,
+			"result": finalText,
 			"ts":     time.Now().Format(time.RFC3339),
 		}, "", "  ")
 		os.WriteFile(resultFile, data, 0o644)
 		cprint(Magenta, fmt.Sprintf("\n  [sub-agent #%d] %s. See %s", aid, status, resultFile))
+
+		// Mark window as complete (starts 300s removal timer)
+		if globalUI != nil {
+			globalUI.MarkSubagentComplete(aid)
+		}
 	}()
 
 	return fmt.Sprintf("Sub-agent #%d spawned (%s). Results -> %s", aid, useModel, resultFile)
@@ -677,7 +766,7 @@ func (a *YoloAgent) handoffRemainingTools(remaining []ParsedToolCall) *handoffRe
 			if len(shortStr) > 80 {
 				shortStr = shortStr[:80] + "..."
 			}
-			cprint(Magenta, fmt.Sprintf("  [handoff #%d] [%s] %s", hid, call.Name, shortStr))
+			cprint(Yellow, fmt.Sprintf("  [handoff #%d] [%s] %s", hid, call.Name, shortStr))
 
 			resultStr := a.tools.Execute(call.Name, args)
 
