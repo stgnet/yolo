@@ -297,13 +297,16 @@ func (t *ToolExecutor) processSingleEmail(email EmailMessage) (string, bool, err
 
 // emailShouldRespond determines if an email needs a response based on content analysis
 func emailShouldRespond(email EmailMessage) bool {
-	// Always respond to emails that look like they need attention:
-	// - Subject contains question marks or requests
-	// - Body is relatively short (likely human communication, not system logs)
-	// - From address looks like a real person
+	// Respond to emails that look like they need attention:
+	// - Subject or body contains questions (?), requests (please, help, need, when)
+	// - From known human sender (scott@stg.net is prioritized)
+	// - Short message under 5000 chars with proper From field (likely human communication)
+	// - Exclude automated/system messages
 
 	subject := strings.ToLower(email.Subject)
+	body := strings.ToLower(email.Content)
 
+	// Respond to emails with question marks or explicit requests in subject
 	if strings.Contains(subject, "?") ||
 		strings.Contains(subject, "please") ||
 		strings.Contains(subject, "help") ||
@@ -312,9 +315,41 @@ func emailShouldRespond(email EmailMessage) bool {
 		return true
 	}
 
-	// Respond to emails under 5000 chars (likely human communication)
-	if len(email.Content) < 5000 && email.From != "" {
+	// Also check body content for request indicators
+	if strings.Contains(body, "?") ||
+		strings.Contains(body, "please") ||
+		strings.Contains(body, "help") ||
+		strings.Contains(body, "need") ||
+		strings.Contains(body, "when") {
 		return true
+	}
+
+	// Respond to emails from scott@stg.net (prioritized human sender)
+	if email.From == "scott@stg.net" && email.From != "" {
+		return true
+	}
+
+	// Respond to short emails (< 5000 chars) that look like human communication
+	// Exclude very short automated-looking messages
+	if len(email.Content) < 5000 && email.From != "" {
+		// Check if content looks more like automation than human text
+		automationIndicators := []string{
+			"build completed", "build finished", "test run", "ci check",
+			"job finished", "process completed", "execution complete",
+			"system notification", "automated", "scheduled",
+		}
+
+		isAutomation := false
+		for _, indicator := range automationIndicators {
+			if strings.Contains(body, indicator) {
+				isAutomation = true
+				break
+			}
+		}
+
+		if !isAutomation {
+			return true
+		}
 	}
 
 	return false
