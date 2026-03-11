@@ -112,13 +112,13 @@ var ollamaTools = []ToolDef{
 		}, []string{"query"}),
 	toolDef("learn", "Autonomously research and discover self-improvement opportunities from the internet. Uses web search and Reddit to find new features, best practices, and improvements for the YOLO agent.",
 		map[string]ToolParam{}, nil),
-	toolDef("send_email", "Send an email via SMTP from yolo@b-haven.org. Requires EMAIL_PASSWORD to be configured.",
+	toolDef("send_email", "Send an email via sendmail from yolo@b-haven.org. Postfix handles DKIM signing automatically.",
 		map[string]ToolParam{
 			"to":      {Type: "string", Description: "Recipient email address (default: scott@stg.net)"},
 			"subject": {Type: "string", Description: "Email subject (required)"},
 			"body":    {Type: "string", Description: "Email body (required)"},
 		}, []string{"subject", "body"}),
-	toolDef("send_report", "Send a progress report email to scott@stg.net. Requires EMAIL_PASSWORD to be configured.",
+	toolDef("send_report", "Send a progress report email to scott@stg.net from yolo@b-haven.org. Postfix handles DKIM signing automatically.",
 		map[string]ToolParam{
 			"subject": {Type: "string", Description: "Report subject (default: YOLO Progress Report)"},
 			"body":    {Type: "string", Description: "Report body (required)"},
