@@ -1,8 +1,6 @@
 yolo-go
 yolo
 .yolo
-coverage.out
-cov.out
 test_output/
 *.patch
 yolo_test
@@ -10,3 +8,4 @@ yolo_test
 yolo-test
 *.coverprofile
 yolo-bin
+*.out

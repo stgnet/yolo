@@ -28,10 +28,10 @@ type Config struct {
 func DefaultConfig() *Config {
 	return &Config{
 		SMTPHost:     "localhost", // Not used with sendmail
-		SMTPPort:     25,         // Not used with sendmail
-		Username:     "",         // Not used with sendmail
-		Password:     "",         // Not used with sendmail
-		UseTLS:       false,      // Not used with sendmail
+		SMTPPort:     25,          // Not used with sendmail
+		Username:     "",          // Not used with sendmail
+		Password:     "",          // Not used with sendmail
+		UseTLS:       false,       // Not used with sendmail
 		SendmailPath: "/usr/sbin/sendmail",
 	}
 }
@@ -55,14 +55,14 @@ func New(config *Config) *Client {
 
 // Message represents an email to be sent.
 type Message struct {
-	From      string   // Sender address
-	To        []string // Recipient addresses (can include CC/BCC)
-	Subject   string   // Email subject
-	Body      string   // Email body (plain text)
-	HTMLBody  string   // Optional HTML version of the body
-	Cc        []string // Carbon copy recipients
-	Bcc       []string // Blind carbon copy recipients
-	Headers   map[string]string // Custom headers
+	From     string            // Sender address
+	To       []string          // Recipient addresses (can include CC/BCC)
+	Subject  string            // Email subject
+	Body     string            // Email body (plain text)
+	HTMLBody string            // Optional HTML version of the body
+	Cc       []string          // Carbon copy recipients
+	Bcc      []string          // Blind carbon copy recipients
+	Headers  map[string]string // Custom headers
 }
 
 // Send sends an email message.

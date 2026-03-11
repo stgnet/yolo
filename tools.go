@@ -123,6 +123,10 @@ var ollamaTools = []ToolDef{
 			"subject": {Type: "string", Description: "Report subject (default: YOLO Progress Report)"},
 			"body":    {Type: "string", Description: "Report body (required)"},
 		}, []string{"body"}),
+	toolDef("check_inbox", "Read emails from Maildir inbox at /var/mail/b-haven.org/yolo/new/",
+		map[string]ToolParam{
+			"mark_read": {Type: "boolean", Description: "If true, move processed emails to cur/ directory"},
+		}, nil),
 }
 
 // ─── Tool Executor ───────────────────────────────────────────────────
@@ -134,7 +138,7 @@ var validTools = []string{
 	"search_files", "run_command", "spawn_subagent",
 	"list_subagents", "read_subagent_result", "summarize_subagents",
 	"list_models", "switch_model", "think", "restart",
-	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "learn", "send_email", "send_report",
+	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "learn", "send_email", "send_report", "check_inbox",
 }
 
 // ToolExecutor dispatches tool calls from the LLM to concrete
@@ -223,6 +227,8 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 		return t.sendEmail(args)
 	case "send_report":
 		return t.sendReport(args)
+	case "check_inbox":
+		return t.checkInbox(args)
 	default:
 		return fmt.Sprintf("Error: unknown tool '%s'. Available tools: %s", name, strings.Join(validTools, ", "))
 	}
@@ -255,6 +261,22 @@ func getIntArg(args map[string]any, key string, fallback int) int {
 			if n > 0 {
 				return n
 			}
+		}
+	}
+	return fallback
+}
+
+func getBoolArg(args map[string]any, key string, fallback bool) bool {
+	if v, ok := args[key]; ok {
+		switch val := v.(type) {
+		case bool:
+			return val
+		case string:
+			return strings.ToLower(val) == "true" || val == "1"
+		case float64:
+			return val == 1.0
+		case int:
+			return val == 1
 		}
 	}
 	return fallback
