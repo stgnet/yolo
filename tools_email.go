@@ -21,33 +21,33 @@ const (
 // Returns true if allowed to send, false if on cooldown
 func checkEmailCooldown() bool {
 	cooldownPath := "." + string(os.PathSeparator) + emailCooldownFile
-	
+
 	data, err := os.ReadFile(cooldownPath)
 	if err != nil {
 		// No cooldown file exists, allow sending
 		return true
 	}
-	
+
 	var unixTime int64
 	_, err = fmt.Sscanf(string(data), "%d", &unixTime)
 	if err != nil {
 		// Invalid data, allow sending
 		return true
 	}
-	
+
 	lastSend := time.Unix(unixTime, 0)
-	
+
 	if time.Since(lastSend) < emailCooldownPeriod {
 		return false
 	}
-	
+
 	return true
 }
 
 // recordEmailSent records the current time as the last email sent
 func recordEmailSent() error {
 	cooldownPath := "." + string(os.PathSeparator) + emailCooldownFile
-	
+
 	now := time.Now().Unix()
 	data := fmt.Sprintf("%d", now)
 	return os.WriteFile(cooldownPath, []byte(data), 0644)

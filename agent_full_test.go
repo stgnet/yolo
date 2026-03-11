@@ -212,6 +212,7 @@ func TestAgentHandleCommand(t *testing.T) {
 		baseDir:  tmpDir,
 		history:  NewHistoryManager(".yolo"),
 		inputMgr: &InputManager{}, // Minimal input manager to prevent nil pointer
+		config:   &YoloConfig{Data: YoloConfigData{Model: "test-model"}},
 	}
 
 	// Test /help - should not panic

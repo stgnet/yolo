@@ -95,7 +95,11 @@ func (a *YoloAgent) getSystemPrompt() string {
 	prompt := string(templateContent)
 	prompt = strings.ReplaceAll(prompt, "{baseDir}", a.baseDir)
 	prompt = strings.ReplaceAll(prompt, "{scriptPath}", a.scriptPath)
-	prompt = strings.ReplaceAll(prompt, "{model}", a.config.GetModel())
+	if a.config != nil {
+		prompt = strings.ReplaceAll(prompt, "{model}", a.config.GetModel())
+	} else {
+		prompt = strings.ReplaceAll(prompt, "{model}", "unknown")
+	}
 	prompt = strings.ReplaceAll(prompt, "{timestamp}", time.Now().Format(time.RFC3339))
 	prompt = strings.ReplaceAll(prompt, "{knowledgeBase}", kbSection)
 
@@ -1020,6 +1024,9 @@ func (a *YoloAgent) Run() {
 
 // drainQueuedInput processes any lines that were typed while the agent was busy.
 func (a *YoloAgent) drainQueuedInput() {
+	if a.inputMgr == nil {
+		return
+	}
 	for {
 		select {
 		case line := <-a.inputMgr.Lines:
