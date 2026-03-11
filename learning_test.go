@@ -473,3 +473,51 @@ func TestResearchArea(t *testing.T) {
 
 	t.Logf("Discovered %d improvements for test area", len(improvements))
 }
+
+func TestContainsGenericPattern(t *testing.T) {
+	patterns := []string{" is a ", "wikipedia", "overview of"}
+
+	tests := []struct {
+		name     string
+		text     string
+		expected bool
+	}{
+		{"generic intro", "Grok is a AI assistant", true},
+		{"wikipedia reference", "See Wikipedia for more", true},
+		{"overview text", "This is an overview of the topic", true},
+		{"actionable content", "You should implement this pattern to improve performance", false},
+		{"specific implementation", "The recommended approach is to use goroutines", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := containsGenericPattern(tt.text, patterns)
+			if result != tt.expected {
+				t.Errorf("containsGenericPattern(%q) = %v, expected %v", tt.text, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestContainsActionableContent(t *testing.T) {
+	tests := []struct {
+		name     string
+		text     string
+		expected bool
+	}{
+		{"recommendation", "We recommend using this pattern", true},
+		{"best practice", "The best practice is to handle errors", true},
+		{"implementation tip", "A useful implementation tip is to cache results", true},
+		{"generic statement", "This is a statement about the topic", false},
+		{"definition text", "This term refers to a concept", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := containsActionableContent(tt.text)
+			if result != tt.expected {
+				t.Errorf("containsActionableContent(%q) = %v, expected %v", tt.text, result, tt.expected)
+			}
+		})
+	}
+}
