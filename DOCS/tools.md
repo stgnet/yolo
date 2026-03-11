@@ -52,8 +52,9 @@ YOLO (Your Own Living Operator) has these powerful tools for autonomous software
 | `web_search` | Search DuckDuckGo Instant Answer API with Wikipedia fallback | [below](#web_search-tool) |
 | `reddit` | Search Reddit, list subreddit posts, get threads | [reddit-tool.md](./reddit-tool.md) |
 | `gog` | Google Workspace: Gmail, Calendar, Drive, Contacts, Sheets, Docs | [gog-tool.md](./gog-tool.md) |
-| `send_email` | Send emails via SMTP from yolo@b-haven.org | [below](#email-tools) |
+| `send_email` | Send emails via sendmail from yolo@b-haven.org (DKIM signed by Postfix) | [below](#email-tools) |
 | `send_report` | Send progress reports to scott@stg.net | [below](#email-tools) |
+| `check_inbox` | Read incoming emails from Maildir inbox | [below](#email-tools) |
 
 ---
 
@@ -147,13 +148,81 @@ gog contacts list --max 30
 
 ---
 
+## 📧 Email Tools (send_email, send_report, check_inbox)
+
+Full email system for yolo@b-haven.org with DKIM signing via Postfix.
+
+### send_email - Send an Email
+```json
+{
+  "name": "send_email",
+  "arguments": {
+    "to": "recipient@example.com",
+    "subject": "Test Email",
+    "body": "Hello from YOLO!"
+  }
+}
+```
+**Parameters:**
+- `to` (optional): Recipient email (default: scott@stg.net)
+- `subject` (required): Email subject line
+- `body` (required): Email content
+
+**How it works:** Uses `/usr/sbin/sendmail` for local delivery. Postfix automatically signs with DKIM. No SMTP authentication required!
+
+### send_report - Send Progress Report
+Convenience wrapper for reporting to scott@stg.net.
+```json
+{
+  "name": "send_report", 
+  "arguments": {
+    "subject": "Weekly Update",
+    "body": "Completed tasks: 1, 2, 3\n\nNext steps: A, B, C"
+  }
+}
+```
+
+### check_inbox - Read Incoming Emails
+```json
+{
+  "name": "check_inbox",
+  "arguments": {
+    "mark_read": true
+  }
+}
+```
+**Parameters:**
+- `mark_read` (optional): If true, move processed emails from `new/` to `cur/`
+
+**How it works:** Reads Maildir at `/var/mail/b-haven.org/yolo/new/`. Parses RFC 2822 format with MIME support for multipart messages.
+
+**Example Output:**
+```
+📬 Found 2 new email(s)
+   Moved 2 email(s) to cur/ (marked as read)
+
+--- Email 1 of 2 ---
+From: user@example.com
+Subject: Test Message
+Date: Wed, 10 Mar 2026 22:36:27 +0000
+Content-Type: text/plain; charset=utf-8
+
+Body:
+This is the email content...
+```
+
+For more details, see: [EMAIL-SYSTEM.md](./EMAIL-SYSTEM.md) and [EMAIL-OPERATIONS.md](./EMAIL-OPERATIONS.md)
+
+---
+
 ## 💡 Best Practices
 
 1. **Use web_search** before implementing new features to research best practices
-2. **Check Reddit** for community discussions on tools/technologies
+2. **Check Reddit** for community discussions on tools/technologies  
 3. **Leverage gog** for Gmail/Calendar automation tasks
-4. **Spawn subagents** for parallel independent tasks
-5. **Use think tool** for complex planning before action
+4. **Use email tools** (send_email/send_report/check_inbox) for communication with scott@stg.net
+5. **Spawn subagents** for parallel independent tasks
+6. **Use think tool** for complex planning before action
 
 ---
 
