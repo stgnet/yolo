@@ -316,3 +316,114 @@ func TestMoveFile(t *testing.T) {
 func isError(msg string) bool {
 	return len(msg) >= 6 && msg[:5] == "Error"
 }
+
+// TestParseDuckDuckGoHTML tests the parseDuckDuckGoHTML function
+func TestParseDuckDuckGoHTML(t *testing.T) {
+	tests := []struct {
+		name           string
+		query          string
+		html           string
+		count          int
+		expectResults  bool
+		expectContains string
+	}{
+		{
+			name:           "empty HTML returns no results message",
+			query:          "test query",
+			html:           "",
+			count:          5,
+			expectResults:  false,
+			expectContains: "No results found",
+		},
+		{
+			name:  "simple HTML with one result",
+			query: "Go programming",
+			html: `<div>
+<a class="result__a" href="https://example.com/go">Go Programming Language</a>
+<div><span>This is a snippet about Go programming language.</span></div>
+</div>`,
+			count:          5,
+			expectResults:  true,
+			expectContains: "Go Programming Language",
+		},
+		{
+			name:  "HTML with multiple results respects count limit",
+			query: "testing",
+			html: `<div>
+<a class="result__a" href="https://example.com/1">Result One</a>
+<div><span>First result snippet</span></div>
+<a class="result__a" href="https://example.com/2">Result Two</a>
+<div><span>Second result snippet</span></div>
+<a class="result__a" href="https://example.com/3">Result Three</a>
+<div><span>Third result snippet</span></div>
+</div>`,
+			count:          2,
+			expectResults:  true,
+			expectContains: "Result One",
+		},
+		{
+			name:  "HTML without class attribute",
+			query: "test",
+			html: `<div>
+<a href="https://example.com">No class link</a>
+</div>`,
+			count:          5,
+			expectResults:  false,
+			expectContains: "No results found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			executor := &ToolExecutor{}
+			result := executor.parseDuckDuckGoHTML(tt.query, tt.count, []byte(tt.html))
+
+			if tt.expectResults {
+				if !strings.Contains(result, "No results found") {
+					// Has results
+				} else {
+					t.Errorf("Expected results but got none: %s", result)
+				}
+			} else {
+				if !strings.Contains(result, "No results found") {
+					t.Logf("Expected no results but got: %s", result)
+				}
+			}
+
+			if tt.expectContains != "" && !strings.Contains(result, tt.expectContains) {
+				t.Errorf("Result should contain %q but got:\n%s", tt.expectContains, result)
+			}
+		})
+	}
+}
+
+// TestParseDuckDuckGoJSON tests JSON parsing edge cases
+func TestParseDuckDuckGoJSON(t *testing.T) {
+	tests := []struct {
+		name          string
+		json          string
+		expectResults bool
+	}{
+		{
+			name:          "empty JSON object",
+			json:          "{}",
+			expectResults: false,
+		},
+		{
+			name:          "JSON with results array",
+			json:          `{"results": [{"title": "Test", "body": "Body text"}]}`,
+			expectResults: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			executor := &ToolExecutor{}
+			result := executor.parseDuckDuckGoJSON("test", 5, []byte(tt.json))
+
+			if tt.expectResults && strings.Contains(result, "No results") {
+				t.Errorf("Expected results but got none: %s", result)
+			}
+		})
+	}
+}

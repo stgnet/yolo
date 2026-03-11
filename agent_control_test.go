@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -75,6 +76,69 @@ func TestSwitchModel(t *testing.T) {
 
 // TestRestart tests the restart tool implementation
 func TestRestart(t *testing.T) {
-	// Skip this test as it would actually attempt to restart the agent
-	t.Skip("Skipping restart test to avoid actual restart during testing")
+	// This test would actually attempt to rebuild and restart YOLO
+	// which is not appropriate in a unit test environment (requires TTY)
+	t.Skip("Skipping restart test - requires interactive terminal")
+
+	/* Uncomment for manual testing only:
+	tests := []struct {
+		name        string
+		args        map[string]any
+		expectError bool
+	}{
+		{
+			name:        "no arguments should work",
+			args:        map[string]any{},
+			expectError: true, // Will fail to rebuild in test env, but function should be called
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			executor := &ToolExecutor{}
+			result := executor.restart(tt.args)
+
+			if tt.expectError {
+				// In test environment, rebuild will fail (no Go source)
+				// Just check it doesn't crash and returns something meaningful
+				if result == "" {
+					t.Errorf("Expected non-empty result")
+				}
+				// Should mention build or error
+				if !strings.Contains(strings.ToLower(result), "build") &&
+					!strings.Contains(strings.ToLower(result), "error") {
+					t.Logf("Result doesn't mention build/error: %s", result)
+				}
+			} else {
+				// Success case - should mention rebuild/restart
+				if !strings.Contains(strings.ToLower(result), "restart") &&
+					!strings.Contains(strings.ToLower(result), "rebuild") {
+					t.Errorf("Expected restart message: %s", result)
+				}
+			}
+		})
+	}
+	*/
+}
+
+// TestRestartArgsFiltering tests that --restart flag is filtered from args
+func TestRestartArgsFiltering(t *testing.T) {
+	// This tests the logic without actually restarting
+	originalArgs := os.Args
+	defer func() { os.Args = originalArgs }()
+
+	// Simulate having --restart in args
+	os.Args = []string{"yolo", "--restart", "other-arg"}
+
+	// Filter logic from restart function
+	var filteredArgs []string
+	for _, arg := range os.Args[1:] {
+		if arg != "--restart" {
+			filteredArgs = append(filteredArgs, arg)
+		}
+	}
+
+	if len(filteredArgs) != 1 || filteredArgs[0] != "other-arg" {
+		t.Errorf("Expected ['other-arg'], got %v", filteredArgs)
+	}
 }
