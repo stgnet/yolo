@@ -27,6 +27,11 @@ const (
 	// DefaultNumCtx is the default context-window size passed to Ollama
 	// when auto-detection fails or is not available.
 	DefaultNumCtx = 8192
+
+	// DefaultInputDelay is the number of seconds to wait after the user
+	// presses Enter (cursor at start of blank line) before sending the
+	// input buffer to the agent. Overridable via YOLO_INPUT_DELAY env var.
+	DefaultInputDelay = 10
 )
 
 var (

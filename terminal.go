@@ -165,15 +165,14 @@ type TerminalUI struct {
 	fd             int
 	rows           int
 	cols           int
-	inputBuf       []byte // mirrors InputManager's buffer for redraw
-	prompt         string
-	outRow         int      // tracked row of cursor in output region
-	outCol         int      // tracked col of cursor in output region
-	queuedMsgs     []string // messages queued while agent is busy
-	scrollEnd      int      // last row of the scroll region (dynamic)
-	peakBottomRows int      // high-water mark for bottom area (grow-only)
-	streaming      bool     // true while inline output is in progress (prevents scroll region changes)
-	pendingWrap    bool     // true when last output char filled the last column (terminal pending wrap state)
+	inputBuf       []byte // mirrors InputManager's buffer for redraw (may contain \n)
+	prompt         string // kept for compatibility
+	outRow         int    // tracked row of cursor in output region
+	outCol         int    // tracked col of cursor in output region
+	scrollEnd      int    // last row of the scroll region (dynamic)
+	peakBottomRows int    // high-water mark for bottom area (grow-only)
+	streaming      bool   // true while inline output is in progress (prevents scroll region changes)
+	pendingWrap    bool   // true when last output char filled the last column (terminal pending wrap state)
 
 	// Rate-limited redraw support
 	inputDirty atomic.Bool // set when input changes; cleared by redraw tick
@@ -317,7 +316,12 @@ func (ui *TerminalUI) redrawLoop() {
 
 func (ui *TerminalUI) writeDividerTo(buf *strings.Builder) {
 	dividerRow := ui.scrollEnd + 1
-	divider := strings.Repeat("─", ui.cols)
+	label := "──you"
+	remaining := ui.cols - len(label)
+	if remaining < 0 {
+		remaining = 0
+	}
+	divider := label + strings.Repeat("─", remaining)
 	fmt.Fprintf(buf, "\033[%d;1H%s%s%s", dividerRow, Gray, divider, Reset)
 }
 
@@ -482,42 +486,23 @@ func (ui *TerminalUI) renderInputFull() {
 }
 
 // renderInputFullTo appends the complete input area rendering to buf.
+// The input buffer may contain newlines (multiline editing). Each logical
+// line is displayed on its own row, with long lines wrapping at terminal width.
 // Caller must hold ui.mu.
 func (ui *TerminalUI) renderInputFullTo(buf *strings.Builder) {
-	promptStr := ui.prompt
 	inputStr := string(ui.inputBuf)
-	promptWidth := len(stripAnsiCodes(promptStr))
 
-	totalChars := promptWidth + len(inputStr)
-	inputRowCount := 1
-	if totalChars > 0 {
-		inputRowCount = totalChars/ui.cols + 1
+	// Split into logical lines and compute wrapped display lines
+	wrappedLines := ui.computeInputDisplayLines(inputStr)
+	totalInputRows := len(wrappedLines)
+	if totalInputRows == 0 {
+		totalInputRows = 1
+		wrappedLines = []string{""}
 	}
 
-	var queuedDisplayLines []string
-	for _, msg := range ui.queuedMsgs {
-		msgLines := strings.Split(msg, "\n")
-		for j, line := range msgLines {
-			prefix := "  [queued] "
-			if j > 0 {
-				prefix = "           "
-			}
-			maxLen := ui.cols - len(prefix)
-			if maxLen <= 0 {
-				maxLen = 1
-			}
-			for len(line) > maxLen {
-				queuedDisplayLines = append(queuedDisplayLines, prefix+line[:maxLen])
-				line = line[maxLen:]
-				prefix = "           "
-			}
-			queuedDisplayLines = append(queuedDisplayLines, prefix+line)
-		}
-	}
-	totalQueuedLines := len(queuedDisplayLines)
-	neededBottomRows := totalQueuedLines + inputRowCount
+	neededBottomRows := totalInputRows
 
-	canShrink := len(ui.queuedMsgs) == 0 && len(ui.inputBuf) == 0
+	canShrink := len(ui.inputBuf) == 0
 	var bottomRows int
 	if canShrink {
 		bottomRows = 1
@@ -540,17 +525,10 @@ func (ui *TerminalUI) renderInputFullTo(buf *strings.Builder) {
 		}
 	}
 
-	displayQueuedLines := totalQueuedLines
-	displayInputRows := inputRowCount
-	if displayQueuedLines+displayInputRows > bottomRows {
-		displayInputRows = bottomRows - displayQueuedLines
-		if displayInputRows < 1 {
-			displayInputRows = 1
-			displayQueuedLines = bottomRows - 1
-			if displayQueuedLines < 0 {
-				displayQueuedLines = 0
-			}
-		}
+	// Determine which lines to show (last N if too many)
+	visibleLines := wrappedLines
+	if len(visibleLines) > bottomRows {
+		visibleLines = visibleLines[len(visibleLines)-bottomRows:]
 	}
 
 	newScrollEnd := ui.rows - bottomRows - 1
@@ -574,38 +552,59 @@ func (ui *TerminalUI) renderInputFullTo(buf *strings.Builder) {
 		ui.outRow = ui.scrollEnd
 	}
 
+	// Clear everything below divider
 	for r := ui.scrollEnd + 1; r <= ui.rows; r++ {
 		fmt.Fprintf(buf, "\033[%d;1H\033[2K", r)
 	}
 
-	divider := strings.Repeat("─", ui.cols)
-	fmt.Fprintf(buf, "\033[%d;1H%s%s%s", ui.scrollEnd+1, Gray, divider, Reset)
+	// Draw divider with "you" label
+	ui.writeDividerTo(buf)
 
+	// Draw input lines
 	row := ui.scrollEnd + 2
-	startIdx := len(queuedDisplayLines) - displayQueuedLines
-	if startIdx < 0 {
-		startIdx = 0
-	}
-	for i := startIdx; i < len(queuedDisplayLines); i++ {
-		fmt.Fprintf(buf, "\033[%d;1H%s%s%s", row, Gray, queuedDisplayLines[i], Reset)
+	for _, line := range visibleLines {
+		fmt.Fprintf(buf, "\033[%d;1H%s", row, line)
 		row++
 	}
 
-	inputStartRow := row
-	displayInput := inputStr
-	maxChars := displayInputRows*ui.cols - promptWidth
-	if maxChars < 0 {
-		maxChars = ui.cols
+	// Position cursor at end of last wrapped line
+	lastLine := wrappedLines[len(wrappedLines)-1]
+	cursorCol := len(lastLine) + 1
+	cursorRow := ui.scrollEnd + 1 + len(visibleLines)
+	if cursorCol > ui.cols {
+		cursorCol = 1
+		cursorRow++
 	}
-	if len(displayInput) > maxChars {
-		displayInput = displayInput[len(displayInput)-maxChars:]
-	}
-	fmt.Fprintf(buf, "\033[%d;1H%s%s", inputStartRow, promptStr, displayInput)
-
-	dispTotal := promptWidth + len(displayInput)
-	cursorRow := inputStartRow + dispTotal/ui.cols
-	cursorCol := dispTotal%ui.cols + 1
 	fmt.Fprintf(buf, "\033[%d;%dH", cursorRow, cursorCol)
+}
+
+// computeInputDisplayLines splits the input string by newlines and wraps
+// each logical line to the terminal width, returning the flat list of
+// display lines.
+func (ui *TerminalUI) computeInputDisplayLines(inputStr string) []string {
+	if inputStr == "" {
+		return []string{""}
+	}
+
+	logicalLines := strings.Split(inputStr, "\n")
+	var wrapped []string
+
+	for _, line := range logicalLines {
+		if len(line) == 0 {
+			wrapped = append(wrapped, "")
+			continue
+		}
+		for len(line) > ui.cols {
+			wrapped = append(wrapped, line[:ui.cols])
+			line = line[ui.cols:]
+		}
+		wrapped = append(wrapped, line)
+	}
+
+	if len(wrapped) == 0 {
+		wrapped = []string{""}
+	}
+	return wrapped
 }
 
 // drawInputLocked renders the input area. Used by legacy callers and tests.
@@ -644,53 +643,17 @@ func (ui *TerminalUI) RedrawInput() {
 // changing the scroll region. After drawing, it restores the cursor to the
 // output position so streaming can continue. Flushes atomically.
 func (ui *TerminalUI) renderInputTextOnlyTo() {
-	promptStr := ui.prompt
 	inputStr := string(ui.inputBuf)
-	promptWidth := len(stripAnsiCodes(promptStr))
-
-	var queuedDisplayLines []string
-	for _, msg := range ui.queuedMsgs {
-		msgLines := strings.Split(msg, "\n")
-		for j, line := range msgLines {
-			prefix := "  [queued] "
-			if j > 0 {
-				prefix = "           "
-			}
-			maxLen := ui.cols - len(prefix)
-			if maxLen <= 0 {
-				maxLen = 1
-			}
-			for len(line) > maxLen {
-				queuedDisplayLines = append(queuedDisplayLines, prefix+line[:maxLen])
-				line = line[maxLen:]
-				prefix = "           "
-			}
-			queuedDisplayLines = append(queuedDisplayLines, prefix+line)
-		}
-	}
 
 	bottomRows := ui.rows - ui.scrollEnd - 1
 	if bottomRows < 1 {
 		bottomRows = 1
 	}
 
-	totalChars := promptWidth + len(inputStr)
-	inputRowCount := 1
-	if totalChars > 0 {
-		inputRowCount = totalChars/ui.cols + 1
-	}
-
-	displayQueuedLines := len(queuedDisplayLines)
-	displayInputRows := inputRowCount
-	if displayQueuedLines+displayInputRows > bottomRows {
-		displayInputRows = bottomRows - displayQueuedLines
-		if displayInputRows < 1 {
-			displayInputRows = 1
-			displayQueuedLines = bottomRows - 1
-			if displayQueuedLines < 0 {
-				displayQueuedLines = 0
-			}
-		}
+	wrappedLines := ui.computeInputDisplayLines(inputStr)
+	visibleLines := wrappedLines
+	if len(visibleLines) > bottomRows {
+		visibleLines = visibleLines[len(visibleLines)-bottomRows:]
 	}
 
 	var buf strings.Builder
@@ -700,27 +663,12 @@ func (ui *TerminalUI) renderInputTextOnlyTo() {
 		fmt.Fprintf(&buf, "\033[%d;1H\033[2K", r)
 	}
 
-	// Draw queued messages
+	// Draw input lines
 	row := ui.scrollEnd + 2
-	startIdx := len(queuedDisplayLines) - displayQueuedLines
-	if startIdx < 0 {
-		startIdx = 0
-	}
-	for i := startIdx; i < len(queuedDisplayLines); i++ {
-		fmt.Fprintf(&buf, "\033[%d;1H%s%s%s", row, Gray, queuedDisplayLines[i], Reset)
+	for _, line := range visibleLines {
+		fmt.Fprintf(&buf, "\033[%d;1H%s", row, line)
 		row++
 	}
-
-	// Draw input
-	displayInput := inputStr
-	maxChars := displayInputRows*ui.cols - promptWidth
-	if maxChars < 0 {
-		maxChars = ui.cols
-	}
-	if len(displayInput) > maxChars {
-		displayInput = displayInput[len(displayInput)-maxChars:]
-	}
-	fmt.Fprintf(&buf, "\033[%d;1H%s%s", row, promptStr, displayInput)
 
 	// Restore cursor to the output streaming position
 	fmt.Fprintf(&buf, "\033[%d;%dH", ui.outRow, ui.outCol)
@@ -760,23 +708,3 @@ func (ui *TerminalUI) RefreshSize() {
 	}
 }
 
-// AddQueuedMessage adds a message to the queued display below the divider.
-func (ui *TerminalUI) AddQueuedMessage(text string) {
-	ui.mu.Lock()
-	defer ui.mu.Unlock()
-	ui.queuedMsgs = append(ui.queuedMsgs, text)
-	if !ui.streaming {
-		ui.renderInputFull()
-	}
-	// If streaming, OutputFinishLine will redraw with the queued messages
-}
-
-// RemoveQueuedMessage removes the oldest queued message from the display.
-func (ui *TerminalUI) RemoveQueuedMessage() {
-	ui.mu.Lock()
-	defer ui.mu.Unlock()
-	if len(ui.queuedMsgs) > 0 {
-		ui.queuedMsgs = ui.queuedMsgs[1:]
-		ui.renderInputFull()
-	}
-}

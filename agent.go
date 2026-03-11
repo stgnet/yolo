@@ -332,8 +332,8 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		// Execute each tool and add tool-role result.
 		// Track whether the user typed something mid-tool-loop.
 		// We don't interrupt execution — tools keep running normally —
-		// but we consume the queued message so the agent sees it on
-		// its next LLM round without waiting for drainQueuedInput.
+		// but we consume the message so the agent sees it on
+		// its next LLM round.
 		userInterjected := false
 		for _, call := range toolCalls {
 			name := call.Name
@@ -365,21 +365,14 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		}
 
 		// After the tool batch completes, check if the user typed something
-		// while tools were running.  Instead of a generic "wrap up" nudge,
-		// consume the queued message and inject it as a real user message
-		// so the agent responds to it on the very next LLM round.
+		// while tools were running.  Consume the message and inject it as
+		// a real user message so the agent responds on the next LLM round.
 		if len(a.inputMgr.Lines) > 0 {
 			select {
 			case qLine := <-a.inputMgr.Lines:
 				qText := strings.TrimSpace(qLine.Text)
 				qLower := strings.ToLower(qText)
 				if qText != "" {
-					if globalUI != nil {
-						a.inputMgr.SyncToUI()
-						globalUI.RemoveQueuedMessage()
-					}
-					// Handle slash commands and exit/quit instead of
-					// injecting them as user messages to the LLM.
 					if qLower == "exit" || qLower == "quit" {
 						a.running = false
 						return
@@ -389,11 +382,9 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 							return
 						}
 					} else {
-						cprint(Cyan, "  [interjection] Delivering queued user message to agent")
-						cprint(Green, fmt.Sprintf("  you> %s", qText))
-						// Record in persistent history as a real user message
+						cprint(Cyan, "  [interjection] Delivering user message to agent")
+						a.echoUserInput(qText)
 						a.history.AddMessage("user", qText, nil)
-						// Inject into the current round so the agent sees it
 						roundMsgs = append(roundMsgs, ChatMessage{
 							Role:    "user",
 							Content: qText,
@@ -887,8 +878,22 @@ func (a *YoloAgent) showCacheStatus(arg string) {
 // ── Main loop ──
 
 func (a *YoloAgent) showPrompt() {
-	prompt := fmt.Sprintf("%s%syou> %s", Green, Bold, Reset)
-	a.inputMgr.ShowPrompt(prompt)
+	// No "you>" prompt — the divider label "──you──" serves as the indicator.
+	// Just trigger a redraw of the input area.
+	a.inputMgr.ShowPrompt("")
+}
+
+// echoUserInput prints the user's (possibly multiline) message to the
+// output area with a "you>" prefix on the first line.
+func (a *YoloAgent) echoUserInput(text string) {
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		if i == 0 {
+			cprint(Green, fmt.Sprintf("  you> %s", line))
+		} else {
+			cprint(Green, fmt.Sprintf("        %s", line))
+		}
+	}
 }
 
 // Run is the top-level entry point. It loads (or creates) session history,
@@ -959,15 +964,6 @@ func (a *YoloAgent) Run() {
 			stripped := strings.TrimSpace(line.Text)
 			lower := strings.ToLower(stripped)
 
-			// Remove any queued-message display for this line. This covers
-			// the TOCTOU race where AddQueuedMessage fires just after the
-			// agent finishes (busy transitions to false between the check in
-			// processLoop and the channel send) — drainQueuedInput wouldn't
-			// see it, so the stale indicator would linger.
-			if stripped != "" && globalUI != nil {
-				globalUI.RemoveQueuedMessage()
-			}
-
 			if lower == "exit" || lower == "quit" {
 				a.running = false
 			} else if strings.HasPrefix(stripped, "/") {
@@ -978,8 +974,8 @@ func (a *YoloAgent) Run() {
 				a.busy = true
 				a.mu.Unlock()
 
-				// Echo user's input with green color and "you>" prefix
-				cprint(Green, fmt.Sprintf("  you> %s", stripped))
+				// Echo user's multiline input
+				a.echoUserInput(stripped)
 
 				a.chatWithAgent(stripped, false)
 
@@ -987,8 +983,6 @@ func (a *YoloAgent) Run() {
 				a.busy = false
 				a.mu.Unlock()
 
-				// Check for any lines queued while busy
-				a.drainQueuedInput()
 				a.showPrompt()
 			}
 
@@ -1011,7 +1005,6 @@ func (a *YoloAgent) Run() {
 				a.busy = false
 				a.mu.Unlock()
 
-				a.drainQueuedInput()
 				a.showPrompt()
 			}
 		}
@@ -1024,49 +1017,3 @@ func (a *YoloAgent) Run() {
 	cprint(Cyan, "  Session saved. Goodbye!\n")
 }
 
-// drainQueuedInput processes any lines that were typed while the agent was busy.
-func (a *YoloAgent) drainQueuedInput() {
-	if a.inputMgr == nil {
-		return
-	}
-	for {
-		select {
-		case line := <-a.inputMgr.Lines:
-			if !line.OK {
-				a.running = false
-				return
-			}
-			stripped := strings.TrimSpace(line.Text)
-			lower := strings.ToLower(stripped)
-
-			// Remove from queued display (no-op if message wasn't queued).
-			// Sync the input buffer first so the redraw shows the user's
-			// current in-progress typing accurately (including multiline).
-			if stripped != "" && globalUI != nil {
-				a.inputMgr.SyncToUI()
-				globalUI.RemoveQueuedMessage()
-			}
-
-			if lower == "exit" || lower == "quit" {
-				a.running = false
-				return
-			} else if strings.HasPrefix(stripped, "/") {
-				a.handleCommand(stripped)
-			} else if stripped != "" {
-				cprint(Green, fmt.Sprintf("  you> %s", stripped))
-
-				a.mu.Lock()
-				a.busy = true
-				a.mu.Unlock()
-
-				a.chatWithAgent(stripped, false)
-
-				a.mu.Lock()
-				a.busy = false
-				a.mu.Unlock()
-			}
-		default:
-			return
-		}
-	}
-}
