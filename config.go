@@ -24,6 +24,10 @@ const (
 	// (run_command tool) is allowed to run before being killed.
 	CommandTimeout = 30
 
+	// MaxSubagentRounds is the maximum number of LLM ↔ tool-execution
+	// rounds a sub-agent is allowed before it must return.
+	MaxSubagentRounds = 20
+
 	// DefaultNumCtx is the default context-window size passed to Ollama
 	// when auto-detection fails or is not available.
 	DefaultNumCtx = 8192
