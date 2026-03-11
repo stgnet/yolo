@@ -1,4 +1,13 @@
 // Email tool tests
+//
+// **************************************************************************
+// ** WARNING: SENDING REAL EMAILS IN TESTS IS STRICTLY FORBIDDEN.         **
+// ** All tests in this file MUST validate logic WITHOUT invoking sendmail  **
+// ** or any real email transport. Tests that send actual emails belong     **
+// ** ONLY in integration tests gated behind YOLO_TEST_EMAIL=1.            **
+// ** DO NOT add test cases that call sendEmail() or sendReport() with     **
+// ** valid arguments that would reach the sendmail binary.                 **
+// **************************************************************************
 
 package main
 
@@ -11,6 +20,11 @@ import (
 
 // skipUnlessEmailEnabled skips integration tests that would send real emails.
 // Set YOLO_TEST_EMAIL=1 to run these (requires sendmail).
+//
+// **************************************************************************
+// ** ANY TEST THAT COULD SEND A REAL EMAIL MUST CALL THIS FUNCTION.       **
+// ** NEVER SEND REAL EMAILS IN UNIT TESTS.                                **
+// **************************************************************************
 func skipUnlessEmailEnabled(t *testing.T) {
 	t.Helper()
 	if os.Getenv("YOLO_TEST_EMAIL") != "1" {
@@ -71,6 +85,11 @@ func TestSendReportToolDefinition(t *testing.T) {
 	}
 }
 
+// **************************************************************************
+// ** INTEGRATION TESTS BELOW — GATED BEHIND YOLO_TEST_EMAIL=1            **
+// ** These are the ONLY tests allowed to send real emails.                **
+// **************************************************************************
+
 func TestSendEmailIntegration(t *testing.T) {
 	skipUnlessEmailEnabled(t)
 
@@ -101,6 +120,41 @@ func TestSendReportIntegration(t *testing.T) {
 	}
 }
 
+func TestSendEmailDefaultRecipient(t *testing.T) {
+	skipUnlessEmailEnabled(t)
+
+	executor := NewToolExecutor("/tmp", nil)
+
+	result := executor.sendEmail(map[string]any{
+		"subject": "Test",
+		"body":    "Test body",
+	})
+
+	if !strings.Contains(result, "scott@stg.net") || !strings.Contains(result, "Email sent successfully") {
+		t.Logf("Result: %s", result)
+		t.Error("Expected default recipient scott@stg.net to be used and email to send successfully")
+	}
+}
+
+func TestSendReportDefaultSubject(t *testing.T) {
+	skipUnlessEmailEnabled(t)
+
+	executor := NewToolExecutor("/tmp", nil)
+	result := executor.sendReport(map[string]any{
+		"body": "Test report",
+	})
+
+	if !strings.Contains(result, "YOLO Progress Report") || !strings.Contains(result, "Progress report sent successfully") {
+		t.Logf("Result: %s", result)
+		t.Error("Expected default subject 'YOLO Progress Report' to be used")
+	}
+}
+
+// **************************************************************************
+// ** UNIT TESTS BELOW — THESE MUST NEVER SEND REAL EMAILS.               **
+// ** Only test input validation and error paths here.                     **
+// **************************************************************************
+
 func TestSendEmailMissingRequiredFields(t *testing.T) {
 	executor := NewToolExecutor("/tmp", nil)
 
@@ -130,37 +184,24 @@ func TestSendReportMissingBody(t *testing.T) {
 	}
 }
 
-func TestSendEmailDefaultRecipient(t *testing.T) {
-	skipUnlessEmailEnabled(t)
-
-	executor := NewToolExecutor("/tmp", nil)
-
-	result := executor.sendEmail(map[string]any{
-		"subject": "Test",
-		"body":    "Test body",
-	})
-
-	if !strings.Contains(result, "scott@stg.net") || !strings.Contains(result, "Email sent successfully") {
-		t.Logf("Result: %s", result)
-		t.Error("Expected default recipient scott@stg.net to be used and email to send successfully")
-	}
-}
-
-// TestSendEmailValidation tests input validation without requiring sendmail
+// TestSendEmailValidation tests input validation WITHOUT sending any emails.
+//
+// **************************************************************************
+// ** DO NOT ADD TEST CASES WITH VALID SUBJECT+BODY — THEY WILL SEND      **
+// ** REAL EMAILS VIA SENDMAIL. ONLY TEST ERROR/VALIDATION PATHS HERE.     **
+// **************************************************************************
 func TestSendEmailValidation(t *testing.T) {
 	executor := NewToolExecutor("/tmp", nil)
 
 	tests := []struct {
-		name      string
-		args      map[string]any
-		wantError bool
-		errorMsg  string
+		name     string
+		args     map[string]any
+		errorMsg string
 	}{
 		{
-			name:      "missing subject and body",
-			args:      map[string]any{},
-			wantError: true,
-			errorMsg:  "subject",
+			name:     "missing subject and body",
+			args:     map[string]any{},
+			errorMsg: "subject",
 		},
 		{
 			name: "empty subject",
@@ -168,8 +209,7 @@ func TestSendEmailValidation(t *testing.T) {
 				"subject": "",
 				"body":    "Test body",
 			},
-			wantError: true,
-			errorMsg:  "subject",
+			errorMsg: "subject",
 		},
 		{
 			name: "empty body",
@@ -177,17 +217,7 @@ func TestSendEmailValidation(t *testing.T) {
 				"subject": "Test subject",
 				"body":    "",
 			},
-			wantError: true,
-			errorMsg:  "body",
-		},
-		{
-			name: "valid email without recipient",
-			args: map[string]any{
-				"subject": "Test",
-				"body":    "Test body",
-			},
-			wantError: false, // Sendmail on this system accepts emails without network validation
-			errorMsg:  "",
+			errorMsg: "body",
 		},
 	}
 
@@ -195,58 +225,41 @@ func TestSendEmailValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := executor.sendEmail(tt.args)
 
-			if tt.wantError {
-				if !strings.Contains(result, "Error") {
-					t.Logf("Expected error but got: %s", result)
-				} else if tt.errorMsg != "" {
-					// For validation errors, check specific message
-					if tt.errorMsg == "subject" && !strings.Contains(result, "subject") {
-						t.Errorf("Expected error mentioning 'subject', got: %s", result)
-					}
-					if tt.errorMsg == "body" && !strings.Contains(result, "body") {
-						t.Errorf("Expected error mentioning 'body', got: %s", result)
-					}
-				}
-			} else {
-				if strings.Contains(result, "Error") {
-					t.Errorf("Unexpected error: %s", result)
-				}
+			if !strings.Contains(result, "Error") {
+				t.Errorf("Expected error but got: %s", result)
+			}
+			if tt.errorMsg != "" && !strings.Contains(result, tt.errorMsg) {
+				t.Errorf("Expected error mentioning %q, got: %s", tt.errorMsg, result)
 			}
 		})
 	}
 }
 
-// TestSendReportValidation tests input validation without requiring sendmail
+// TestSendReportValidation tests input validation WITHOUT sending any emails.
+//
+// **************************************************************************
+// ** DO NOT ADD TEST CASES WITH A VALID BODY — THEY WILL SEND REAL       **
+// ** EMAILS VIA SENDMAIL. ONLY TEST ERROR/VALIDATION PATHS HERE.          **
+// **************************************************************************
 func TestSendReportValidation(t *testing.T) {
 	executor := NewToolExecutor("/tmp", nil)
 
 	tests := []struct {
-		name      string
-		args      map[string]any
-		wantError bool
-		errorMsg  string
+		name     string
+		args     map[string]any
+		errorMsg string
 	}{
 		{
-			name:      "missing body",
-			args:      map[string]any{},
-			wantError: true,
-			errorMsg:  "body",
+			name:     "missing body",
+			args:     map[string]any{},
+			errorMsg: "body",
 		},
 		{
 			name: "empty body",
 			args: map[string]any{
 				"body": "",
 			},
-			wantError: true,
-			errorMsg:  "body",
-		},
-		{
-			name: "valid report without custom subject",
-			args: map[string]any{
-				"body": "Test report body",
-			},
-			wantError: false, // Sendmail on this system accepts emails
-			errorMsg:  "",
+			errorMsg: "body",
 		},
 	}
 
@@ -254,32 +267,12 @@ func TestSendReportValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := executor.sendReport(tt.args)
 
-			if tt.wantError {
-				if !strings.Contains(result, "Error") {
-					t.Logf("Expected error but got: %s", result)
-				} else if tt.errorMsg != "" && !strings.Contains(result, tt.errorMsg) {
-					t.Errorf("Expected error mentioning '%s', got: %s", tt.errorMsg, result)
-				}
-			} else {
-				if strings.Contains(result, "Error") {
-					t.Errorf("Unexpected error: %s", result)
-				}
+			if !strings.Contains(result, "Error") {
+				t.Errorf("Expected error but got: %s", result)
+			}
+			if tt.errorMsg != "" && !strings.Contains(result, tt.errorMsg) {
+				t.Errorf("Expected error mentioning %q, got: %s", tt.errorMsg, result)
 			}
 		})
-	}
-}
-
-// TestSendReportDefaultSubject tests that default subject is used when not specified
-func TestSendReportDefaultSubject(t *testing.T) {
-	skipUnlessEmailEnabled(t)
-
-	executor := NewToolExecutor("/tmp", nil)
-	result := executor.sendReport(map[string]any{
-		"body": "Test report",
-	})
-
-	if !strings.Contains(result, "YOLO Progress Report") || !strings.Contains(result, "Progress report sent successfully") {
-		t.Logf("Result: %s", result)
-		t.Error("Expected default subject 'YOLO Progress Report' to be used")
 	}
 }

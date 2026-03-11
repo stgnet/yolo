@@ -1,11 +1,14 @@
 yolo-go
 yolo
 .yolo
+.yolo_learning.json
+.yolo_email_cooldown.txt
 test_output/
 *.patch
 yolo_test
 *.bak
 yolo-test
 *.coverprofile
+coverage.html
 yolo-bin
 *.out

@@ -1,0 +1,91 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
+)
+
+// ─── Yolo Config ─────────────────────────────────────────────────────
+//
+// YoloConfig manages persistent configuration stored in .yolo/config.json,
+// separate from conversation history. This survives history resets and
+// can be extended with additional settings in the future.
+
+// YoloConfigData is the top-level JSON structure for config.json.
+type YoloConfigData struct {
+	Version int    `json:"version"`
+	Model   string `json:"model,omitempty"` // currently selected Ollama model
+}
+
+// YoloConfig owns the in-memory config and handles reading/writing to disk.
+type YoloConfig struct {
+	yoloDir    string
+	configFile string
+	Data       YoloConfigData
+	mu         sync.Mutex
+}
+
+// NewYoloConfig creates a config manager that stores its file in yoloDir.
+func NewYoloConfig(yoloDir string) *YoloConfig {
+	return &YoloConfig{
+		yoloDir:    yoloDir,
+		configFile: filepath.Join(yoloDir, "config.json"),
+		Data:       YoloConfigData{Version: 1},
+	}
+}
+
+// Load reads config.json from disk. Returns true on success.
+func (c *YoloConfig) Load() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	data, err := os.ReadFile(c.configFile)
+	if err != nil {
+		return false
+	}
+	if err := json.Unmarshal(data, &c.Data); err != nil {
+		c.Data = YoloConfigData{Version: 1}
+		return false
+	}
+	return true
+}
+
+// Save writes the current config to config.json atomically.
+func (c *YoloConfig) Save() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if err := os.MkdirAll(c.yoloDir, 0o755); err != nil {
+		return fmt.Errorf("create config dir: %w", err)
+	}
+	data, err := json.MarshalIndent(c.Data, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+	tmp := c.configFile + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+	if err := os.Rename(tmp, c.configFile); err != nil {
+		return fmt.Errorf("rename config: %w", err)
+	}
+	return nil
+}
+
+// GetModel returns the configured model name.
+func (c *YoloConfig) GetModel() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Data.Model
+}
+
+// SetModel updates the model and persists to disk.
+func (c *YoloConfig) SetModel(model string) {
+	c.mu.Lock()
+	c.Data.Model = model
+	c.mu.Unlock()
+	c.Save()
+}
