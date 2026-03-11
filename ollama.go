@@ -216,9 +216,10 @@ func deduplicateToolCalls(calls []ParsedToolCall) []ParsedToolCall {
 }
 
 // Chat sends a streaming chat request to Ollama and returns the accumulated
-// result.  Display text is printed to the terminal as it arrives.  The ctx
+// result. Display text is printed to the terminal as it arrives. The ctx
 // parameter allows the caller to cancel the request (e.g. on Ctrl-C).
-func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMessage, tools []ToolDef) (*ChatResult, error) {
+// If outFn is non-nil, it receives output text instead of the default globalUI.
+func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMessage, tools []ToolDef, outFn func(string)) (*ChatResult, error) {
 	numCtx := DefaultNumCtx
 	if NumCtxOverride != "" {
 		if n, err := strconv.Atoi(NumCtxOverride); err == nil && n > 0 {
@@ -260,7 +261,9 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 
 	// outPrint writes to the output region (inline, no input redraw per token)
 	outPrint := func(s string) {
-		if globalUI != nil {
+		if outFn != nil {
+			outFn(s)
+		} else if globalUI != nil {
 			globalUI.OutputPrintInline(s)
 		} else {
 			rawWrite(s)
@@ -338,8 +341,8 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 		outPrint(Reset)
 	}
 	outPrint("\n")
-	// Redraw input line after streaming output is done
-	if globalUI != nil {
+	// Redraw input line after streaming output is done (only for main agent output)
+	if outFn == nil && globalUI != nil {
 		globalUI.OutputFinishLine()
 	}
 
