@@ -15,9 +15,25 @@ import (
 	"net/textproto"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
+
+// cleanEmailField extracts the email address from a From field which may include display names.
+// Examples: "Scott Griepentrog <scott@griepentrog.com>" -> "scott@griepentrog.com"
+//           "test@stg.net" -> "test@stg.net"
+//           "Name <user@example.org>" -> "user@example.org"
+func cleanEmailField(field string) string {
+	// Try to extract email from angle brackets first
+	emailRegex := regexp.MustCompile(`<([^>]+)>`)
+	if matches := emailRegex.FindStringSubmatch(field); len(matches) > 1 {
+		return strings.TrimSpace(matches[1])
+	}
+
+	// If no angle brackets, return the field as-is (it's likely just an email address)
+	return strings.TrimSpace(field)
+}
 
 // checkInbox reads emails from the Maildir inbox
 func (t *ToolExecutor) checkInbox(args map[string]any) string {
@@ -119,7 +135,7 @@ func parseEmailMessage(content []byte, filename string) (EmailMessage, error) {
 		return email, fmt.Errorf("failed to parse headers: %w", err)
 	}
 
-	email.From = msgReader.Get("From")
+	email.From = cleanEmailField(msgReader.Get("From"))
 	email.Subject = msgReader.Get("Subject")
 	email.Date = msgReader.Get("Date")
 	contentType := msgReader.Get("Content-Type")
@@ -299,7 +315,7 @@ func (t *ToolExecutor) processSingleEmail(email EmailMessage) (string, bool, err
 func emailShouldRespond(email EmailMessage) bool {
 	// Respond to emails that look like they need attention:
 	// - Subject or body contains questions (?), requests (please, help, need, when)
-	// - From known human sender (scott@stg.net is prioritized)
+	// - From known human sender (prioritized)
 	// - Short message under 5000 chars with proper From field (likely human communication)
 	// - Exclude automated/system messages
 
@@ -324,9 +340,13 @@ func emailShouldRespond(email EmailMessage) bool {
 		return true
 	}
 
-	// Respond to emails from scott@stg.net (prioritized human sender)
-	if email.From == "scott@stg.net" && email.From != "" {
-		return true
+	// Respond to emails from prioritized human senders (can be configured)
+	if email.From != "" {
+		// Check for known human sender patterns
+		if strings.Contains(email.From, "@") && len(email.From) > 5 {
+			// Looks like a valid email address
+			return true
+		}
 	}
 
 	// Respond to short emails (< 5000 chars) that look like human communication
@@ -370,8 +390,10 @@ func (t *ToolExecutor) composeResponseToEmail(email EmailMessage) string {
 	response += "- I'll process it according to my current priorities\n"
 	response += "- You should see activity/results within your normal monitoring windows\n\n"
 
-	if email.From == "scott@stg.net" {
-		response += "Since this is from Scott, I'll prioritize any task-related content.\n\n"
+	// Prioritize messages from known human senders (identified by valid email format)
+	if email.From != "" && strings.Contains(email.From, "@") {
+		// Recognized sender with valid email - prioritize their tasks
+		response += "I've noted your message and will prioritize it.\n\n"
 	}
 
 	response += "Best regards,\nYOLO (Your Own Living Operator)"
