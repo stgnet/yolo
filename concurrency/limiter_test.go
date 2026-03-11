@@ -91,7 +91,7 @@ func TestLimiterExecute(t *testing.T) {
 			defer wg.Done()
 			l.Execute(func() error {
 				current := atomic.AddInt32(&currentConcurrent, 1)
-				if current > int32(maxConcurrent) {
+				if current > atomic.LoadInt32(&maxConcurrent) {
 					atomic.StoreInt32(&maxConcurrent, current)
 				}
 				time.Sleep(10 * time.Millisecond)
@@ -144,20 +144,20 @@ func TestLimiterGroup(t *testing.T) {
 	wg.Add(executions)
 
 	for i := 0; i < executions; i++ {
-		wg.Add(1)
 		lg.Go(func(ctx context.Context) error {
-			defer wg.Done()
 			current := atomic.AddInt32(&currentConcurrent, 1)
-			if current > int32(maxConcurrent) {
+			if current > atomic.LoadInt32(&maxConcurrent) {
 				atomic.StoreInt32(&maxConcurrent, current)
 			}
 			time.Sleep(10 * time.Millisecond)
 			atomic.AddInt32(&currentConcurrent, -1)
+			wg.Done()
 			return nil
 		})
 	}
 
 	lg.Run()
+	wg.Wait()
 
 	if maxConcurrent > 2 {
 		t.Errorf("Max concurrent was %d, expected at most 2", maxConcurrent)
