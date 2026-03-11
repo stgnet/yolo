@@ -308,10 +308,10 @@ func TestExtractBodyQuotedPrintable(t *testing.T) {
 
 func TestEmailMessageJSONTags(t *testing.T) {
 	email := EmailMessage{
-		From:    "test@example.com",
-		Subject: "Test",
-		Date:    "2024-01-01",
-		Content: "Body content",
+		From:     "test@example.com",
+		Subject:  "Test",
+		Date:     "2024-01-01",
+		Content:  "Body content",
 		Filename: "test-file",
 	}
 
@@ -431,4 +431,3 @@ func TestCheckInboxEmptyTool(t *testing.T) {
 		t.Errorf("Expected 0 processed, got %d", processedCount)
 	}
 }
-

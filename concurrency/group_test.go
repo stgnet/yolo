@@ -507,16 +507,16 @@ func TestGroup_Pipeline_SingleStage(t *testing.T) {
 	}
 
 	resultCh := g.Pipeline(stages...)
-	
+
 	// Feed data into the pipeline's input channel
 	inputCh := make(chan interface{}, 1)
 	stages[0](g.ctx, inputCh)
-	
+
 	// This test validates Pipeline creates channels correctly
 	if resultCh == nil {
 		t.Error("Expected non-nil result channel")
 	}
-	
+
 	g.Run()
 }
 
@@ -551,11 +551,11 @@ func TestGroup_Pipeline_MultipleStages(t *testing.T) {
 	}
 
 	resultCh := g.Pipeline(stages...)
-	
+
 	if resultCh == nil {
 		t.Error("Expected non-nil result channel from multi-stage pipeline")
 	}
-	
+
 	g.Run()
 }
 
@@ -563,7 +563,7 @@ func TestGroup_GoWithErr_Success(t *testing.T) {
 	g := NewGroup(context.Background())
 
 	var executed int32
-	
+
 	g.GoWithErr(func(ctx context.Context, errChan chan<- error) {
 		atomic.AddInt32(&executed, 1)
 		errChan <- nil
@@ -584,7 +584,7 @@ func TestGroup_GoWithErr_Error(t *testing.T) {
 	g := NewGroup(context.Background())
 
 	testErr := errors.New("test error")
-	
+
 	g.GoWithErr(func(ctx context.Context, errChan chan<- error) {
 		errChan <- testErr
 	})
@@ -605,7 +605,7 @@ func TestGroup_GoWithErr_NoErrorSent(t *testing.T) {
 	g := NewGroup(context.Background())
 
 	var executed int32
-	
+
 	// Don't send anything to the channel - should return nil
 	g.GoWithErr(func(ctx context.Context, errChan chan<- error) {
 		atomic.AddInt32(&executed, 1)

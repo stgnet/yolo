@@ -151,16 +151,16 @@ func TestSendEmailValidation(t *testing.T) {
 	executor := NewToolExecutor("/tmp", nil)
 
 	tests := []struct {
-		name       string
-		args       map[string]any
-		wantError  bool
-		errorMsg   string
+		name      string
+		args      map[string]any
+		wantError bool
+		errorMsg  string
 	}{
 		{
-			name: "missing subject and body",
-			args: map[string]any{},
+			name:      "missing subject and body",
+			args:      map[string]any{},
 			wantError: true,
-			errorMsg: "subject",
+			errorMsg:  "subject",
 		},
 		{
 			name: "empty subject",
@@ -169,7 +169,7 @@ func TestSendEmailValidation(t *testing.T) {
 				"body":    "Test body",
 			},
 			wantError: true,
-			errorMsg: "subject",
+			errorMsg:  "subject",
 		},
 		{
 			name: "empty body",
@@ -178,7 +178,7 @@ func TestSendEmailValidation(t *testing.T) {
 				"body":    "",
 			},
 			wantError: true,
-			errorMsg: "body",
+			errorMsg:  "body",
 		},
 		{
 			name: "valid email without recipient",
@@ -187,7 +187,7 @@ func TestSendEmailValidation(t *testing.T) {
 				"body":    "Test body",
 			},
 			wantError: false, // Sendmail on this system accepts emails without network validation
-			errorMsg:  "",   
+			errorMsg:  "",
 		},
 	}
 
@@ -221,16 +221,16 @@ func TestSendReportValidation(t *testing.T) {
 	executor := NewToolExecutor("/tmp", nil)
 
 	tests := []struct {
-		name       string
-		args       map[string]any
-		wantError  bool
-		errorMsg   string
+		name      string
+		args      map[string]any
+		wantError bool
+		errorMsg  string
 	}{
 		{
-			name: "missing body",
-			args: map[string]any{},
+			name:      "missing body",
+			args:      map[string]any{},
 			wantError: true,
-			errorMsg: "body",
+			errorMsg:  "body",
 		},
 		{
 			name: "empty body",
@@ -238,7 +238,7 @@ func TestSendReportValidation(t *testing.T) {
 				"body": "",
 			},
 			wantError: true,
-			errorMsg: "body",
+			errorMsg:  "body",
 		},
 		{
 			name: "valid report without custom subject",
@@ -246,7 +246,7 @@ func TestSendReportValidation(t *testing.T) {
 				"body": "Test report body",
 			},
 			wantError: false, // Sendmail on this system accepts emails
-			errorMsg:  "",   
+			errorMsg:  "",
 		},
 	}
 
