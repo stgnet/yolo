@@ -327,35 +327,51 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 			}
 			contentParts = append(contentParts, content)
 
-			// Buffer content to detect [tool activity] / [/tool activity]
-			// markers that may span token boundaries.
+			// Buffer content to detect tool activity markers that may span
+			// token boundaries. Recognizes both [tool activity] blocks and
+			// <tool_call>/<function=...> XML-style tool calls.
 			pendingBuf += content
 			for pendingBuf != "" {
 				if !inToolActivity {
-					openMarker := "[tool activity]"
-					idx := strings.Index(pendingBuf, openMarker)
-					if idx >= 0 {
+					// Check for any of the tool activity open markers
+					type markerMatch struct {
+						idx    int
+						marker string
+					}
+					var best *markerMatch
+					for _, openMarker := range []string{"[tool activity]", "<tool_call>", "<function="} {
+						idx := strings.Index(pendingBuf, openMarker)
+						if idx >= 0 && (best == nil || idx < best.idx) {
+							best = &markerMatch{idx: idx, marker: openMarker}
+						}
+					}
+					if best != nil {
 						// Flush text before marker in default color
-						if idx > 0 {
-							outPrint(pendingBuf[:idx])
+						if best.idx > 0 {
+							outPrint(pendingBuf[:best.idx])
 						}
 						// Print marker in yellow and stay in yellow
-						outPrint(Yellow + openMarker)
-						pendingBuf = pendingBuf[idx+len(openMarker):]
+						outPrint(Yellow + best.marker)
+						pendingBuf = pendingBuf[best.idx+len(best.marker):]
 						inToolActivity = true
 						continue
 					}
 					// Check if the tail of pendingBuf could be a partial marker
 					partial := false
-					for i := 1; i < len(openMarker) && i <= len(pendingBuf); i++ {
-						if strings.HasSuffix(pendingBuf, openMarker[:i]) {
-							// Flush everything except the potential partial match
-							safe := pendingBuf[:len(pendingBuf)-i]
-							if safe != "" {
-								outPrint(safe)
+					for _, openMarker := range []string{"[tool activity]", "<tool_call>", "<function="} {
+						for i := 1; i < len(openMarker) && i <= len(pendingBuf); i++ {
+							if strings.HasSuffix(pendingBuf, openMarker[:i]) {
+								// Flush everything except the potential partial match
+								safe := pendingBuf[:len(pendingBuf)-i]
+								if safe != "" {
+									outPrint(safe)
+								}
+								pendingBuf = pendingBuf[len(pendingBuf)-i:]
+								partial = true
+								break
 							}
-							pendingBuf = pendingBuf[len(pendingBuf)-i:]
-							partial = true
+						}
+						if partial {
 							break
 						}
 					}
@@ -365,29 +381,44 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 					}
 					break // wait for more tokens
 				} else {
-					closeMarker := "[/tool activity]"
-					idx := strings.Index(pendingBuf, closeMarker)
-					if idx >= 0 {
+					// Check for any of the tool activity close markers
+					type markerMatch struct {
+						idx    int
+						marker string
+					}
+					var best *markerMatch
+					for _, closeMarker := range []string{"[/tool activity]", "</tool_call>", "</function>"} {
+						idx := strings.Index(pendingBuf, closeMarker)
+						if idx >= 0 && (best == nil || idx < best.idx) {
+							best = &markerMatch{idx: idx, marker: closeMarker}
+						}
+					}
+					if best != nil {
 						// Print text before closing marker in yellow
-						if idx > 0 {
-							outPrint(pendingBuf[:idx])
+						if best.idx > 0 {
+							outPrint(pendingBuf[:best.idx])
 						}
 						// Print closing marker in yellow, then reset
-						outPrint(closeMarker + Reset)
-						pendingBuf = pendingBuf[idx+len(closeMarker):]
+						outPrint(best.marker + Reset)
+						pendingBuf = pendingBuf[best.idx+len(best.marker):]
 						inToolActivity = false
 						continue
 					}
 					// Check for partial closing marker at end
 					partial := false
-					for i := 1; i < len(closeMarker) && i <= len(pendingBuf); i++ {
-						if strings.HasSuffix(pendingBuf, closeMarker[:i]) {
-							safe := pendingBuf[:len(pendingBuf)-i]
-							if safe != "" {
-								outPrint(safe)
+					for _, closeMarker := range []string{"[/tool activity]", "</tool_call>", "</function>"} {
+						for i := 1; i < len(closeMarker) && i <= len(pendingBuf); i++ {
+							if strings.HasSuffix(pendingBuf, closeMarker[:i]) {
+								safe := pendingBuf[:len(pendingBuf)-i]
+								if safe != "" {
+									outPrint(safe)
+								}
+								pendingBuf = pendingBuf[len(pendingBuf)-i:]
+								partial = true
+								break
 							}
-							pendingBuf = pendingBuf[len(pendingBuf)-i:]
-							partial = true
+						}
+						if partial {
 							break
 						}
 					}
