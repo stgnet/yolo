@@ -335,7 +335,7 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		// but we consume the message so the agent sees it on
 		// its next LLM round.
 		userInterjected := false
-		for _, call := range toolCalls {
+		for i, call := range toolCalls {
 			name := call.Name
 			args := call.Args
 			if args == nil {
@@ -360,7 +360,11 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 			cprint(Gray, fmt.Sprintf("  => %s", preview))
 
 			cleanResult := filterToolActivityMarkers(resultStr)
-			roundMsgs = append(roundMsgs, ChatMessage{Role: "tool", Content: cleanResult})
+			roundMsgs = append(roundMsgs, ChatMessage{
+				Role:       "tool",
+				Content:    cleanResult,
+				ToolCallID: fmt.Sprintf("call_%d_%d", roundNum, i),
+			})
 			toolLog = append(toolLog, toolLogEntry{name: name, args: args, result: cleanResult})
 		}
 
@@ -679,7 +683,7 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 			})
 
 			// Execute each tool
-			for _, call := range toolCalls {
+			for i, call := range toolCalls {
 				args := call.Args
 				if args == nil {
 					args = map[string]any{}
@@ -703,7 +707,11 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 				cprint(Gray, fmt.Sprintf("%s => %s", prefix, preview))
 
 				cleanResult := filterToolActivityMarkers(resultStr)
-				roundMsgs = append(roundMsgs, ChatMessage{Role: "tool", Content: cleanResult})
+				roundMsgs = append(roundMsgs, ChatMessage{
+					Role:       "tool",
+					Content:    cleanResult,
+					ToolCallID: fmt.Sprintf("sa%d_call_%d_%d", aid, round, i),
+				})
 			}
 		}
 
