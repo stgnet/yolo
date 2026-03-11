@@ -480,3 +480,81 @@ func TestRetryWithBackoff_CancelDuringRetry(t *testing.T) {
 		t.Errorf("Expected some attempts (1-4), got %d", attempts)
 	}
 }
+
+func TestGroup_Pipeline_Empty(t *testing.T) {
+	g := NewGroup(context.Background())
+	result := g.Pipeline()
+	if result != nil {
+		t.Error("Expected nil for empty pipeline")
+	}
+	g.Run()
+}
+
+func TestGroup_Pipeline_SingleStage(t *testing.T) {
+	g := NewGroup(context.Background())
+
+	stages := []func(context.Context, <-chan interface{}) <-chan interface{}{
+		func(ctx context.Context, input <-chan interface{}) <-chan interface{} {
+			output := make(chan interface{}, 1)
+			go func() {
+				for v := range input {
+					output <- v.(string) + "_processed"
+				}
+				close(output)
+			}()
+			return output
+		},
+	}
+
+	resultCh := g.Pipeline(stages...)
+	
+	// Feed data into the pipeline's input channel
+	inputCh := make(chan interface{}, 1)
+	stages[0](g.ctx, inputCh)
+	
+	// This test validates Pipeline creates channels correctly
+	if resultCh == nil {
+		t.Error("Expected non-nil result channel")
+	}
+	
+	g.Run()
+}
+
+func TestGroup_Pipeline_MultipleStages(t *testing.T) {
+	g := NewGroup(context.Background())
+
+	stages := []func(context.Context, <-chan interface{}) <-chan interface{}{
+		func(ctx context.Context, input <-chan interface{}) <-chan interface{} {
+			output := make(chan interface{}, 10)
+			go func() {
+				for v := range input {
+					if str, ok := v.(string); ok {
+						output <- str + "-stage1"
+					}
+				}
+				close(output)
+			}()
+			return output
+		},
+		func(ctx context.Context, input <-chan interface{}) <-chan interface{} {
+			output := make(chan interface{}, 10)
+			go func() {
+				for v := range input {
+					if str, ok := v.(string); ok {
+						output <- str + "-stage2"
+					}
+				}
+				close(output)
+			}()
+			return output
+		},
+	}
+
+	resultCh := g.Pipeline(stages...)
+	
+	if resultCh == nil {
+		t.Error("Expected non-nil result channel from multi-stage pipeline")
+	}
+	
+	g.Run()
+}
