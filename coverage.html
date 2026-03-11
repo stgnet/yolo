@@ -57,9 +57,9 @@
 				
 				<option value="file0">yolo/agent.go (31.3%)</option>
 				
-				<option value="file1">yolo/concurrency/group.go (83.2%)</option>
+				<option value="file1">yolo/concurrency/group.go (97.5%)</option>
 				
-				<option value="file2">yolo/concurrency/limiter.go (89.6%)</option>
+				<option value="file2">yolo/concurrency/limiter.go (95.8%)</option>
 				
 				<option value="file3">yolo/concurrency/pool.go (89.6%)</option>
 				
@@ -71,7 +71,7 @@
 				
 				<option value="file7">yolo/input.go (4.4%)</option>
 				
-				<option value="file8">yolo/learning.go (76.8%)</option>
+				<option value="file8">yolo/learning.go (74.6%)</option>
 				
 				<option value="file9">yolo/main.go (0.0%)</option>
 				
@@ -83,7 +83,7 @@
 				
 				<option value="file13">yolo/terminal.go (74.3%)</option>
 				
-				<option value="file14">yolo/tools.go (70.6%)</option>
+				<option value="file14">yolo/tools.go (65.6%)</option>
 				
 				<option value="file15">yolo/tools_email.go (94.3%)</option>
 				
@@ -1205,14 +1205,14 @@ func (g *Group) Go(f func(context.Context) error) <span class="cov8" title="1">{
 
 // GoWithErr executes a function that takes an error parameter for communication.
 // This is useful for fan-in patterns where multiple goroutines need to send results.
-func (g *Group) GoWithErr(f func(context.Context, chan&lt;- error)) <span class="cov0" title="0">{
+func (g *Group) GoWithErr(f func(context.Context, chan&lt;- error)) <span class="cov8" title="1">{
         errChan := make(chan error, 1)
-        g.Go(func(ctx context.Context) error </span><span class="cov0" title="0">{
+        g.Go(func(ctx context.Context) error </span><span class="cov8" title="1">{
                 f(ctx, errChan)
                 select </span>{
-                case err := &lt;-errChan:<span class="cov0" title="0">
+                case err := &lt;-errChan:<span class="cov8" title="1">
                         return err</span>
-                default:<span class="cov0" title="0">
+                default:<span class="cov8" title="1">
                         return nil</span>
                 }
         })
@@ -1256,7 +1256,7 @@ func (g *Group) Errors() []error <span class="cov8" title="1">{
 // Error returns the first error from the goroutines, or nil if all succeeded.
 func (g *Group) Error() error <span class="cov8" title="1">{
         errs := g.Errors()
-        if len(errs) == 0 </span><span class="cov0" title="0">{
+        if len(errs) == 0 </span><span class="cov8" title="1">{
                 return nil
         }</span>
         <span class="cov8" title="1">return errs[0]</span>
@@ -1332,25 +1332,25 @@ func (g *Group) FanIn(inputChans ...&lt;-chan error) &lt;-chan error <span class
 
 // Pipeline creates a pipeline of stages where each stage processes data
 // from the previous stage's output channel. Returns the final output channel.
-func (g *Group) Pipeline(stages ...func(context.Context, &lt;-chan interface{}) &lt;-chan interface{}) &lt;-chan interface{} <span class="cov0" title="0">{
-        if len(stages) == 0 </span><span class="cov0" title="0">{
+func (g *Group) Pipeline(stages ...func(context.Context, &lt;-chan interface{}) &lt;-chan interface{}) &lt;-chan interface{} <span class="cov8" title="1">{
+        if len(stages) == 0 </span><span class="cov8" title="1">{
                 return nil
         }</span>
 
         // Create input channel for first stage
-        <span class="cov0" title="0">var prevOutput &lt;-chan interface{}
+        <span class="cov8" title="1">var prevOutput &lt;-chan interface{}
 
-        for i, stage := range stages </span><span class="cov0" title="0">{
+        for i, stage := range stages </span><span class="cov8" title="1">{
                 inputCh := make(chan interface{}, 100)
-                if i == 0 </span><span class="cov0" title="0">{
+                if i == 0 </span><span class="cov8" title="1">{
                         prevOutput = inputCh
                 }</span>
 
-                <span class="cov0" title="0">outputCh := stage(g.ctx, inputCh)
+                <span class="cov8" title="1">outputCh := stage(g.ctx, inputCh)
                 prevOutput = outputCh</span>
         }
 
-        <span class="cov0" title="0">return prevOutput</span>
+        <span class="cov8" title="1">return prevOutput</span>
 }
 
 // Barrier is a synchronization primitive that blocks goroutines until
@@ -1628,7 +1628,7 @@ func (lg *LimiterGroup) Go(f func(context.Context) error) <span class="cov8" tit
 }
 
 // Running returns the number of currently running goroutines.
-func (lg *LimiterGroup) Running() int <span class="cov0" title="0">{
+func (lg *LimiterGroup) Running() int <span class="cov8" title="1">{
         lg.mu.Lock()
         defer lg.mu.Unlock()
         return lg.running
@@ -2721,9 +2721,9 @@ func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result 
         for _, line := range lines </span><span class="cov8" title="1">{
                 line = strings.TrimSpace(line)
                 // Filter: must be substantial, relevant, and not generic
-                if len(line) &gt; 150 &amp;&amp; !containsGenericPattern(line, genericPatterns) &amp;&amp; lm.isRelevant(line, area.Keywords) </span><span class="cov8" title="1">{
+                if len(line) &gt; 150 &amp;&amp; !containsGenericPattern(line, genericPatterns) &amp;&amp; lm.isRelevant(line, area.Keywords) </span><span class="cov0" title="0">{
                         imp := lm.createImprovement(area, truncateText(line, 500), "web", "", "search_result")
-                        if imp != nil </span><span class="cov8" title="1">{
+                        if imp != nil </span><span class="cov0" title="0">{
                                 improvements = append(improvements, *imp)
                         }</span>
                 }
@@ -4672,17 +4672,17 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string <span cl
                 return t.readFile(args)</span>
         case "write_file":<span class="cov8" title="1">
                 return t.writeFile(args)</span>
-        case "edit_file":<span class="cov0" title="0">
+        case "edit_file":<span class="cov8" title="1">
                 return t.editFile(args)</span>
         case "list_files":<span class="cov8" title="1">
                 return t.listFiles(args)</span>
-        case "search_files":<span class="cov0" title="0">
+        case "search_files":<span class="cov8" title="1">
                 return t.searchFiles(args)</span>
-        case "run_command":<span class="cov0" title="0">
+        case "run_command":<span class="cov8" title="1">
                 return t.runCommand(args)</span>
-        case "spawn_subagent":<span class="cov0" title="0">
+        case "spawn_subagent":<span class="cov8" title="1">
                 return t.spawnSubagent(args)</span>
-        case "list_subagents":<span class="cov0" title="0">
+        case "list_subagents":<span class="cov8" title="1">
                 return t.listSubagents(args)</span>
         case "read_subagent_result":<span class="cov0" title="0">
                 return t.readSubagentResult(args)</span>
@@ -4698,11 +4698,11 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string <span cl
                 return t.restart(args)</span>
         case "make_dir":<span class="cov8" title="1">
                 return t.makeDir(args)</span>
-        case "remove_dir":<span class="cov0" title="0">
+        case "remove_dir":<span class="cov8" title="1">
                 return t.removeDir(args)</span>
-        case "copy_file":<span class="cov0" title="0">
+        case "copy_file":<span class="cov8" title="1">
                 return t.copyFile(args)</span>
-        case "move_file":<span class="cov0" title="0">
+        case "move_file":<span class="cov8" title="1">
                 return t.moveFile(args)</span>
         case "reddit":<span class="cov0" title="0">
                 return t.reddit(args)</span>
@@ -5106,15 +5106,16 @@ func (t *ToolExecutor) moveFile(args map[string]any) string <span class="cov8" t
 
 // ─── globRecursive handles recursive glob patterns with **/ wildcards ──
 
-func (t *ToolExecutor) globRecursive(pattern string) ([]string, error) <span class="cov8" title="1">{
+// globFiles is a standalone helper for recursive glob pattern matching
+func globFiles(baseDir, pattern string) ([]string, error) <span class="cov8" title="1">{
         var matches []string
 
         // Handle patterns like **/*.txt or **/directory/*
         if strings.HasPrefix(pattern, "**/") </span><span class="cov8" title="1">{
                 basePattern := pattern[3:]
 
-                err := filepath.Walk(t.baseDir, func(path string, info os.FileInfo, err error) error </span><span class="cov8" title="1">{
-                        if err != nil </span><span class="cov0" title="0">{
+                err := filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error </span><span class="cov8" title="1">{
+                        if err != nil </span><span class="cov8" title="1">{
                                 return nil
                         }</span>
 
@@ -5125,7 +5126,7 @@ func (t *ToolExecutor) globRecursive(pattern string) ([]string, error) <span cla
                                 }</span>
                         }
 
-                        <span class="cov8" title="1">relPath, _ := filepath.Rel(t.baseDir, path)
+                        <span class="cov8" title="1">relPath, _ := filepath.Rel(baseDir, path)
                         if relPath == "." </span><span class="cov8" title="1">{
                                 relPath = ""
                         }</span>
@@ -5145,14 +5146,14 @@ func (t *ToolExecutor) globRecursive(pattern string) ([]string, error) <span cla
         }
 
         // For patterns like dir/**/*.txt
-        <span class="cov0" title="0">parts := strings.SplitN(pattern, "**", 2)
+        <span class="cov8" title="1">parts := strings.SplitN(pattern, "**", 2)
         if len(parts) == 2 </span><span class="cov0" title="0">{
-                baseDir := t.baseDir
+                walkBaseDir := baseDir
                 if parts[0] != "" </span><span class="cov0" title="0">{
-                        baseDir = filepath.Join(t.baseDir, strings.TrimSuffix(parts[0], "/"))
+                        walkBaseDir = filepath.Join(baseDir, strings.TrimSuffix(parts[0], "/"))
                 }</span>
 
-                <span class="cov0" title="0">err := filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error </span><span class="cov0" title="0">{
+                <span class="cov0" title="0">err := filepath.Walk(walkBaseDir, func(path string, info os.FileInfo, err error) error </span><span class="cov0" title="0">{
                         if err != nil </span><span class="cov0" title="0">{
                                 return nil
                         }</span>
@@ -5190,8 +5191,13 @@ func (t *ToolExecutor) globRecursive(pattern string) ([]string, error) <span cla
                 <span class="cov0" title="0">return matches, err</span>
         }
 
-        <span class="cov0" title="0">return filepath.Glob(filepath.Join(t.baseDir, pattern))</span>
+        <span class="cov8" title="1">return filepath.Glob(filepath.Join(baseDir, pattern))</span>
 }
+
+// globRecursive calls the standalone helper with the executor's base directory
+func (t *ToolExecutor) globRecursive(pattern string) ([]string, error) <span class="cov8" title="1">{
+        return globFiles(t.baseDir, pattern)
+}</span>
 
 func (t *ToolExecutor) searchFiles(args map[string]any) string <span class="cov8" title="1">{
         query := getStringArg(args, "query", "")
@@ -5357,7 +5363,7 @@ func (t *ToolExecutor) listSubagents(args map[string]any) string <span class="co
 
                 // Read the file to get status and task info
                 data, err := os.ReadFile(file)
-                if err != nil </span><span class="cov0" title="0">{
+                if err != nil </span><span class="cov8" title="1">{
                         continue</span>
                 }
 
@@ -5422,7 +5428,7 @@ func (t *ToolExecutor) summarizeSubagents(args map[string]any) string <span clas
 
         for _, file := range files </span><span class="cov8" title="1">{
                 data, err := os.ReadFile(file)
-                if err != nil </span><span class="cov0" title="0">{
+                if err != nil </span><span class="cov8" title="1">{
                         continue</span>
                 }
 
@@ -5471,7 +5477,7 @@ func (t *ToolExecutor) spawnSubagent(args map[string]any) string <span class="co
                 <span class="cov8" title="1">return t.agent.spawnSubagent(task, "")</span>
         }
 
-        <span class="cov0" title="0">return "Error: no agent context"</span>
+        <span class="cov8" title="1">return "Error: no agent context"</span>
 }
 
 func (t *ToolExecutor) listModels() string <span class="cov8" title="1">{
@@ -6152,7 +6158,7 @@ func (t *ToolExecutor) parseDuckDuckGoJSON(query string, count int, data []byte)
                 return fmt.Sprintf("Error parsing JSON: %v", err)
         }</span>
 
-        <span class="cov8" title="1">var sb strings.Builder
+        <span class="cov0" title="0">var sb strings.Builder
         sb.WriteString(fmt.Sprintf("Search results for \"%s\":\n\n", query))
 
         // Direct answer (if any)
@@ -6161,7 +6167,7 @@ func (t *ToolExecutor) parseDuckDuckGoJSON(query string, count int, data []byte)
         }</span>
 
         // Abstract/summary
-        <span class="cov8" title="1">if result.Abstract != "" </span><span class="cov0" title="0">{
+        <span class="cov0" title="0">if result.Abstract != "" </span><span class="cov0" title="0">{
                 sb.WriteString(fmt.Sprintf("**Summary:** %s\n", result.Abstract))
                 if result.AbstractSource != "" </span><span class="cov0" title="0">{
                         sb.WriteString(fmt.Sprintf("Source: [from%s](%s)\n\n",
@@ -6172,12 +6178,12 @@ func (t *ToolExecutor) parseDuckDuckGoJSON(query string, count int, data []byte)
         }
 
         // Image (if any)
-        <span class="cov8" title="1">if result.Image != "" </span><span class="cov0" title="0">{
+        <span class="cov0" title="0">if result.Image != "" </span><span class="cov0" title="0">{
                 sb.WriteString(fmt.Sprintf("[![](%s)](%s)\n\n", result.Image, result.Image))
         }</span>
 
         // Related topics and results
-        <span class="cov8" title="1">resultsCount := 0
+        <span class="cov0" title="0">resultsCount := 0
         for _, topic := range result.RelatedTopics </span><span class="cov0" title="0">{
                 // Try to extract results from the topic
                 var topicResults []struct {
@@ -6224,14 +6230,14 @@ func (t *ToolExecutor) parseDuckDuckGoJSON(query string, count int, data []byte)
                 }
         }
 
-        <span class="cov8" title="1">if resultsCount == 0 &amp;&amp; result.Abstract == "" &amp;&amp; result.Answer == "" </span><span class="cov8" title="1">{
+        <span class="cov0" title="0">if resultsCount == 0 &amp;&amp; result.Abstract == "" &amp;&amp; result.Answer == "" </span><span class="cov0" title="0">{
                 sb.WriteString("No results found for this query. Try a different search term.\n")
         }</span>
 
-        <span class="cov8" title="1">return sb.String()</span>
+        <span class="cov0" title="0">return sb.String()</span>
 }
 
-func (t *ToolExecutor) parseDuckDuckGoHTML(query string, count int, data []byte) string <span class="cov8" title="1">{
+func (t *ToolExecutor) parseDuckDuckGoHTML(query string, count int, data []byte) string <span class="cov0" title="0">{
         // Simple HTML parser - extract snippets and titles from search results
         var sb strings.Builder
         sb.WriteString(fmt.Sprintf("Search results for \"%s\":\n\n", query))
@@ -6248,12 +6254,12 @@ func (t *ToolExecutor) parseDuckDuckGoHTML(query string, count int, data []byte)
         var results []SearchResult
 
         // Parse title links and snippets
-        for i, line := range lines </span><span class="cov8" title="1">{
+        for i, line := range lines </span><span class="cov0" title="0">{
                 // Look for result titles in &lt;a&gt; tags with class containing "result__a"
-                if strings.Contains(line, `class="`) &amp;&amp; (strings.Contains(line, "result") || strings.Contains(line, "link")) </span><span class="cov8" title="1">{
+                if strings.Contains(line, `class="`) &amp;&amp; (strings.Contains(line, "result") || strings.Contains(line, "link")) </span><span class="cov0" title="0">{
                         // Extract title
                         titleMatch := regexp.MustCompile(`&gt;([^&lt;]+?)&lt;`).FindStringSubmatch(strings.TrimSpace(line))
-                        if len(titleMatch) &gt; 1 </span><span class="cov8" title="1">{
+                        if len(titleMatch) &gt; 1 </span><span class="cov0" title="0">{
                                 title := titleMatch[1]
                                 cleanTitle := strings.TrimPrefix(title, "[")
                                 cleanTitle = strings.TrimSuffix(cleanTitle, "]")
@@ -6261,13 +6267,13 @@ func (t *ToolExecutor) parseDuckDuckGoHTML(query string, count int, data []byte)
                                 // Look for URL in this line or nearby lines
                                 var url string
                                 startIdx := i - 2
-                                if startIdx &lt; 0 </span><span class="cov8" title="1">{
+                                if startIdx &lt; 0 </span><span class="cov0" title="0">{
                                         startIdx = 0
                                 }</span>
-                                <span class="cov8" title="1">for j := startIdx; j &lt;= i+2 &amp;&amp; j &lt; len(lines); j++ </span><span class="cov8" title="1">{
-                                        if strings.Contains(lines[j], `href="http`) </span><span class="cov8" title="1">{
+                                <span class="cov0" title="0">for j := startIdx; j &lt;= i+2 &amp;&amp; j &lt; len(lines); j++ </span><span class="cov0" title="0">{
+                                        if strings.Contains(lines[j], `href="http`) </span><span class="cov0" title="0">{
                                                 urlMatch := regexp.MustCompile(`href="(https?://[^"]+)"`).FindStringSubmatch(lines[j])
-                                                if len(urlMatch) &gt; 1 </span><span class="cov8" title="1">{
+                                                if len(urlMatch) &gt; 1 </span><span class="cov0" title="0">{
                                                         url = urlMatch[1]
                                                         break</span>
                                                 }
@@ -6275,23 +6281,23 @@ func (t *ToolExecutor) parseDuckDuckGoHTML(query string, count int, data []byte)
                                 }
 
                                 // Look for snippet in following lines
-                                <span class="cov8" title="1">var snippet string
-                                for j := i + 1; j &lt; i+5 &amp;&amp; j &lt; len(lines); j++ </span><span class="cov8" title="1">{
-                                        if strings.Contains(lines[j], "&lt;div") || strings.Contains(lines[j], "&lt;span") </span><span class="cov8" title="1">{
+                                <span class="cov0" title="0">var snippet string
+                                for j := i + 1; j &lt; i+5 &amp;&amp; j &lt; len(lines); j++ </span><span class="cov0" title="0">{
+                                        if strings.Contains(lines[j], "&lt;div") || strings.Contains(lines[j], "&lt;span") </span><span class="cov0" title="0">{
                                                 snippetLines := regexp.MustCompile(`&lt;[^&gt;]+&gt;([^&lt;]+)&lt;/[^&gt;]+&gt;`).FindAllStringSubmatch(lines[j], -1)
-                                                for _, sm := range snippetLines </span><span class="cov8" title="1">{
-                                                        if len(sm) &gt; 1 &amp;&amp; sm[1] != title &amp;&amp; len(sm[1]) &gt; 20 </span><span class="cov8" title="1">{
+                                                for _, sm := range snippetLines </span><span class="cov0" title="0">{
+                                                        if len(sm) &gt; 1 &amp;&amp; sm[1] != title &amp;&amp; len(sm[1]) &gt; 20 </span><span class="cov0" title="0">{
                                                                 snippet = sm[1]
                                                                 break</span>
                                                         }
                                                 }
                                         }
-                                        <span class="cov8" title="1">if snippet != "" </span><span class="cov8" title="1">{
+                                        <span class="cov0" title="0">if snippet != "" </span><span class="cov0" title="0">{
                                                 break</span>
                                         }
                                 }
 
-                                <span class="cov8" title="1">results = append(results, SearchResult{
+                                <span class="cov0" title="0">results = append(results, SearchResult{
                                         Title:   cleanTitle,
                                         URL:     url,
                                         Snippet: strings.TrimSpace(snippet),
@@ -6299,29 +6305,29 @@ func (t *ToolExecutor) parseDuckDuckGoHTML(query string, count int, data []byte)
                         }
                 }
 
-                <span class="cov8" title="1">if len(results) &gt;= count </span><span class="cov8" title="1">{
+                <span class="cov0" title="0">if len(results) &gt;= count </span><span class="cov0" title="0">{
                         break</span>
                 }
         }
 
         // Output results
-        <span class="cov8" title="1">if len(results) == 0 </span><span class="cov8" title="1">{
+        <span class="cov0" title="0">if len(results) == 0 </span><span class="cov0" title="0">{
                 sb.WriteString("No results found. DuckDuckGo HTML parsing failed.\n")
                 return sb.String()
         }</span>
 
-        <span class="cov8" title="1">for i, r := range results </span><span class="cov8" title="1">{
+        <span class="cov0" title="0">for i, r := range results </span><span class="cov0" title="0">{
                 sb.WriteString(fmt.Sprintf("%d. **%s**\n", i+1, r.Title))
-                if r.URL != "" </span><span class="cov8" title="1">{
+                if r.URL != "" </span><span class="cov0" title="0">{
                         sb.WriteString(fmt.Sprintf("   [%s](%s)\n", r.URL, r.URL))
                 }</span>
-                <span class="cov8" title="1">if r.Snippet != "" </span><span class="cov8" title="1">{
+                <span class="cov0" title="0">if r.Snippet != "" </span><span class="cov0" title="0">{
                         sb.WriteString(fmt.Sprintf("   %s\n", r.Snippet))
                 }</span>
-                <span class="cov8" title="1">sb.WriteString("\n")</span>
+                <span class="cov0" title="0">sb.WriteString("\n")</span>
         }
 
-        <span class="cov8" title="1">return sb.String()</span>
+        <span class="cov0" title="0">return sb.String()</span>
 }
 </pre>
 		
