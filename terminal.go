@@ -24,7 +24,7 @@ var (
 func rawWrite(s string) {
 	// Normalize \r\n to \n first, then convert all \n to \r\n for raw terminal mode.
 	// Leave standalone \r alone — it's a valid cursor-positioning operation
-	// (return to column 1) used by the spinner and other overwrite-in-place output.
+	// (return to column 1) used by overwrite-in-place output.
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	s = strings.ReplaceAll(s, "\n", "\r\n")
 	fmt.Print(s)
@@ -47,6 +47,36 @@ func cprintNoNL(color, text string) {
 }
 
 // ─── Text Utilities ───────────────────────────────────────────────────
+
+// expandTabs replaces tab characters with spaces aligned to 8-column tab stops.
+// startCol is the 1-based column where the text begins (typically ui.outCol).
+// This ensures the terminal and the cursor tracker agree on column positions:
+// without expansion, the terminal advances to the next tab stop (up to 8 cols)
+// while trackCursorMovement would count each tab as 1 column.
+func expandTabs(s string, startCol int) string {
+	if !strings.Contains(s, "\t") {
+		return s
+	}
+	var buf strings.Builder
+	col := startCol
+	for _, ch := range s {
+		if ch == '\t' {
+			spaces := 8 - (col-1)%8
+			for i := 0; i < spaces; i++ {
+				buf.WriteByte(' ')
+			}
+			col += spaces
+		} else {
+			buf.WriteRune(ch)
+			if ch == '\n' || ch == '\r' {
+				col = 1
+			} else {
+				col++
+			}
+		}
+	}
+	return buf.String()
+}
 
 // stripAnsiCodes removes ANSI escape sequences from text for cursor tracking purposes.
 // This ensures color codes don't mess up column/row calculations.
@@ -340,6 +370,13 @@ func (ui *TerminalUI) OutputPrint(text string) {
 	ui.mu.Lock()
 	defer ui.mu.Unlock()
 
+	// Expand tabs to spaces before outputting AND tracking.
+	// Tab characters advance to the next tab stop in the terminal (every 8
+	// columns), but trackCursorMovement counts them as 1 column, causing
+	// the tracker to fall behind the real cursor. By expanding tabs before
+	// both rawWrite and trackCursorMovement, they see the same column count.
+	text = expandTabs(text, ui.outCol)
+
 	// Wrap text to terminal width before outputting
 	text = ui.wrapText(text)
 
@@ -368,6 +405,13 @@ func (ui *TerminalUI) OutputPrintInline(text string) {
 	defer ui.mu.Unlock()
 
 	ui.streaming = true
+
+	// Expand tabs to spaces before outputting AND tracking.
+	// Tab characters advance to the next tab stop in the terminal (every 8
+	// columns), but trackCursorMovement counts them as 1 column. This drift
+	// causes the tracker to miss line wraps, positioning the cursor on a
+	// previous row and overwriting existing text ("output overwriting" bug).
+	text = expandTabs(text, ui.outCol)
 
 	// Do NOT wrap streaming tokens — they are fragments, not complete lines.
 	// The terminal handles character-level wrapping, and trackCursorMovement
