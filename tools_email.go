@@ -104,6 +104,7 @@ func (t *ToolExecutor) sendReport(args map[string]any) string {
 
 	subject := getStringArg(args, "subject", "YOLO Progress Report")
 	body := getStringArg(args, "body", "")
+	to := getStringArg(args, "to", "") // Get recipient from args
 
 	if body == "" {
 		return "Error: body parameter is required"
@@ -114,8 +115,13 @@ func (t *ToolExecutor) sendReport(args map[string]any) string {
 		return "⚠️ Progress report on cooldown - too many reports sent recently. Waiting before next send."
 	}
 
+	// Use provided recipient or default to scott@stg.net
+	if to == "" {
+		to = "scott@stg.net"
+	}
+
 	msg := &email.Message{
-		To:      []string{"scott@stg.net"},
+		To:      []string{to},
 		Subject: subject,
 		Body:    body,
 	}
@@ -131,7 +137,7 @@ func (t *ToolExecutor) sendReport(args map[string]any) string {
 
 	var sb strings.Builder
 	sb.WriteString("✅ Progress report sent successfully\n")
-	sb.WriteString(fmt.Sprintf("   To: scott@stg.net\n"))
+	sb.WriteString(fmt.Sprintf("   To: %s\n", to))
 	sb.WriteString(fmt.Sprintf("   From: yolo@b-haven.org\n"))
 	sb.WriteString(fmt.Sprintf("   Subject: %s\n", subject))
 	return sb.String()
