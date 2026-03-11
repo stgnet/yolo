@@ -1,76 +1,94 @@
-# YOLO Email System
+# Email System Documentation
 
 ## Overview
-YOLO can send and receive emails using `yolo@b-haven.org`. Outgoing emails are sent via the system's `/usr/sbin/sendmail` command, with Postfix automatically handling DKIM signing. Incoming emails are delivered to a Maildir inbox.
+YOLO has full email capabilities via `yolo@b-haven.org` using Postfix with DKIM signing.
 
-## Tools
+## Features
 
-### send_email
-Send an email from `yolo@b-haven.org`.
+### 1. Send Emails (send_email tool)
+Send emails from `yolo@b-haven.org` to any recipient.
 
 **Parameters:**
 - `subject` (required): Email subject line
 - `body` (required): Email body content
-- `to` (optional): Recipient address, defaults to `scott@stg.net`
+- `to` (optional): Recipient email (defaults to scott@stg.net)
 
 **Example:**
 ```
-[send_email]
-{"subject": "Hello", "body": "World!", "to": "friend@example.com"}
+[tool activity]
+[send_email => {"subject": "Test", "body": "Hello", "to": "user@example.com"}]
 ```
 
-### send_report
-Send a progress report email to `scott@stg.net`.
+### 2. Send Progress Reports (send_report tool)
+Quickly send progress reports to scott@stg.net.
 
 **Parameters:**
 - `body` (required): Report content
-- `subject` (optional): Report subject, defaults to "YOLO Progress Report"
+- `subject` (optional): Report subject (defaults to "YOLO Progress Report")
 
 **Example:**
 ```
-[send_report]
-{"body": "Task completed successfully"}
+[tool activity]
+[send_report => {"body": "Task completed successfully"}]
 ```
 
-### check_inbox
-Read emails from the Maildir inbox.
+### 3. Check Inbox (check_inbox tool)
+Read emails from the Maildir inbox at `/var/mail/b-haven.org/yolo/new/`
 
 **Parameters:**
-- `mark_read` (optional, default: false): If true, move processed emails to `cur/` directory
+- `mark_read` (optional): If true, move processed emails to cur/ directory
 
 **Example:**
 ```
-[check_inbox]
-{"mark_read": true}
+[tool activity]
+[check_inbox => {"mark_read": false}]
 ```
 
-## Implementation Details
+## Technical Details
 
-### Sending Emails
-- Uses `/usr/sbin/sendmail -f yolo@b-haven.org` command
-- RFC 2822 email format with proper headers
-- Postfix handles DKIM signing automatically
-- No authentication required (uses local MTA)
+### DKIM Configuration
+- Domain: b-haven.org
+- Selector: mail._domainkey.b-haven.org
+- Private key: Located in /etc/postfix/dkim/ (auto-loaded by OpenDKIM)
+- Signing: Automatic for all outgoing mail via Postfix
 
-### Receiving Emails
-- Maildir location: `/var/mail/b-haven.org/yolo/`
-- New messages: `new/` directory
-- Processed messages: Move to `cur/` directory
-- Supports multipart MIME emails
-- Extracts plain text content automatically
+### Maildir Structure
+```
+/var/mail/b-haven.org/yolo/
+├── new/        # New unread emails
+├── cur/        # Read/processed emails
+└── tmp/        # Temporary files (during delivery)
+```
 
-## Testing Email Functionality
+### Email Format
+- Supports RFC 2822 format
+- Handles multipart MIME messages
+- Extracts text/plain content automatically
 
-### Manual Test
+## Testing
+
+Run email tests:
 ```bash
-cd /Users/sgriepentrog/src/yolo
-go run test_email_send.go  # Creates and sends a test email
+go test -v -run "Email|Inbox"
 ```
 
-### Integration Tests
+Enable integration tests:
 ```bash
-YOLO_TEST_EMAIL=1 go test -v -run TestSend ./email/...
+YOLO_TEST_EMAIL=1 go test -v -run TestSend_Integration
 ```
 
-## DKIM Configuration
-DKIM signing is handled automatically by Postfix. The private key and selector are configured in `/etc/postfix/main.cf` via `milter_default_action` and `non_smtpd_milters`.
+## Troubleshooting
+
+### Emails not sending
+- Check Postfix is running: `sudo systemctl status postfix`
+- Verify DKIM service: `sudo systemctl status opendkim`
+- Check mail logs: `tail -f /var/log/mail.log`
+
+### Emails going to spam
+- Ensure SPF records are configured for b-haven.org
+- DKIM signing should be automatic via Postfix
+- Domain reputation takes time to build
+
+### Inbox not working
+- Verify Maildir exists: `ls -la /var/mail/b-haven.org/yolo/`
+- Check postfix delivery in `/var/log/mail.log`
