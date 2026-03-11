@@ -293,8 +293,14 @@ func (im *InputManager) processLoop() {
 						im.buf = im.buf[:len(im.buf)-1]
 					}
 				}
-				// Cancel send timer — user is still editing
-				sendTimer.Stop()
+				if len(im.buf) == 0 {
+					// Empty buffer after backspace: start send timer
+					// so timeout can fire (same as pressing Enter on empty line)
+					sendTimer.Reset(im.sendDelay)
+				} else {
+					// Cancel send timer — user is still editing
+					sendTimer.Stop()
+				}
 				im.mu.Unlock()
 				im.syncAndRedraw()
 
