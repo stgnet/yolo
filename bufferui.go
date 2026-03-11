@@ -27,6 +27,7 @@ type BufferUI struct {
 	promptReady    chan struct{}    // closed when prompt becomes ready
 	midLine        bool            // true if last Write did not end with \n
 	pastFirstLine  bool            // true after first Enter in current input session
+	prevDispLines  int             // number of display lines used by previous RedrawPrompt
 }
 
 // NewBufferUI creates a new buffer-mode output manager.
@@ -142,7 +143,8 @@ func (b *BufferUI) showPromptLocked() {
 // RedrawPrompt redraws the "you> " prompt with the current input line.
 // Called by InputManager after each keystroke in buffer mode. Thread-safe.
 // The "you> " prefix is only shown on the first line; continuation lines
-// after Enter show no prefix.
+// after Enter show no prefix. Long input lines wrap across multiple
+// terminal rows.
 func (b *BufferUI) RedrawPrompt(inputBuf string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -165,25 +167,50 @@ func (b *BufferUI) RedrawPrompt(inputBuf string) {
 		cols = c
 	}
 
-	var line string
-	if b.pastFirstLine {
-		// After first Enter, no "you> " prefix
-		if len(lastLine) > cols {
-			lastLine = lastLine[:cols]
-		}
-		line = fmt.Sprintf("\r\033[K%s%s%s", Green, lastLine, Reset)
-	} else {
-		// First line: show "you> " prefix
-		maxContent := cols - 5 // "you> " is 5 chars
-		if maxContent < 0 {
-			maxContent = 0
-		}
-		if len(lastLine) > maxContent {
-			lastLine = lastLine[:maxContent]
-		}
-		line = fmt.Sprintf("\r\033[K%syou> %s%s", Green, lastLine, Reset)
+	prefix := ""
+	if !b.pastFirstLine {
+		prefix = "you> "
 	}
-	rawWrite(line)
+
+	// Build the full display string and split into wrapped lines
+	full := prefix + lastLine
+	var displayLines []string
+	for len(full) > cols {
+		displayLines = append(displayLines, full[:cols])
+		full = full[cols:]
+	}
+	displayLines = append(displayLines, full)
+
+	numLines := len(displayLines)
+
+	// Move cursor up to the first line of the previous render
+	if b.prevDispLines > 1 {
+		rawWrite(fmt.Sprintf("\033[%dA", b.prevDispLines-1))
+	}
+
+	// Render each wrapped line
+	var out strings.Builder
+	for i, dl := range displayLines {
+		out.WriteString("\r\033[K") // move to col 0 and clear line
+		out.WriteString(Green)
+		out.WriteString(dl)
+		if i < numLines-1 {
+			out.WriteString("\n") // move to next line
+		}
+	}
+
+	// If previous render had more lines, clear the leftover lines below
+	if b.prevDispLines > numLines {
+		for i := 0; i < b.prevDispLines-numLines; i++ {
+			out.WriteString("\n\033[K")
+		}
+		// Move cursor back up to the end of current content
+		out.WriteString(fmt.Sprintf("\033[%dA", b.prevDispLines-numLines))
+	}
+
+	out.WriteString(Reset)
+	rawWrite(out.String())
+	b.prevDispLines = numLines
 }
 
 // EnterKey outputs a carriage-return + line-feed for the Enter key in buffer
@@ -212,6 +239,7 @@ func (b *BufferUI) FlushBuffer() {
 	b.buffering = false
 	b.promptShown = false
 	b.pastFirstLine = false
+	b.prevDispLines = 0
 }
 
 // CancelInput resets buffer state and flushes pending output (e.g., on Ctrl-C).
