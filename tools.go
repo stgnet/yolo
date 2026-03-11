@@ -18,6 +18,18 @@ import (
 	"time"
 )
 
+// EmailMessage represents a parsed email from the mailbox
+type EmailMessage struct {
+	From        string   `json:"from"`
+	Subject     string   `json:"subject"`
+	Date        string   `json:"date"`
+	Content     string   `json:"content"`
+	Filename    string   `json:"filename"`
+	ContentType string   `json:"content_type"`
+	Size        int64    `json:"size"`
+	To          []string `json:"to,omitempty"`
+}
+
 // ─── Tool Definitions ────────────────────────────────────────────────
 
 var ollamaTools = []ToolDef{
@@ -127,6 +139,9 @@ var ollamaTools = []ToolDef{
 		map[string]ToolParam{
 			"mark_read": {Type: "boolean", Description: "If true, move processed emails to cur/ directory"},
 		}, nil),
+	toolDef("process_inbox_with_response", "Process all inbound emails: read each email, compose an auto-response, send it back to the sender, then delete the original message. This implements the complete email handling workflow: check → respond → delete. Use this tool to automatically handle incoming emails.",
+		map[string]ToolParam{},
+		nil),
 }
 
 // ─── Tool Executor ───────────────────────────────────────────────────
@@ -138,7 +153,7 @@ var validTools = []string{
 	"search_files", "run_command", "spawn_subagent",
 	"list_subagents", "read_subagent_result", "summarize_subagents",
 	"list_models", "switch_model", "think", "restart",
-	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "learn", "send_email", "send_report", "check_inbox",
+	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "learn", "send_email", "send_report", "check_inbox", "process_inbox_with_response",
 }
 
 // ToolExecutor dispatches tool calls from the LLM to concrete
@@ -229,6 +244,8 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 		return t.sendReport(args)
 	case "check_inbox":
 		return t.checkInbox(args)
+	case "process_inbox_with_response":
+		return t.processInboxWithResponse(args)
 	default:
 		return fmt.Sprintf("Error: unknown tool '%s'. Available tools: %s", name, strings.Join(validTools, ", "))
 	}
