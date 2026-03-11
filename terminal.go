@@ -331,10 +331,10 @@ func (ui *TerminalUI) Teardown() {
 	ui.mu.Lock()
 	defer ui.mu.Unlock()
 	var buf strings.Builder
-	buf.WriteString("\033[r")                       // reset scroll region to full terminal
-	buf.WriteString("\033[0m")                      // reset all text attributes
-	buf.WriteString("\033[?25h")                    // ensure cursor is visible
-	fmt.Fprintf(&buf, "\033[%d;1H\n", ui.rows)     // position cursor at bottom
+	buf.WriteString("\033[r")                  // reset scroll region to full terminal
+	buf.WriteString("\033[0m")                 // reset all text attributes
+	buf.WriteString("\033[?25h")               // ensure cursor is visible
+	fmt.Fprintf(&buf, "\033[%d;1H\n", ui.rows) // position cursor at bottom
 	os.Stdout.WriteString(buf.String())
 }
 
