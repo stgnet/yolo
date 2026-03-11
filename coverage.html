@@ -65,13 +65,13 @@
 				
 				<option value="file4">yolo/config.go (100.0%)</option>
 				
-				<option value="file5">yolo/email/email.go (3.3%)</option>
+				<option value="file5">yolo/email/email.go (90.0%)</option>
 				
 				<option value="file6">yolo/history.go (92.7%)</option>
 				
 				<option value="file7">yolo/input.go (4.4%)</option>
 				
-				<option value="file8">yolo/learning.go (74.4%)</option>
+				<option value="file8">yolo/learning.go (74.6%)</option>
 				
 				<option value="file9">yolo/main.go (0.0%)</option>
 				
@@ -83,15 +83,15 @@
 				
 				<option value="file13">yolo/terminal.go (74.3%)</option>
 				
-				<option value="file14">yolo/tools.go (64.6%)</option>
+				<option value="file14">yolo/tools.go (70.6%)</option>
 				
-				<option value="file15">yolo/tools_email.go (31.4%)</option>
+				<option value="file15">yolo/tools_email.go (94.3%)</option>
 				
 				<option value="file16">yolo/tools_gog.go (80.0%)</option>
 				
-				<option value="file17">yolo/tools_inbox.go (39.3%)</option>
+				<option value="file17">yolo/tools_inbox.go (57.1%)</option>
 				
-				<option value="file18">yolo/tools_learning.go (10.6%)</option>
+				<option value="file18">yolo/tools_learning.go (23.4%)</option>
 				
 				</select>
 			</div>
@@ -1920,29 +1920,29 @@ type Client struct {
 }
 
 // New creates a new email client
-func New(config *Config) *Client <span class="cov0" title="0">{
+func New(config *Config) *Client <span class="cov8" title="1">{
         return &amp;Client{config: config}
 }</span>
 
 // Send sends an email using the configured transport (sendmail by default)
-func (c *Client) Send(msg *Message) error <span class="cov0" title="0">{
-        if len(msg.To) == 0 </span><span class="cov0" title="0">{
+func (c *Client) Send(msg *Message) error <span class="cov8" title="1">{
+        if len(msg.To) == 0 </span><span class="cov8" title="1">{
                 return fmt.Errorf("no recipients specified")
         }</span>
 
-        <span class="cov0" title="0">if msg.Subject == "" || msg.Body == "" </span><span class="cov0" title="0">{
+        <span class="cov8" title="1">if msg.Subject == "" || msg.Body == "" </span><span class="cov8" title="1">{
                 return fmt.Errorf("subject and body are required")
         }</span>
 
-        <span class="cov0" title="0">if c.config.UseSendmail </span><span class="cov0" title="0">{
+        <span class="cov8" title="1">if c.config.UseSendmail </span><span class="cov0" title="0">{
                 return c.sendViaSendmail(msg)
         }</span>
 
-        <span class="cov0" title="0">return fmt.Errorf("SMTP transport not implemented - use sendmail")</span>
+        <span class="cov8" title="1">return fmt.Errorf("SMTP transport not implemented - use sendmail")</span>
 }
 
 // sendViaSendmail sends email using the local sendmail command
-func (c *Client) sendViaSendmail(msg *Message) error <span class="cov0" title="0">{
+func (c *Client) sendViaSendmail(msg *Message) error <span class="cov8" title="1">{
         // Build RFC 2822 email format
         var emailContent bytes.Buffer
 
@@ -1961,7 +1961,7 @@ func (c *Client) sendViaSendmail(msg *Message) error <span class="cov0" title="0
         cmd.Stdin = &amp;emailContent
 
         err := cmd.Run()
-        if err != nil </span><span class="cov0" title="0">{
+        if err != nil </span><span class="cov8" title="1">{
                 return fmt.Errorf("sendmail failed: %w", err)
         }</span>
 
@@ -1969,13 +1969,13 @@ func (c *Client) sendViaSendmail(msg *Message) error <span class="cov0" title="0
 }
 
 // getRFC2822Date returns current time in RFC 2822 format
-func getRFC2822Date() string <span class="cov0" title="0">{
+func getRFC2822Date() string <span class="cov8" title="1">{
         cmd := exec.Command("date", "-R")
         output, err := cmd.Output()
         if err != nil </span><span class="cov0" title="0">{
                 return "Mon, 1 Jan 2024 00:00:00 +0000"
         }</span>
-        <span class="cov0" title="0">return strings.TrimSpace(string(output))</span>
+        <span class="cov8" title="1">return strings.TrimSpace(string(output))</span>
 }
 </pre>
 		
@@ -2587,38 +2587,45 @@ func (lm *LearningManager) ResearchAndLearn() (*LearningSession, error) <span cl
         researchAreas := []ResearchArea{
                 {
                         Category:        "AI Agent Architecture",
-                        WebQuery:        "AI agent architecture patterns 2025 best practices",
-                        RedditSubreddit: "ArtificialIntelligence",
-                        RedditSearch:    "AI agent design patterns",
-                        Keywords:        []string{"autonomous", "planning", "memory", "tools", "multi-agent"},
+                        WebQuery:        "autonomous AI agent best practices 2025 implementation patterns tool use memory",
+                        RedditSubreddit: "LocalLLaMA",
+                        RedditSearch:    "autonomous agent implementation tool use patterns",
+                        Keywords:        []string{"autonomous", "planning", "memory", "tools", "multi-agent", "implementation", "pattern"},
                 },
                 {
                         Category:        "LLM Tool Integration",
-                        WebQuery:        "LLM function calling tool use best practices 2025",
+                        WebQuery:        "LLM function calling implementation patterns error handling context limits 2025",
                         RedditSubreddit: "LocalLLaMA",
-                        RedditSearch:    "tool use function calling patterns",
-                        Keywords:        []string{"function calling", "tool use", "context management"},
+                        RedditSearch:    "function calling implementation best practices error handling",
+                        Keywords:        []string{"function calling", "tool use", "context management", "error handling", "implementation"},
                 },
                 {
                         Category:        "Developer Experience",
-                        WebQuery:        "AI coding assistant features 2025 developer productivity",
-                        RedditSubreddit: "programming",
-                        RedditSearch:    "AI coding tools best features",
-                        Keywords:        []string{"developer experience", "productivity", "automation"},
+                        WebQuery:        "AI coding assistant developer productivity automation features implementation 2025",
+                        RedditSubreddit: "golang",
+                        RedditSearch:    "Go AI tools productivity automation best practices",
+                        Keywords:        []string{"developer experience", "productivity", "automation", "workflow", "implementation"},
                 },
                 {
                         Category:        "Testing &amp; Evaluation",
-                        WebQuery:        "AI agent testing evaluation frameworks 2025",
+                        WebQuery:        "AI agent testing evaluation frameworks benchmarking performance metrics 2025",
                         RedditSubreddit: "MachineLearning",
-                        RedditSearch:    "testing AI agents evaluation",
-                        Keywords:        []string{"testing", "evaluation", "benchmarking"},
+                        RedditSearch:    "testing AI agents evaluation benchmarks implementation",
+                        Keywords:        []string{"testing", "evaluation", "benchmarking", "metrics", "regression"},
                 },
                 {
                         Category:        "Go Performance",
-                        WebQuery:        "Go performance optimization patterns 2025 concurrency",
+                        WebQuery:        "Go concurrent programming patterns performance optimization race conditions 2025",
                         RedditSubreddit: "golang",
-                        RedditSearch:    "Go performance best practices",
-                        Keywords:        []string{"performance", "concurrency", "optimization"},
+                        RedditSearch:    "Go concurrency patterns performance best practices race conditions",
+                        Keywords:        []string{"performance", "concurrency", "optimization", "race condition", "goroutine"},
+                },
+                {
+                        Category:        "Security &amp; Reliability",
+                        WebQuery:        "AI agent security sandboxing file system access safe path validation 2025",
+                        RedditSubreddit: "security",
+                        RedditSearch:    "AI security sandboxing file access best practices",
+                        Keywords:        []string{"security", "sandboxing", "file access", "validation", "safe"},
                 },
         }
 
@@ -2680,6 +2687,12 @@ func (lm *LearningManager) researchArea(area ResearchArea, session *LearningSess
 func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result string) []Improvement <span class="cov8" title="1">{
         var improvements []Improvement
 
+        // Filter out generic encyclopedia/intro content
+        genericPatterns := []string{
+                " is a ", " refers to", "in other words", "etymology", "see also",
+                "wikipedia", "encyclopedia", "introduction to", "overview of",
+        }
+
         // Simple text-based extraction from the JSON-like result
         // Look for key sections in the output
 
@@ -2693,7 +2706,8 @@ func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result 
                                 end = len(result) - start
                         }</span>
                         <span class="cov0" title="0">content := strings.TrimSpace(result[start : start+end])
-                        if len(content) &gt; 50 &amp;&amp; lm.isRelevant(content, area.Keywords) </span><span class="cov0" title="0">{
+                        // Skip if too short or contains generic patterns
+                        if len(content) &gt; 80 &amp;&amp; !containsGenericPattern(content, genericPatterns) &amp;&amp; lm.isRelevant(content, area.Keywords) </span><span class="cov0" title="0">{
                                 imp := lm.createImprovement(area, content, "web", "", "instant_answer")
                                 if imp != nil </span><span class="cov0" title="0">{
                                         improvements = append(improvements, *imp)
@@ -2706,9 +2720,10 @@ func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result 
         <span class="cov8" title="1">lines := strings.Split(result, "\n")
         for _, line := range lines </span><span class="cov8" title="1">{
                 line = strings.TrimSpace(line)
-                if len(line) &gt; 100 &amp;&amp; lm.isRelevant(line, area.Keywords) </span><span class="cov8" title="1">{
+                // Filter: must be substantial, relevant, and not generic
+                if len(line) &gt; 150 &amp;&amp; !containsGenericPattern(line, genericPatterns) &amp;&amp; lm.isRelevant(line, area.Keywords) </span><span class="cov0" title="0">{
                         imp := lm.createImprovement(area, truncateText(line, 500), "web", "", "search_result")
-                        if imp != nil </span><span class="cov8" title="1">{
+                        if imp != nil </span><span class="cov0" title="0">{
                                 improvements = append(improvements, *imp)
                         }</span>
                 }
@@ -2721,12 +2736,18 @@ func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result 
 func (lm *LearningManager) extractImprovementsFromReddit(area ResearchArea, result string) []Improvement <span class="cov8" title="1">{
         var improvements []Improvement
 
+        // Filter out low-quality or generic content
+        genericPatterns := []string{
+                "edit:", "thanks for sharing", "upvote if you agree",
+        }
+
         // Parse the Reddit JSON response structure
         lines := strings.Split(result, "\n")
 
         for _, line := range lines </span><span class="cov8" title="1">{
                 line = strings.TrimSpace(line)
-                if len(line) &gt; 100 &amp;&amp; lm.isRelevant(line, area.Keywords) </span><span class="cov0" title="0">{
+                // Filter: must be substantial, relevant, not generic, and contain actionable content
+                if len(line) &gt; 200 &amp;&amp; !containsGenericPattern(line, genericPatterns) &amp;&amp; lm.isRelevant(line, area.Keywords) &amp;&amp; containsActionableContent(line) </span><span class="cov0" title="0">{
                         url := fmt.Sprintf("https://reddit.com/r/%s", area.RedditSubreddit)
                         imp := lm.createImprovement(area, truncateText(line, 500), "reddit", url, "reddit_post")
                         if imp != nil </span><span class="cov0" title="0">{
@@ -2883,6 +2904,33 @@ func extractKeywords(text string, suggested []string) []string <span class="cov8
         }
 
         <span class="cov8" title="1">return keywords</span>
+}
+
+// containsGenericPattern checks if text contains generic/encyclopedic patterns
+func containsGenericPattern(text string, patterns []string) bool <span class="cov8" title="1">{
+        textLower := strings.ToLower(text)
+        for _, pattern := range patterns </span><span class="cov8" title="1">{
+                if strings.Contains(textLower, pattern) </span><span class="cov8" title="1">{
+                        return true
+                }</span>
+        }
+        <span class="cov8" title="1">return false</span>
+}
+
+// containsActionableContent checks if text has actionable improvement content
+func containsActionableContent(text string) bool <span class="cov8" title="1">{
+        actionableKeywords := []string{
+                "should", "recommend", "best practice", "improve", "optimize",
+                "implement", "use case", "pattern", "solution", "approach",
+                "tip", "trick", "hack", "feature", "enhancement",
+        }
+        textLower := strings.ToLower(text)
+        for _, kw := range actionableKeywords </span><span class="cov8" title="1">{
+                if strings.Contains(textLower, kw) </span><span class="cov8" title="1">{
+                        return true
+                }</span>
+        }
+        <span class="cov8" title="1">return false</span>
 }
 </pre>
 		
@@ -4707,12 +4755,12 @@ func getIntArg(args map[string]any, key string, fallback int) int <span class="c
         <span class="cov8" title="1">return fallback</span>
 }
 
-func getBoolArg(args map[string]any, key string, fallback bool) bool <span class="cov8" title="1">{
-        if v, ok := args[key]; ok </span><span class="cov8" title="1">{
+func getBoolArg(args map[string]any, key string, fallback bool) bool <span class="cov0" title="0">{
+        if v, ok := args[key]; ok </span><span class="cov0" title="0">{
                 switch val := v.(type) </span>{
-                case bool:<span class="cov8" title="1">
+                case bool:<span class="cov0" title="0">
                         return val</span>
-                case string:<span class="cov8" title="1">
+                case string:<span class="cov0" title="0">
                         return strings.ToLower(val) == "true" || val == "1"</span>
                 case float64:<span class="cov0" title="0">
                         return val == 1.0</span>
@@ -4720,7 +4768,7 @@ func getBoolArg(args map[string]any, key string, fallback bool) bool <span class
                         return val == 1</span>
                 }
         }
-        <span class="cov8" title="1">return fallback</span>
+        <span class="cov0" title="0">return fallback</span>
 }
 
 func isBinaryData(data []byte) bool <span class="cov8" title="1">{
@@ -6104,7 +6152,7 @@ func (t *ToolExecutor) parseDuckDuckGoJSON(query string, count int, data []byte)
                 return fmt.Sprintf("Error parsing JSON: %v", err)
         }</span>
 
-        <span class="cov0" title="0">var sb strings.Builder
+        <span class="cov8" title="1">var sb strings.Builder
         sb.WriteString(fmt.Sprintf("Search results for \"%s\":\n\n", query))
 
         // Direct answer (if any)
@@ -6113,7 +6161,7 @@ func (t *ToolExecutor) parseDuckDuckGoJSON(query string, count int, data []byte)
         }</span>
 
         // Abstract/summary
-        <span class="cov0" title="0">if result.Abstract != "" </span><span class="cov0" title="0">{
+        <span class="cov8" title="1">if result.Abstract != "" </span><span class="cov0" title="0">{
                 sb.WriteString(fmt.Sprintf("**Summary:** %s\n", result.Abstract))
                 if result.AbstractSource != "" </span><span class="cov0" title="0">{
                         sb.WriteString(fmt.Sprintf("Source: [from%s](%s)\n\n",
@@ -6124,12 +6172,12 @@ func (t *ToolExecutor) parseDuckDuckGoJSON(query string, count int, data []byte)
         }
 
         // Image (if any)
-        <span class="cov0" title="0">if result.Image != "" </span><span class="cov0" title="0">{
+        <span class="cov8" title="1">if result.Image != "" </span><span class="cov0" title="0">{
                 sb.WriteString(fmt.Sprintf("[![](%s)](%s)\n\n", result.Image, result.Image))
         }</span>
 
         // Related topics and results
-        <span class="cov0" title="0">resultsCount := 0
+        <span class="cov8" title="1">resultsCount := 0
         for _, topic := range result.RelatedTopics </span><span class="cov0" title="0">{
                 // Try to extract results from the topic
                 var topicResults []struct {
@@ -6176,14 +6224,14 @@ func (t *ToolExecutor) parseDuckDuckGoJSON(query string, count int, data []byte)
                 }
         }
 
-        <span class="cov0" title="0">if resultsCount == 0 &amp;&amp; result.Abstract == "" &amp;&amp; result.Answer == "" </span><span class="cov0" title="0">{
+        <span class="cov8" title="1">if resultsCount == 0 &amp;&amp; result.Abstract == "" &amp;&amp; result.Answer == "" </span><span class="cov8" title="1">{
                 sb.WriteString("No results found for this query. Try a different search term.\n")
         }</span>
 
-        <span class="cov0" title="0">return sb.String()</span>
+        <span class="cov8" title="1">return sb.String()</span>
 }
 
-func (t *ToolExecutor) parseDuckDuckGoHTML(query string, count int, data []byte) string <span class="cov0" title="0">{
+func (t *ToolExecutor) parseDuckDuckGoHTML(query string, count int, data []byte) string <span class="cov8" title="1">{
         // Simple HTML parser - extract snippets and titles from search results
         var sb strings.Builder
         sb.WriteString(fmt.Sprintf("Search results for \"%s\":\n\n", query))
@@ -6200,22 +6248,26 @@ func (t *ToolExecutor) parseDuckDuckGoHTML(query string, count int, data []byte)
         var results []SearchResult
 
         // Parse title links and snippets
-        for i, line := range lines </span><span class="cov0" title="0">{
+        for i, line := range lines </span><span class="cov8" title="1">{
                 // Look for result titles in &lt;a&gt; tags with class containing "result__a"
-                if strings.Contains(line, `class="`) &amp;&amp; (strings.Contains(line, "result") || strings.Contains(line, "link")) </span><span class="cov0" title="0">{
+                if strings.Contains(line, `class="`) &amp;&amp; (strings.Contains(line, "result") || strings.Contains(line, "link")) </span><span class="cov8" title="1">{
                         // Extract title
                         titleMatch := regexp.MustCompile(`&gt;([^&lt;]+?)&lt;`).FindStringSubmatch(strings.TrimSpace(line))
-                        if len(titleMatch) &gt; 1 </span><span class="cov0" title="0">{
+                        if len(titleMatch) &gt; 1 </span><span class="cov8" title="1">{
                                 title := titleMatch[1]
                                 cleanTitle := strings.TrimPrefix(title, "[")
                                 cleanTitle = strings.TrimSuffix(cleanTitle, "]")
 
                                 // Look for URL in this line or nearby lines
                                 var url string
-                                for j := i - 2; j &lt;= i+2 &amp;&amp; j &lt; len(lines); j++ </span><span class="cov0" title="0">{
-                                        if strings.Contains(lines[j], `href="http`) </span><span class="cov0" title="0">{
+                                startIdx := i - 2
+                                if startIdx &lt; 0 </span><span class="cov8" title="1">{
+                                        startIdx = 0
+                                }</span>
+                                <span class="cov8" title="1">for j := startIdx; j &lt;= i+2 &amp;&amp; j &lt; len(lines); j++ </span><span class="cov8" title="1">{
+                                        if strings.Contains(lines[j], `href="http`) </span><span class="cov8" title="1">{
                                                 urlMatch := regexp.MustCompile(`href="(https?://[^"]+)"`).FindStringSubmatch(lines[j])
-                                                if len(urlMatch) &gt; 1 </span><span class="cov0" title="0">{
+                                                if len(urlMatch) &gt; 1 </span><span class="cov8" title="1">{
                                                         url = urlMatch[1]
                                                         break</span>
                                                 }
@@ -6223,23 +6275,23 @@ func (t *ToolExecutor) parseDuckDuckGoHTML(query string, count int, data []byte)
                                 }
 
                                 // Look for snippet in following lines
-                                <span class="cov0" title="0">var snippet string
-                                for j := i + 1; j &lt; i+5 &amp;&amp; j &lt; len(lines); j++ </span><span class="cov0" title="0">{
-                                        if strings.Contains(lines[j], "&lt;div") || strings.Contains(lines[j], "&lt;span") </span><span class="cov0" title="0">{
+                                <span class="cov8" title="1">var snippet string
+                                for j := i + 1; j &lt; i+5 &amp;&amp; j &lt; len(lines); j++ </span><span class="cov8" title="1">{
+                                        if strings.Contains(lines[j], "&lt;div") || strings.Contains(lines[j], "&lt;span") </span><span class="cov8" title="1">{
                                                 snippetLines := regexp.MustCompile(`&lt;[^&gt;]+&gt;([^&lt;]+)&lt;/[^&gt;]+&gt;`).FindAllStringSubmatch(lines[j], -1)
-                                                for _, sm := range snippetLines </span><span class="cov0" title="0">{
-                                                        if len(sm) &gt; 1 &amp;&amp; sm[1] != title &amp;&amp; len(sm[1]) &gt; 20 </span><span class="cov0" title="0">{
+                                                for _, sm := range snippetLines </span><span class="cov8" title="1">{
+                                                        if len(sm) &gt; 1 &amp;&amp; sm[1] != title &amp;&amp; len(sm[1]) &gt; 20 </span><span class="cov8" title="1">{
                                                                 snippet = sm[1]
                                                                 break</span>
                                                         }
                                                 }
                                         }
-                                        <span class="cov0" title="0">if snippet != "" </span><span class="cov0" title="0">{
+                                        <span class="cov8" title="1">if snippet != "" </span><span class="cov8" title="1">{
                                                 break</span>
                                         }
                                 }
 
-                                <span class="cov0" title="0">results = append(results, SearchResult{
+                                <span class="cov8" title="1">results = append(results, SearchResult{
                                         Title:   cleanTitle,
                                         URL:     url,
                                         Snippet: strings.TrimSpace(snippet),
@@ -6247,29 +6299,29 @@ func (t *ToolExecutor) parseDuckDuckGoHTML(query string, count int, data []byte)
                         }
                 }
 
-                <span class="cov0" title="0">if len(results) &gt;= count </span><span class="cov0" title="0">{
+                <span class="cov8" title="1">if len(results) &gt;= count </span><span class="cov8" title="1">{
                         break</span>
                 }
         }
 
         // Output results
-        <span class="cov0" title="0">if len(results) == 0 </span><span class="cov0" title="0">{
+        <span class="cov8" title="1">if len(results) == 0 </span><span class="cov8" title="1">{
                 sb.WriteString("No results found. DuckDuckGo HTML parsing failed.\n")
                 return sb.String()
         }</span>
 
-        <span class="cov0" title="0">for i, r := range results </span><span class="cov0" title="0">{
+        <span class="cov8" title="1">for i, r := range results </span><span class="cov8" title="1">{
                 sb.WriteString(fmt.Sprintf("%d. **%s**\n", i+1, r.Title))
-                if r.URL != "" </span><span class="cov0" title="0">{
+                if r.URL != "" </span><span class="cov8" title="1">{
                         sb.WriteString(fmt.Sprintf("   [%s](%s)\n", r.URL, r.URL))
                 }</span>
-                <span class="cov0" title="0">if r.Snippet != "" </span><span class="cov0" title="0">{
+                <span class="cov8" title="1">if r.Snippet != "" </span><span class="cov8" title="1">{
                         sb.WriteString(fmt.Sprintf("   %s\n", r.Snippet))
                 }</span>
-                <span class="cov0" title="0">sb.WriteString("\n")</span>
+                <span class="cov8" title="1">sb.WriteString("\n")</span>
         }
 
-        <span class="cov0" title="0">return sb.String()</span>
+        <span class="cov8" title="1">return sb.String()</span>
 }
 </pre>
 		
@@ -6298,11 +6350,11 @@ func (t *ToolExecutor) sendEmail(args map[string]any) string <span class="cov8" 
         }</span>
 
         // If no recipient specified, use default (scott@stg.net)
-        <span class="cov0" title="0">if to == "" </span><span class="cov0" title="0">{
+        <span class="cov8" title="1">if to == "" </span><span class="cov8" title="1">{
                 to = "scott@stg.net"
         }</span>
 
-        <span class="cov0" title="0">msg := &amp;email.Message{
+        <span class="cov8" title="1">msg := &amp;email.Message{
                 To:      []string{to},
                 Subject: subject,
                 Body:    body,
@@ -6314,7 +6366,7 @@ func (t *ToolExecutor) sendEmail(args map[string]any) string <span class="cov8" 
                 return fmt.Sprintf("Error sending email: %v", err)
         }</span>
 
-        <span class="cov0" title="0">var sb strings.Builder
+        <span class="cov8" title="1">var sb strings.Builder
         sb.WriteString("✅ Email sent successfully\n")
         sb.WriteString(fmt.Sprintf("   To: %s\n", to))
         sb.WriteString(fmt.Sprintf("   From: yolo@b-haven.org\n"))
@@ -6333,7 +6385,7 @@ func (t *ToolExecutor) sendReport(args map[string]any) string <span class="cov8"
                 return "Error: body parameter is required"
         }</span>
 
-        <span class="cov0" title="0">msg := &amp;email.Message{
+        <span class="cov8" title="1">msg := &amp;email.Message{
                 To:      []string{"scott@stg.net"},
                 Subject: subject,
                 Body:    body,
@@ -6345,7 +6397,7 @@ func (t *ToolExecutor) sendReport(args map[string]any) string <span class="cov8"
                 return fmt.Sprintf("Error sending report: %v", err)
         }</span>
 
-        <span class="cov0" title="0">var sb strings.Builder
+        <span class="cov8" title="1">var sb strings.Builder
         sb.WriteString("✅ Progress report sent successfully\n")
         sb.WriteString(fmt.Sprintf("   To: scott@stg.net\n"))
         sb.WriteString(fmt.Sprintf("   From: yolo@b-haven.org\n"))
@@ -6419,7 +6471,7 @@ type CheckInboxResult struct {
         Message   string         `json:"message,omitempty"`
 }
 
-func (t *ToolExecutor) checkInbox(args map[string]any) string <span class="cov8" title="1">{
+func (t *ToolExecutor) checkInbox(args map[string]any) string <span class="cov0" title="0">{
         markRead := getBoolArg(args, "mark_read", false)
 
         newDir := "/var/mail/b-haven.org/yolo/new/"
@@ -6433,11 +6485,11 @@ func (t *ToolExecutor) checkInbox(args map[string]any) string <span class="cov8"
                 <span class="cov0" title="0">return fmt.Sprintf("❌ Error reading inbox: %v", err)</span>
         }
 
-        <span class="cov8" title="1">var sb strings.Builder
+        <span class="cov0" title="0">var sb strings.Builder
 
-        if len(emails) == 0 </span><span class="cov8" title="1">{
+        if len(emails) == 0 </span><span class="cov0" title="0">{
                 sb.WriteString("📭 No new emails in inbox\n")
-                if markRead </span><span class="cov8" title="1">{
+                if markRead </span><span class="cov0" title="0">{
                         sb.WriteString("   (No emails to process)\n")
                 }</span>
         } else<span class="cov0" title="0"> {
@@ -6464,7 +6516,7 @@ func (t *ToolExecutor) checkInbox(args map[string]any) string <span class="cov8"
                 }
         }
 
-        <span class="cov8" title="1">return sb.String()</span>
+        <span class="cov0" title="0">return sb.String()</span>
 }
 
 func readMaildir(newDir, curDir string, markRead bool) ([]EmailMessage, int, error) <span class="cov8" title="1">{
@@ -6472,31 +6524,31 @@ func readMaildir(newDir, curDir string, markRead bool) ([]EmailMessage, int, err
         processedCount := 0
 
         files, err := os.ReadDir(newDir)
-        if err != nil </span><span class="cov0" title="0">{
+        if err != nil </span><span class="cov8" title="1">{
                 return nil, 0, err
         }</span>
 
-        <span class="cov8" title="1">for _, file := range files </span><span class="cov0" title="0">{
+        <span class="cov8" title="1">for _, file := range files </span><span class="cov8" title="1">{
                 if file.IsDir() </span><span class="cov0" title="0">{
                         continue</span>
                 }
 
-                <span class="cov0" title="0">filePath := filepath.Join(newDir, file.Name())
+                <span class="cov8" title="1">filePath := filepath.Join(newDir, file.Name())
                 content, err := os.ReadFile(filePath)
                 if err != nil </span><span class="cov0" title="0">{
                         continue</span>
                 }
 
-                <span class="cov0" title="0">email, err := parseEmailMessage(content, file.Name())
-                if err != nil </span><span class="cov0" title="0">{
+                <span class="cov8" title="1">email, err := parseEmailMessage(content, file.Name())
+                if err != nil </span><span class="cov8" title="1">{
                         continue</span>
                 }
 
-                <span class="cov0" title="0">emails = append(emails, email)
+                <span class="cov8" title="1">emails = append(emails, email)
 
-                if markRead </span><span class="cov0" title="0">{
+                if markRead </span><span class="cov8" title="1">{
                         curPath := filepath.Join(curDir, file.Name())
-                        if err := os.Rename(filePath, curPath); err == nil </span><span class="cov0" title="0">{
+                        if err := os.Rename(filePath, curPath); err == nil </span><span class="cov8" title="1">{
                                 processedCount++
                         }</span>
                 }
@@ -6511,7 +6563,7 @@ func parseEmailMessage(content []byte, filename string) (EmailMessage, error) <s
         // Parse as RFC 2822 email using textproto
         reader := bufio.NewReader(bytes.NewReader(content))
         msgReader, err := textproto.NewReader(reader).ReadMIMEHeader()
-        if err != nil </span><span class="cov0" title="0">{
+        if err != nil </span><span class="cov8" title="1">{
                 return email, fmt.Errorf("failed to parse headers: %w", err)
         }</span>
 
@@ -6547,24 +6599,24 @@ func extractBodyFromBytes(data []byte, contentType string) string <span class="c
 func extractBody(reader io.Reader, contentType string) string <span class="cov8" title="1">{
         // Handle multipart messages
         mediatype, params, err := mime.ParseMediaType(contentType)
-        if err == nil &amp;&amp; strings.HasPrefix(mediatype, "multipart/") </span><span class="cov0" title="0">{
+        if err == nil &amp;&amp; strings.HasPrefix(mediatype, "multipart/") </span><span class="cov8" title="1">{
                 mpReader := multipart.NewReader(reader, params["boundary"])
                 var textParts []string
 
-                for </span><span class="cov0" title="0">{
+                for </span><span class="cov8" title="1">{
                         part, err := mpReader.NextPart()
                         if err == io.EOF </span><span class="cov0" title="0">{
                                 break</span>
                         }
-                        <span class="cov0" title="0">if err != nil </span><span class="cov0" title="0">{
+                        <span class="cov8" title="1">if err != nil </span><span class="cov0" title="0">{
                                 return ""
                         }</span>
 
-                        <span class="cov0" title="0">partContent := strings.ToLower(part.Header.Get("Content-Type"))
+                        <span class="cov8" title="1">partContent := strings.ToLower(part.Header.Get("Content-Type"))
 
                         // Prefer text/plain over other content types
                         partBody := extractBody(part, partContent)
-                        if strings.Contains(partContent, "text/plain") &amp;&amp; !strings.Contains(partContent, "alternative") </span><span class="cov0" title="0">{
+                        if strings.Contains(partContent, "text/plain") &amp;&amp; !strings.Contains(partContent, "alternative") </span><span class="cov8" title="1">{
                                 textParts = append(textParts, partBody)
                                 break</span> // Found plain text, prefer this one
                         } else<span class="cov0" title="0"> if len(textParts) == 0 </span><span class="cov0" title="0">{
@@ -6572,7 +6624,7 @@ func extractBody(reader io.Reader, contentType string) string <span class="cov8"
                         }</span>
                 }
 
-                <span class="cov0" title="0">if len(textParts) &gt; 0 </span><span class="cov0" title="0">{
+                <span class="cov8" title="1">if len(textParts) &gt; 0 </span><span class="cov8" title="1">{
                         return strings.Join(textParts, "\n\n")
                 }</span>
         }
@@ -6595,7 +6647,7 @@ func extractBody(reader io.Reader, contentType string) string <span class="cov8"
         }
 
         // Check for base64 encoding
-        <span class="cov0" title="0">if strings.Contains(contentType, "base64") || (strings.Contains(contentType, "charset=") &amp;&amp; !strings.Contains(contentType, "multipart")) </span><span class="cov0" title="0">{
+        <span class="cov8" title="1">if strings.Contains(contentType, "base64") || (strings.Contains(contentType, "charset=") &amp;&amp; !strings.Contains(contentType, "multipart")) </span><span class="cov0" title="0">{
                 data, err := io.ReadAll(reader)
                 if err != nil </span><span class="cov0" title="0">{
                         return ""
@@ -6609,12 +6661,12 @@ func extractBody(reader io.Reader, contentType string) string <span class="cov8"
         }
 
         // Fallback: read as plain text
-        <span class="cov0" title="0">data, err := io.ReadAll(reader)
+        <span class="cov8" title="1">data, err := io.ReadAll(reader)
         if err != nil </span><span class="cov0" title="0">{
                 return ""
         }</span>
 
-        <span class="cov0" title="0">return string(data)</span>
+        <span class="cov8" title="1">return string(data)</span>
 }
 </pre>
 		
@@ -6626,7 +6678,7 @@ import (
         "time"
 )
 
-func (t *ToolExecutor) learn(args map[string]any) string <span class="cov0" title="0">{
+func (t *ToolExecutor) learn(args map[string]any) string <span class="cov8" title="1">{
         // Initialize learning manager
         lm := NewLearningManager(".", t)
 
@@ -6636,9 +6688,9 @@ func (t *ToolExecutor) learn(args map[string]any) string <span class="cov0" titl
         }</span>
 
         // Check if we have recent learning sessions (within last 24 hours)
-        <span class="cov0" title="0">now := time.Now()
-        for _, session := range lm.sessions </span><span class="cov0" title="0">{
-                if now.Sub(session.Timestamp).Hours() &lt; 24 </span><span class="cov0" title="0">{
+        <span class="cov8" title="1">now := time.Now()
+        for _, session := range lm.sessions </span><span class="cov8" title="1">{
+                if now.Sub(session.Timestamp).Hours() &lt; 24 </span><span class="cov8" title="1">{
                         return fmt.Sprintf("Learning already performed today at %s. Found %d improvements.\n\n",
                                 session.Timestamp.Format("Jan 2, 2006 15:04"), len(session.Improvements))
                 }</span>
