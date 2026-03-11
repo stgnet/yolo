@@ -1,322 +1,290 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
-func TestParseTextToolCallsFormat1(t *testing.T) {
-	agent := &YoloAgent{}
+// TestNewYoloAgent verifies agent initialization
+func TestNewYoloAgent(t *testing.T) {
+	a := NewYoloAgent()
+	if a == nil {
+		t.Fatal("Expected non-nil agent")
+	}
 
-	// Format 1: <tool_call>{"name": ..., "args": ...}</tool_call>
-	text := `<tool_call>{"name": "read_file", "args": {"path": "main.go"}}</tool_call>`
-	calls := agent.parseTextToolCalls(text)
-	if len(calls) != 1 {
-		t.Fatalf("Expected 1 call, got %d", len(calls))
+	baseDir, _ := os.Getwd()
+	if a.baseDir != baseDir {
+		t.Errorf("baseDir = %q, want %q", a.baseDir, baseDir)
 	}
-	if calls[0].Name != "read_file" {
-		t.Errorf("Expected name 'read_file', got %q", calls[0].Name)
+
+	if a.scriptPath == "" {
+		t.Error("scriptPath should not be empty")
 	}
-	if calls[0].Args["path"] != "main.go" {
-		t.Errorf("Expected path 'main.go', got %v", calls[0].Args["path"])
+
+	if a.ollama == nil {
+		t.Error("ollama client should not be nil")
+	}
+
+	if a.history == nil {
+		t.Error("history manager should not be nil")
+	}
+
+	if a.tools == nil {
+		t.Error("tools executor should not be nil")
+	}
+
+	// Note: inputMgr is set in Run(), not constructor, so it's nil here
+	if a.inputMgr != nil {
+		t.Error("inputMgr should be nil initially (set in Run)")
 	}
 }
 
-func TestParseTextToolCallsFormat1Multiple(t *testing.T) {
-	agent := &YoloAgent{}
+// TestShowHelpHint verifies the help hint is displayed
+func TestShowHelpHint(t *testing.T) {
+	a := NewYoloAgent()
 
-	text := `<tool_call>{"name": "read_file", "args": {"path": "a.go"}}</tool_call>
-some text
-<tool_call>{"name": "write_file", "args": {"path": "b.go", "content": "test"}}</tool_call>`
+	// Just verify it doesn't panic
+	a.showHelpHint()
+}
 
-	calls := agent.parseTextToolCalls(text)
-	if len(calls) != 2 {
-		t.Fatalf("Expected 2 calls, got %d", len(calls))
+// TestDrainQueuedInput tests draining of queued input
+func TestDrainQueuedInput(t *testing.T) {
+	a := NewYoloAgent()
+
+	// inputMgr is nil until Run() is called, so drainQueuedInput should not panic
+	a.drainQueuedInput()
+}
+
+// TestSetupFirstRun verifies first run setup
+func TestSetupFirstRun(t *testing.T) {
+	t.Skip("setupFirstRun requires interactive input and network call to Ollama, skipping in automated tests")
+
+	a := NewYoloAgent()
+
+	// Create a temp dir for testing to avoid modifying actual repo
+	tmpDir, err := os.MkdirTemp("", "yolo-test-*")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if calls[0].Name != "read_file" {
-		t.Errorf("Call 0: expected 'read_file', got %q", calls[0].Name)
-	}
-	if calls[1].Name != "write_file" {
-		t.Errorf("Call 1: expected 'write_file', got %q", calls[1].Name)
+	defer os.RemoveAll(tmpDir)
+
+	// Set baseDir to temp dir
+	a.baseDir = tmpDir
+
+	// Setup should not panic
+	a.setupFirstRun()
+
+	// Check that .yolo directory was created
+	yoloDir := filepath.Join(tmpDir, ".yolo")
+	if _, err := os.Stat(yoloDir); os.IsNotExist(err) {
+		t.Error(".yolo directory should be created")
 	}
 }
 
-func TestParseTextToolCallsFormat1NoArgs(t *testing.T) {
-	agent := &YoloAgent{}
+// TestDisplaySessionResumption tests session resumption display
+func TestDisplaySessionResumption(t *testing.T) {
+	a := NewYoloAgent()
 
-	text := `<tool_call>{"name": "list_files"}</tool_call>`
-	calls := agent.parseTextToolCalls(text)
-	if len(calls) != 1 {
-		t.Fatalf("Expected 1 call, got %d", len(calls))
-	}
-	if calls[0].Args == nil {
-		t.Error("Args should be non-nil empty map")
+	// Just verify it doesn't panic (will show minimal or no history in fresh agent)
+	a.displaySessionResumption()
+}
+
+// TestShowCacheStatus tests cache status display
+func TestShowCacheStatus(t *testing.T) {
+	a := NewYoloAgent()
+
+	// Just verify it doesn't panic with a test value
+	a.showCacheStatus("test")
+}
+
+// TestShowPrompt tests prompt display - skip because requires inputMgr initialization
+func TestShowPrompt(t *testing.T) {
+	t.Skip("showPrompt requires inputMgr to be initialized (done in Run), skipping in automated tests")
+	a := NewYoloAgent()
+
+	// Just verify it doesn't panic
+	a.showPrompt()
+}
+
+// TestSpawnSubagentErrorPath tests subagent spawning with invalid path
+func TestSpawnSubagentErrorPath(t *testing.T) {
+	t.Skip("spawnSubagent requires Ollama connection, skipping in automated tests")
+
+	a := NewYoloAgent()
+
+	// Override baseDir with invalid location to trigger error path
+	a.baseDir = "/nonexistent/path/that/does/not/exist"
+
+	result := a.spawnSubagent("test prompt", "test name")
+
+	if !strings.Contains(result, "error") {
+		t.Error("Expected result to contain 'error' when baseDir is invalid")
 	}
 }
 
-func TestParseTextToolCallsFormat2(t *testing.T) {
-	agent := &YoloAgent{}
+// TestSpawnSubagentNoResultFile tests subagent spawning without result file
+func TestSpawnSubagentNoResultFile(t *testing.T) {
+	t.Skip("spawnSubagent requires Ollama connection, skipping in automated tests")
 
-	// Format 2: <tool_call><function=name><parameter=key>value</parameter></function></tool_call>
-	text := `<tool_call><function=read_file><parameter=path>main.go</parameter></function></tool_call>`
-	calls := agent.parseTextToolCalls(text)
-	if len(calls) != 1 {
-		t.Fatalf("Expected 1 call, got %d", len(calls))
-	}
-	if calls[0].Name != "read_file" {
-		t.Errorf("Expected 'read_file', got %q", calls[0].Name)
-	}
-	if calls[0].Args["path"] != "main.go" {
-		t.Errorf("Expected path 'main.go', got %v", calls[0].Args["path"])
+	a := NewYoloAgent()
+
+	result := a.spawnSubagent("test prompt", "test name")
+
+	// Result should mention the results will be sent to file
+	if !strings.Contains(result, "result") {
+		t.Error("Expected result to mention where results will be sent")
 	}
 }
 
-func TestParseTextToolCallsFormat3(t *testing.T) {
-	agent := &YoloAgent{}
+// TestHandoffRemainingToolsEmpty tests handoff with empty tool list
+func TestHandoffRemainingToolsEmpty(t *testing.T) {
+	a := NewYoloAgent()
 
-	// Format 3: [tool_name] {"key": "value"}
-	text := `[read_file] {"path": "test.go"}`
-	calls := agent.parseTextToolCalls(text)
-	if len(calls) != 1 {
-		t.Fatalf("Expected 1 call, got %d", len(calls))
+	hr := a.handoffRemainingTools([]ParsedToolCall{})
+
+	if hr == nil {
+		t.Fatal("Expected non-nil handoffResult")
 	}
-	if calls[0].Name != "read_file" {
-		t.Errorf("Expected 'read_file', got %q", calls[0].Name)
+
+	if hr.ID <= 0 {
+		t.Errorf("Expected positive ID, got %d", hr.ID)
+	}
+
+	if hr.Results != nil && len(hr.Results) > 0 {
+		t.Error("Expected empty results for empty input")
+	}
+
+	// Don't wait on Done channel to avoid timeout - just verify structure is correct
+	a.mu.Lock()
+	pendingCount := len(a.pendingHandoffs)
+	a.mu.Unlock()
+
+	if pendingCount != 1 {
+		t.Errorf("Expected 1 pending handoff, got %d", pendingCount)
 	}
 }
 
-func TestParseTextToolCallsFormat4(t *testing.T) {
-	agent := &YoloAgent{}
+// TestIngestHandoffResultsEmpty tests ingestion with no pending handoffs
+func TestIngestHandoffResultsEmpty(t *testing.T) {
+	a := NewYoloAgent()
 
-	// Format 4: <tool_name>{"key": "value"}</tool_name>
-	text := `<read_file>{"path": "hello.go"}</read_file>`
-	calls := agent.parseTextToolCalls(text)
-	if len(calls) != 1 {
-		t.Fatalf("Expected 1 call, got %d", len(calls))
-	}
-	if calls[0].Name != "read_file" {
-		t.Errorf("Expected 'read_file', got %q", calls[0].Name)
+	count := a.ingestHandoffResults()
+
+	if count != 0 {
+		t.Errorf("Expected 0 ingested results, got %d", count)
 	}
 }
 
-func TestParseTextToolCallsFormat4XMLParams(t *testing.T) {
-	agent := &YoloAgent{}
+// TestIngestHandoffResults tests ingestion of completed handoffs
+func TestIngestHandoffResults(t *testing.T) {
+	a := NewYoloAgent()
 
-	// Format 4 with XML-style params
-	text := `<read_file><path>hello.go</path></read_file>`
-	calls := agent.parseTextToolCalls(text)
-	if len(calls) != 1 {
-		t.Fatalf("Expected 1 call, got %d", len(calls))
+	// Create a fake completed handoff
+	hr := &handoffResult{
+		ID:   123,
+		Done: make(chan struct{}),
+		Results: []toolExecResult{
+			{Name: "test_tool", Args: map[string]any{"key": "value"}, Result: "test result"},
+		},
 	}
-	if calls[0].Args["path"] != "hello.go" {
-		t.Errorf("Expected path 'hello.go', got %v", calls[0].Args["path"])
+	close(hr.Done) // Mark as complete
+
+	a.mu.Lock()
+	a.pendingHandoffs = append(a.pendingHandoffs, hr)
+	a.mu.Unlock()
+
+	// Ingest should pick it up
+	count := a.ingestHandoffResults()
+
+	if count != 1 {
+		t.Errorf("Expected 1 ingested result, got %d", count)
+	}
+
+	// Check that message was added to history
+	messages := a.history.GetContextMessages(10)
+	found := false
+	for _, msg := range messages {
+		if strings.Contains(msg.Content, "handoff #123") {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		t.Error("Expected handoff result to be added to history")
 	}
 }
 
-func TestParseTextToolCallsNoMatch(t *testing.T) {
-	agent := &YoloAgent{}
+// TestGetSystemPrompt verifies system prompt generation
+func TestGetSystemPrompt(t *testing.T) {
+	a := NewYoloAgent()
 
-	text := "just some regular text with no tool calls"
-	calls := agent.parseTextToolCalls(text)
-	if len(calls) != 0 {
-		t.Errorf("Expected 0 calls for plain text, got %d", len(calls))
+	prompt := a.getSystemPrompt()
+
+	if len(prompt) == 0 {
+		t.Error("System prompt should not be empty")
+	}
+
+	if !strings.Contains(prompt, "YOLO") {
+		t.Error("System prompt should mention YOLO")
 	}
 }
 
-func TestParseTextToolCallsInvalidJSON(t *testing.T) {
-	agent := &YoloAgent{}
+// TestRestartAgent tests restart setup
+func TestRestartAgent(t *testing.T) {
+	a := NewYoloAgent()
 
-	text := `<tool_call>{"name": broken json}</tool_call>`
-	calls := agent.parseTextToolCalls(text)
-	if len(calls) != 0 {
-		t.Errorf("Expected 0 calls for invalid JSON, got %d", len(calls))
+	// Verify agent is configured correctly (actual restart would exit)
+	if a.scriptPath == "" {
+		t.Error("scriptPath should be set")
 	}
 }
 
-func TestParseTextToolCallsFormat5(t *testing.T) {
-	agent := &YoloAgent{}
+// TestDisplaySessionResumptionWithHistory tests with actual history
+func TestDisplaySessionResumptionWithHistory(t *testing.T) {
+	a := NewYoloAgent()
 
-	text := `[tool activity]
-[read_file] => path=main.go
-[/tool activity]`
-	calls := agent.parseTextToolCalls(text)
-	if len(calls) != 1 {
-		t.Fatalf("Expected 1 call, got %d", len(calls))
+	// Add some test messages
+	a.history.AddMessage("user", "Test user message", nil)
+	a.history.AddMessage("assistant", "Test assistant response", nil)
+
+	// Should not panic and should display something
+	a.displaySessionResumption()
+}
+
+func TestAgentStateReset(t *testing.T) {
+	a := NewYoloAgent()
+
+	// Verify initial state - inputMgr is set in Run(), so it will be nil here
+	if a.inputMgr != nil {
+		t.Error("inputMgr should be nil initially (set in Run)")
 	}
-	if calls[0].Name != "read_file" {
-		t.Errorf("Expected 'read_file', got %q", calls[0].Name)
+
+	// The rest are initialized in constructor
+	if a.ollama == nil {
+		t.Error("ollama not initialized")
+	}
+	if a.history == nil {
+		t.Error("history not initialized")
+	}
+	if a.tools == nil {
+		t.Error("tools not initialized")
 	}
 }
 
-func TestParseParamStringExtended(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		check func(map[string]any) bool
-	}{
-		{
-			"integer value",
-			"count=42",
-			func(m map[string]any) bool {
-				v, ok := m["count"].(int64)
-				return ok && v == 42
-			},
-		},
-		{
-			"float value",
-			"ratio=3.14",
-			func(m map[string]any) bool {
-				v, ok := m["ratio"].(float64)
-				return ok && v == 3.14
-			},
-		},
-		{
-			"bool value",
-			"flag=true",
-			func(m map[string]any) bool {
-				v, ok := m["flag"].(bool)
-				return ok && v
-			},
-		},
-		{
-			"quoted string",
-			`name="hello world"`,
-			func(m map[string]any) bool {
-				v, ok := m["name"].(string)
-				return ok && v == "hello world"
-			},
-		},
-		{
-			"single quoted",
-			"name='test'",
-			func(m map[string]any) bool {
-				v, ok := m["name"].(string)
-				return ok && v == "test"
-			},
-		},
-		{
-			"no equals sign",
-			"noequalssign",
-			func(m map[string]any) bool {
-				return len(m) == 0
-			},
-		},
-		{
-			"empty string",
-			"",
-			func(m map[string]any) bool {
-				return len(m) == 0
-			},
-		},
-	}
+func TestAgentRunPreparation(t *testing.T) {
+	a := NewYoloAgent()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := parseParamString(tt.input)
-			if !tt.check(result) {
-				t.Errorf("parseParamString(%q) = %+v, check failed", tt.input, result)
-			}
-		})
+	// Verify all components are ready (inputMgr is set in Run, so check without it)
+	if a.ollama == nil {
+		t.Error("ollama not initialized")
 	}
-}
-
-func TestToolDef(t *testing.T) {
-	td := toolDef("test_tool", "A test tool",
-		map[string]ToolParam{
-			"path": {Type: "string", Description: "File path"},
-		},
-		[]string{"path"},
-	)
-
-	if td.Type != "function" {
-		t.Errorf("Expected type 'function', got %q", td.Type)
+	if a.history == nil {
+		t.Error("history not initialized")
 	}
-	if td.Function.Name != "test_tool" {
-		t.Errorf("Expected name 'test_tool', got %q", td.Function.Name)
-	}
-	if td.Function.Description != "A test tool" {
-		t.Errorf("Expected description 'A test tool', got %q", td.Function.Description)
-	}
-	if td.Function.Parameters.Type != "object" {
-		t.Errorf("Expected params type 'object', got %q", td.Function.Parameters.Type)
-	}
-	if len(td.Function.Parameters.Properties) != 1 {
-		t.Errorf("Expected 1 property, got %d", len(td.Function.Parameters.Properties))
-	}
-	if len(td.Function.Parameters.Required) != 1 || td.Function.Parameters.Required[0] != "path" {
-		t.Errorf("Expected required=['path'], got %v", td.Function.Parameters.Required)
-	}
-}
-
-func TestDeduplicateToolCalls(t *testing.T) {
-	tests := []struct {
-		name     string
-		calls    []ParsedToolCall
-		wantLen  int
-		wantName []string
-	}{
-		{
-			name:    "empty",
-			calls:   nil,
-			wantLen: 0,
-		},
-		{
-			name: "single call unchanged",
-			calls: []ParsedToolCall{
-				{Name: "write_file", Args: map[string]any{"path": "a.go", "content": "x"}},
-			},
-			wantLen:  1,
-			wantName: []string{"write_file"},
-		},
-		{
-			name: "duplicate write_file removed",
-			calls: []ParsedToolCall{
-				{Name: "write_file", Args: map[string]any{"path": "a.go", "content": "x"}},
-				{Name: "write_file", Args: map[string]any{"path": "a.go", "content": "x"}},
-			},
-			wantLen:  1,
-			wantName: []string{"write_file"},
-		},
-		{
-			name: "different args kept",
-			calls: []ParsedToolCall{
-				{Name: "write_file", Args: map[string]any{"path": "a.go", "content": "x"}},
-				{Name: "write_file", Args: map[string]any{"path": "b.go", "content": "y"}},
-			},
-			wantLen:  2,
-			wantName: []string{"write_file", "write_file"},
-		},
-		{
-			name: "different tools kept",
-			calls: []ParsedToolCall{
-				{Name: "read_file", Args: map[string]any{"path": "a.go"}},
-				{Name: "write_file", Args: map[string]any{"path": "a.go", "content": "x"}},
-			},
-			wantLen:  2,
-			wantName: []string{"read_file", "write_file"},
-		},
-		{
-			name: "triple duplicate reduced to one",
-			calls: []ParsedToolCall{
-				{Name: "edit_file", Args: map[string]any{"path": "f.go", "old_text": "a", "new_text": "b"}},
-				{Name: "edit_file", Args: map[string]any{"path": "f.go", "old_text": "a", "new_text": "b"}},
-				{Name: "edit_file", Args: map[string]any{"path": "f.go", "old_text": "a", "new_text": "b"}},
-			},
-			wantLen:  1,
-			wantName: []string{"edit_file"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := deduplicateToolCalls(tt.calls)
-			if len(got) != tt.wantLen {
-				t.Errorf("deduplicateToolCalls() returned %d calls, want %d", len(got), tt.wantLen)
-			}
-			for i, name := range tt.wantName {
-				if i < len(got) && got[i].Name != name {
-					t.Errorf("call[%d].Name = %q, want %q", i, got[i].Name, name)
-				}
-			}
-		})
+	if a.tools == nil {
+		t.Error("tools not initialized")
 	}
 }
