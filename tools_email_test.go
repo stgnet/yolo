@@ -4,9 +4,22 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 )
+
+// skipUnlessEmailEnabled skips integration tests that would send real emails.
+// Set YOLO_TEST_EMAIL=1 to run these (requires sendmail).
+func skipUnlessEmailEnabled(t *testing.T) {
+	t.Helper()
+	if os.Getenv("YOLO_TEST_EMAIL") != "1" {
+		t.Skip("Skipping email integration test: set YOLO_TEST_EMAIL=1 to enable")
+	}
+	if _, err := exec.LookPath("/usr/sbin/sendmail"); err != nil {
+		t.Skip("Skipping email integration test: sendmail not available")
+	}
+}
 
 func TestSendEmailToolDefinition(t *testing.T) {
 	found := false
@@ -59,8 +72,7 @@ func TestSendReportToolDefinition(t *testing.T) {
 }
 
 func TestSendEmailIntegration(t *testing.T) {
-	// Unset email password (no longer needed with sendmail)
-	os.Unsetenv("EMAIL_PASSWORD")
+	skipUnlessEmailEnabled(t)
 
 	executor := NewToolExecutor("/tmp", nil)
 	result := executor.sendEmail(map[string]any{
@@ -69,7 +81,6 @@ func TestSendEmailIntegration(t *testing.T) {
 		"to":      "scott@stg.net",
 	})
 
-	// Should succeed with sendmail/postfix configured
 	if result == "" || !strings.Contains(result, "Email sent successfully") {
 		t.Logf("Result: %s", result)
 		t.Error("Expected email to be sent successfully via sendmail")
@@ -77,7 +88,7 @@ func TestSendEmailIntegration(t *testing.T) {
 }
 
 func TestSendReportIntegration(t *testing.T) {
-	os.Unsetenv("EMAIL_PASSWORD")
+	skipUnlessEmailEnabled(t)
 
 	executor := NewToolExecutor("/tmp", nil)
 	result := executor.sendReport(map[string]any{
@@ -120,7 +131,8 @@ func TestSendReportMissingBody(t *testing.T) {
 }
 
 func TestSendEmailDefaultRecipient(t *testing.T) {
-	// This test verifies that the default recipient is scott@stg.net
+	skipUnlessEmailEnabled(t)
+
 	executor := NewToolExecutor("/tmp", nil)
 
 	result := executor.sendEmail(map[string]any{
@@ -128,7 +140,6 @@ func TestSendEmailDefaultRecipient(t *testing.T) {
 		"body":    "Test body",
 	})
 
-	// Should succeed and use default recipient scott@stg.net
 	if !strings.Contains(result, "scott@stg.net") || !strings.Contains(result, "Email sent successfully") {
 		t.Logf("Result: %s", result)
 		t.Error("Expected default recipient scott@stg.net to be used and email to send successfully")
