@@ -21,22 +21,13 @@ scott@griepentrog.com    default    calendar,contacts,docs,drive,gmail,sheets   
 #### Calendar Events Query
 ```bash
 $ gog calendar events primary --from 2026-03-10T00:00:00Z --to 2026-03-17T23:59:59Z
-# Found 10 events including:
-# - MODNAY (Mar 9)
-# - Mos recurring daily (Mar 10-16)
-# - CHECK TNTAP (Mar 15-16)
-# - Monday Meetup Prep (Mar 16)
+# Found 10 events (details redacted)
 ```
 
 #### Drive Files Query
 ```bash
 $ gog drive ls --max 5
-# Found:
-# - B-Haven CRM
-# - B-Haven Pricing
-# - Untitled spreadsheet
-# - 2026 Travato Issues
-# - Taxes 2025
+# Found 5 files (details redacted)
 ```
 
 **Capabilities Confirmed:**
