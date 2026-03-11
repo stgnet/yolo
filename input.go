@@ -129,7 +129,13 @@ func (im *InputManager) SyncToUI() {
 }
 
 // syncAndRedraw updates the TerminalUI's copy and redraws the input area.
+// In buffer mode it redraws the inline "you> " prompt instead.
 func (im *InputManager) syncAndRedraw() {
+	if bufferUI != nil && globalUI == nil {
+		im.bufferModeRedraw()
+		return
+	}
+
 	im.mu.Lock()
 	prompt := im.prompt
 	buf := make([]byte, len(im.buf))
@@ -142,6 +148,19 @@ func (im *InputManager) syncAndRedraw() {
 	} else {
 		fmt.Printf("\r\033[K%s%s", prompt, string(buf))
 	}
+}
+
+// bufferModeRedraw redraws the current input line in buffer mode.
+// It writes "you> <last-line>" using \r\033[K to overwrite the current line.
+func (im *InputManager) bufferModeRedraw() {
+	if bufferUI == nil {
+		return
+	}
+	im.mu.Lock()
+	buf := string(im.buf)
+	im.mu.Unlock()
+
+	bufferUI.RedrawPrompt(buf)
 }
 
 // ClearLine clears the input buffer.
@@ -205,6 +224,11 @@ func (im *InputManager) sendBuffer() {
 	// Trim trailing newlines but preserve internal ones
 	text = strings.TrimRight(text, "\n")
 
+	// In buffer mode, flush buffered agent output before sending
+	if bufferUI != nil && globalUI == nil {
+		bufferUI.FlushBuffer()
+	}
+
 	if strings.TrimSpace(text) != "" {
 		im.syncAndRedraw()
 		im.Lines <- InputLine{Text: text, OK: true}
@@ -218,6 +242,9 @@ func (im *InputManager) processLoop() {
 	if !sendTimer.Stop() {
 		<-sendTimer.C
 	}
+
+	// inBufferMode returns true when the linear buffer UI is active.
+	inBufferMode := func() bool { return bufferUI != nil && globalUI == nil }
 
 	for {
 		select {
@@ -239,6 +266,10 @@ func (im *InputManager) processLoop() {
 					im.buf = im.buf[:0]
 					im.mu.Unlock()
 					sendTimer.Stop()
+					if inBufferMode() {
+						bufferUI.EnterKey()
+						bufferUI.FlushBuffer()
+					}
 					im.syncAndRedraw()
 					im.Lines <- InputLine{Text: text, OK: true}
 				} else {
@@ -246,6 +277,9 @@ func (im *InputManager) processLoop() {
 					im.buf = append(im.buf, '\n')
 					im.mu.Unlock()
 					sendTimer.Reset(im.sendDelay)
+					if inBufferMode() {
+						bufferUI.EnterKey()
+					}
 					im.syncAndRedraw()
 				}
 
@@ -268,6 +302,9 @@ func (im *InputManager) processLoop() {
 				im.buf = im.buf[:0]
 				im.mu.Unlock()
 				sendTimer.Stop()
+				if inBufferMode() {
+					bufferUI.CancelInput()
+				}
 				im.syncAndRedraw()
 				// If agent is busy, cancel the current chat
 				im.agent.mu.Lock()
@@ -312,6 +349,10 @@ func (im *InputManager) processLoop() {
 				// Cancel send timer — user is typing
 				sendTimer.Stop()
 
+				// Buffer mode: on first printable key, notify bufferUI
+				// to transition from streaming output to user input.
+				needsNotify := inBufferMode() && !bufferUI.IsUserTyping()
+
 				if ch >= 0xC0 && ch < 0xFE {
 					// UTF-8 leading byte: collect continuation bytes
 					size := utf8ByteLen(ch)
@@ -341,11 +382,47 @@ func (im *InputManager) processLoop() {
 							im.mu.Unlock()
 						}
 					}
-					im.syncAndRedraw()
-				} else {
-					if ch >= 32 && ch < 0x80 && unicode.IsPrint(rune(ch)) {
-						im.buf = append(im.buf, ch)
+					if needsNotify {
+						bufferUI.NotifyKeypress()
+						go func() {
+							<-bufferUI.PromptReady()
+							im.bufferModeRedraw()
+						}()
 					}
+					im.syncAndRedraw()
+				} else if ch >= 32 && ch < 0x80 && unicode.IsPrint(rune(ch)) {
+					// Slash at column 0 with preceding text: separate
+					// the earlier text as user input so the slash command
+					// is processed independently.
+					if ch == '/' && len(im.buf) > 0 && im.buf[len(im.buf)-1] == '\n' {
+						precedingText := strings.TrimRight(string(im.buf), "\n")
+						im.buf = im.buf[:0]
+						im.buf = append(im.buf, '/')
+						im.mu.Unlock()
+						if strings.TrimSpace(precedingText) != "" {
+							im.Lines <- InputLine{Text: precedingText, OK: true}
+						}
+						if needsNotify {
+							bufferUI.NotifyKeypress()
+							go func() {
+								<-bufferUI.PromptReady()
+								im.bufferModeRedraw()
+							}()
+						}
+						im.syncAndRedraw()
+					} else {
+						im.buf = append(im.buf, ch)
+						im.mu.Unlock()
+						if needsNotify {
+							bufferUI.NotifyKeypress()
+							go func() {
+								<-bufferUI.PromptReady()
+								im.bufferModeRedraw()
+							}()
+						}
+						im.syncAndRedraw()
+					}
+				} else {
 					im.mu.Unlock()
 					im.syncAndRedraw()
 				}
