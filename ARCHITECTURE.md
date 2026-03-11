@@ -149,20 +149,19 @@ Manages a split-screen terminal layout with a dynamically sized bottom area:
 - **Output region** (top): scrollable, with word wrapping and ANSI-aware
   cursor tracking. The scroll region shrinks/grows automatically as the
   bottom area changes size.
-- **Divider**: a horizontal line separating output from the input area.
-  Moves up when the input area grows.
-- **Queued messages** (between divider and input): messages submitted while
-  the agent is busy are displayed here as `[queued] text` in gray. They
-  remain visible until the agent processes each one, providing clear
-  feedback about pending input.
-- **Input area** (bottom): multi-line with word wrapping. Long input
-  expands upward instead of horizontal scrolling. The total bottom area
-  (queued messages + input lines) is capped at half the terminal height.
+- **Divider**: a horizontal line labelled `──you──` separating output from
+  the input area. Moves up when the input area grows.
+- **Input area** (bottom): multiline editing buffer. The user types freely,
+  including multiple lines via Enter. Long input expands upward instead of
+  horizontal scrolling. The total bottom area is capped at half the
+  terminal height. After the user presses Enter and pauses for a
+  configurable delay (`DefaultInputDelay`, default 10s), the entire buffer
+  is sent to the agent as one block, preventing pasted multiline text from
+  being split.
 
 Also provides:
 - `cprint` / `cprintNoNL`: colour-aware output helpers.
 - `stripAnsiCodes`: removes ANSI escapes for width calculations.
-- `AddQueuedMessage` / `RemoveQueuedMessage`: manage the visible queue.
 
 ### Configuration (`config.go`)
 

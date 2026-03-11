@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -13,35 +14,47 @@ import (
 	"golang.org/x/term"
 )
 
-// ─── Input Manager (async input) ─────────────────────────────────────
+// ─── Input Manager (async multiline input) ─────────────────────────────
 
-// InputLine represents a completed line from the user.
+// InputLine represents a completed input block from the user.
 type InputLine struct {
 	Text string
 	OK   bool // false means EOF/Ctrl-C
 }
 
-// InputManager reads from stdin continuously, allowing the user to type
-// even while the agent is processing. Completed lines are sent to Lines.
+// InputManager reads from stdin continuously. The user can type multiple
+// lines; Enter adds a newline to the buffer. After the user presses Enter
+// and stops typing for sendDelay seconds (cursor at beginning of a blank
+// line), the entire buffer is sent as one block. Slash commands and
+// exit/quit are sent immediately on Enter.
 type InputManager struct {
 	Lines    chan InputLine
 	rawBytes chan byte  // raw bytes from stdin reader goroutine
 	rawErr   chan error // errors from stdin reader goroutine
-	buf      []byte     // current line being edited
+	buf      []byte     // multiline buffer (may contain \n characters)
 	mu       sync.Mutex // protects buf and prompt state
-	prompt   string     // current prompt prefix being displayed
+	prompt   string     // kept for compatibility (unused in new UI)
 	agent    *YoloAgent
 	oldState *term.State
 	fd       int
+	sendDelay time.Duration
 }
 
 func NewInputManager(agent *YoloAgent) *InputManager {
+	delay := time.Duration(DefaultInputDelay) * time.Second
+	if override := os.Getenv("YOLO_INPUT_DELAY"); override != "" {
+		if secs, err := strconv.Atoi(override); err == nil && secs > 0 {
+			delay = time.Duration(secs) * time.Second
+		}
+	}
+
 	im := &InputManager{
-		Lines:    make(chan InputLine, 8),
-		rawBytes: make(chan byte, 64),
-		rawErr:   make(chan error, 1),
-		agent:    agent,
-		fd:       int(os.Stdin.Fd()),
+		Lines:     make(chan InputLine, 8),
+		rawBytes:  make(chan byte, 64),
+		rawErr:    make(chan error, 1),
+		agent:     agent,
+		fd:        int(os.Stdin.Fd()),
+		sendDelay: delay,
 	}
 	return im
 }
@@ -92,8 +105,8 @@ func (im *InputManager) Stop() {
 	}
 }
 
-// ShowPrompt displays a prompt and enables editing. Call from the main goroutine
-// or when ready for input. The prompt is redisplayed after agent output.
+// ShowPrompt triggers a UI redraw. The prompt string is stored but not
+// displayed in the new multiline UI (the divider label serves as the prompt).
 func (im *InputManager) ShowPrompt(prompt string) {
 	im.mu.Lock()
 	im.prompt = prompt
@@ -102,9 +115,7 @@ func (im *InputManager) ShowPrompt(prompt string) {
 }
 
 // SyncToUI updates the TerminalUI's copy of the input buffer without
-// triggering a redraw.  Call this before operations that will redraw
-// themselves (e.g. RemoveQueuedMessage) to ensure the displayed input
-// reflects the latest typing.
+// triggering a redraw.
 func (im *InputManager) SyncToUI() {
 	im.mu.Lock()
 	prompt := im.prompt
@@ -117,7 +128,7 @@ func (im *InputManager) SyncToUI() {
 	}
 }
 
-// syncAndRedraw updates the TerminalUI's copy and redraws the input line.
+// syncAndRedraw updates the TerminalUI's copy and redraws the input area.
 func (im *InputManager) syncAndRedraw() {
 	im.mu.Lock()
 	prompt := im.prompt
@@ -133,100 +144,130 @@ func (im *InputManager) syncAndRedraw() {
 	}
 }
 
-// ClearLine clears the input buffer but keeps the prompt visible.
+// ClearLine clears the input buffer.
 func (im *InputManager) ClearLine() string {
 	im.mu.Lock()
 	text := string(im.buf)
 	im.buf = im.buf[:0]
 	im.mu.Unlock()
-	// Redraw with empty buffer so the prompt stays visible
 	im.syncAndRedraw()
 	return text
 }
 
-// RedrawAfterOutput redraws the prompt and current buffer after agent output.
+// RedrawAfterOutput redraws the input area after agent output.
 func (im *InputManager) RedrawAfterOutput() {
 	im.syncAndRedraw()
 }
 
 // consumeEscapeSequence reads and discards the remainder of an escape sequence
-// after the initial ESC (0x1B) byte has been received. It handles:
-//   - CSI sequences: ESC [ <params> <letter>  (arrow keys, function keys, etc.)
-//   - SS3 sequences: ESC O <letter>           (some function keys)
-//   - Simple sequences: ESC <letter>           (Alt+key combos)
-//
-// The previous implementation consumed a fixed 2 bytes, which was wrong for
-// variable-length CSI sequences (e.g., ESC[1;5C for Ctrl+Right is 6 bytes).
-// Leftover bytes would leak into the input buffer as garbage, and real user
-// keystrokes could be consumed as part of the sequence, causing input loss.
+// after the initial ESC (0x1B) byte has been received.
 func (im *InputManager) consumeEscapeSequence() {
 	const timeout = 50 * time.Millisecond
 
-	// Read the first byte after ESC
 	var b byte
 	select {
 	case b = <-im.rawBytes:
 	case <-time.After(timeout):
-		return // bare ESC press, nothing to consume
+		return // bare ESC press
 	}
 
 	switch b {
-	case '[': // CSI sequence: ESC [ <params...> <final byte>
-		// Parameters are bytes in range 0x20-0x3F (digits, semicolons, etc.)
-		// Final byte is in range 0x40-0x7E (letters, @, ~, etc.)
+	case '[': // CSI sequence
 		for {
 			select {
 			case b = <-im.rawBytes:
 				if b >= 0x40 && b <= 0x7E {
-					return // final byte reached, sequence complete
+					return
 				}
-				// intermediate/parameter byte, keep consuming
 			case <-time.After(timeout):
-				return // incomplete sequence, give up
+				return
 			}
 		}
-	case 'O': // SS3 sequence: ESC O <letter>
+	case 'O': // SS3 sequence
 		select {
-		case <-im.rawBytes: // consume the final byte
+		case <-im.rawBytes:
 		case <-time.After(timeout):
 		}
 	default:
-		// Simple ESC + single char (e.g., Alt+key), already consumed
+		// Simple ESC + single char
+	}
+}
+
+// sendBuffer grabs the current buffer contents, clears the buffer, redraws,
+// and sends the text to the Lines channel. Called when the send timer fires
+// or for immediate-send commands.
+func (im *InputManager) sendBuffer() {
+	im.mu.Lock()
+	text := string(im.buf)
+	im.buf = im.buf[:0]
+	im.mu.Unlock()
+
+	// Trim trailing newlines but preserve internal ones
+	text = strings.TrimRight(text, "\n")
+
+	if strings.TrimSpace(text) != "" {
+		im.syncAndRedraw()
+		im.Lines <- InputLine{Text: text, OK: true}
+	} else {
+		im.syncAndRedraw()
 	}
 }
 
 func (im *InputManager) processLoop() {
+	sendTimer := time.NewTimer(0)
+	if !sendTimer.Stop() {
+		<-sendTimer.C
+	}
+
 	for {
 		select {
 		case ch := <-im.rawBytes:
 			im.mu.Lock()
 			switch {
 			case ch == '\r' || ch == '\n': // Enter
-				line := string(im.buf)
-				im.buf = im.buf[:0]
-				im.mu.Unlock()
-				// Show a queued indicator if the agent is busy
-				im.agent.mu.Lock()
-				busy := im.agent.busy
-				im.agent.mu.Unlock()
-				trimmed := strings.TrimSpace(line)
-				// Sync the now-empty buffer to the UI BEFORE adding the
-				// queued message so the redraw shows a clean input line
-				// instead of the just-submitted text.
-				im.syncAndRedraw()
-				if busy && trimmed != "" && globalUI != nil {
-					globalUI.AddQueuedMessage(trimmed)
+				// Check if this is a single-line command that should send immediately
+				trimmed := strings.TrimSpace(string(im.buf))
+				hasNewline := strings.Contains(string(im.buf), "\n")
+				isImmediateCmd := !hasNewline && trimmed != "" &&
+					(strings.HasPrefix(trimmed, "/") ||
+						strings.ToLower(trimmed) == "exit" ||
+						strings.ToLower(trimmed) == "quit")
+
+				if isImmediateCmd {
+					// Immediate send for slash commands and exit/quit
+					text := string(im.buf)
+					im.buf = im.buf[:0]
+					im.mu.Unlock()
+					sendTimer.Stop()
+					im.syncAndRedraw()
+					im.Lines <- InputLine{Text: text, OK: true}
+				} else {
+					// Add newline to buffer and start/reset the send timer
+					im.buf = append(im.buf, '\n')
+					im.mu.Unlock()
+					sendTimer.Reset(im.sendDelay)
+					im.syncAndRedraw()
 				}
-				im.Lines <- InputLine{Text: line, OK: true}
+
 			case ch == 127 || ch == 8: // Backspace
 				if len(im.buf) > 0 {
-					im.buf = im.buf[:len(im.buf)-1]
+					// Remove last rune (handles UTF-8 properly)
+					_, size := utf8.DecodeLastRune(im.buf)
+					if size > 0 {
+						im.buf = im.buf[:len(im.buf)-size]
+					} else {
+						im.buf = im.buf[:len(im.buf)-1]
+					}
 				}
+				// Cancel send timer — user is still editing
+				sendTimer.Stop()
 				im.mu.Unlock()
 				im.syncAndRedraw()
+
 			case ch == 3: // Ctrl-C
 				im.buf = im.buf[:0]
 				im.mu.Unlock()
+				sendTimer.Stop()
 				im.syncAndRedraw()
 				// If agent is busy, cancel the current chat
 				im.agent.mu.Lock()
@@ -237,6 +278,7 @@ func (im *InputManager) processLoop() {
 				} else {
 					im.Lines <- InputLine{OK: false}
 				}
+
 			case ch == 4: // Ctrl-D
 				if len(im.buf) == 0 {
 					im.mu.Unlock()
@@ -244,23 +286,32 @@ func (im *InputManager) processLoop() {
 				} else {
 					im.mu.Unlock()
 				}
-			case ch == 21: // Ctrl-U (kill line)
+
+			case ch == 21: // Ctrl-U (kill entire buffer)
 				im.buf = im.buf[:0]
 				im.mu.Unlock()
+				sendTimer.Stop()
 				im.syncAndRedraw()
-			case ch == 23: // Ctrl-W (kill word)
+
+			case ch == 23: // Ctrl-W (kill word, don't cross newlines)
 				for len(im.buf) > 0 && im.buf[len(im.buf)-1] == ' ' {
 					im.buf = im.buf[:len(im.buf)-1]
 				}
-				for len(im.buf) > 0 && im.buf[len(im.buf)-1] != ' ' {
+				for len(im.buf) > 0 && im.buf[len(im.buf)-1] != ' ' && im.buf[len(im.buf)-1] != '\n' {
 					im.buf = im.buf[:len(im.buf)-1]
 				}
 				im.mu.Unlock()
+				sendTimer.Stop()
 				im.syncAndRedraw()
+
 			case ch == 27: // Escape sequence
 				im.mu.Unlock()
 				im.consumeEscapeSequence()
+
 			default:
+				// Cancel send timer — user is typing
+				sendTimer.Stop()
+
 				if ch >= 0xC0 && ch < 0xFE {
 					// UTF-8 leading byte: collect continuation bytes
 					size := utf8ByteLen(ch)
@@ -269,7 +320,7 @@ func (im *InputManager) processLoop() {
 					for i := 1; i < size; i++ {
 						select {
 						case cb := <-im.rawBytes:
-							if cb&0xC0 == 0x80 { // valid continuation byte
+							if cb&0xC0 == 0x80 {
 								utfBuf = append(utfBuf, cb)
 							} else {
 								utfBuf = nil
@@ -299,6 +350,10 @@ func (im *InputManager) processLoop() {
 					im.syncAndRedraw()
 				}
 			}
+
+		case <-sendTimer.C:
+			// Send timer expired — deliver the entire buffer as one block
+			im.sendBuffer()
 
 		case <-im.rawErr:
 			im.Lines <- InputLine{OK: false}
