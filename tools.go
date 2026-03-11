@@ -156,6 +156,29 @@ var validTools = []string{
 	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "learn", "send_email", "send_report", "check_inbox", "process_inbox_with_response",
 }
 
+// subagentTools is the subset of ollamaTools exposed to sub-agents.
+// Excluded: spawn_subagent (no nesting), list_subagents, read_subagent_result,
+// summarize_subagents, list_models, switch_model, restart, learn,
+// send_email, send_report, check_inbox, process_inbox_with_response.
+var subagentToolNames = map[string]bool{
+	"read_file": true, "write_file": true, "edit_file": true,
+	"list_files": true, "search_files": true, "run_command": true,
+	"think": true, "make_dir": true, "remove_dir": true,
+	"copy_file": true, "move_file": true, "reddit": true,
+	"gog": true, "web_search": true,
+}
+
+// SubagentTools returns the ToolDef slice for sub-agents.
+func SubagentTools() []ToolDef {
+	var tools []ToolDef
+	for _, td := range ollamaTools {
+		if subagentToolNames[td.Function.Name] {
+			tools = append(tools, td)
+		}
+	}
+	return tools
+}
+
 // errorMessage creates a standardized error message by extracting the error details
 // from the fmt.Sprintf format string. This ensures consistent error reporting
 // across all tool implementations.
