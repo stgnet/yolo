@@ -272,7 +272,7 @@ func getBoolArg(args map[string]any, key string, fallback bool) bool {
 		case bool:
 			return val
 		case string:
-			return strings.ToLower(val) == "true" || val == "1"
+			return strings.ToLower(val) == "true" || strings.ToLower(val) == "yes" || val == "1"
 		case float64:
 			return val == 1.0
 		case int:
