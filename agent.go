@@ -483,7 +483,7 @@ func (a *YoloAgent) parseTextToolCalls(text string) []ParsedToolCall {
 			body := match[2]
 			args := map[string]any{}
 			for _, pm := range reParam.FindAllStringSubmatch(body, -1) {
-				args[pm[1]] = pm[2]
+				args[pm[1]] = convertParamValue(pm[2])
 			}
 			calls = append(calls, ParsedToolCall{Name: name, Args: args})
 		}
@@ -498,7 +498,7 @@ func (a *YoloAgent) parseTextToolCalls(text string) []ParsedToolCall {
 			body := match[2]
 			args := map[string]any{}
 			for _, pm := range reParam2b.FindAllStringSubmatch(body, -1) {
-				args[pm[1]] = pm[2]
+				args[pm[1]] = convertParamValue(pm[2])
 			}
 			calls = append(calls, ParsedToolCall{Name: name, Args: args})
 		}
@@ -582,6 +582,22 @@ func (a *YoloAgent) parseTextToolCalls(text string) []ParsedToolCall {
 	}
 
 	return calls
+}
+
+// convertParamValue attempts to convert a string parameter value to its
+// appropriate Go type (int64, float64, bool, or string). This ensures that
+// Format 2/2b XML-style tool calls produce the same typed args as other formats.
+func convertParamValue(val string) any {
+	if num, err := strconv.ParseInt(val, 10, 64); err == nil {
+		return num
+	}
+	if floatVal, err := strconv.ParseFloat(val, 64); err == nil {
+		return floatVal
+	}
+	if boolVal, err := strconv.ParseBool(val); err == nil {
+		return boolVal
+	}
+	return val
 }
 
 // parseParamString converts "key=value, key2=value2" into a JSON-serializable map
