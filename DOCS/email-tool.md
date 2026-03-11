@@ -58,21 +58,36 @@ Convenience wrapper for sending progress reports to scott@stg.net.
 
 ### Prerequisites
 
-The `EMAIL_PASSWORD` environment variable must be set with an app-specific password for the b-haven.org email account.
+Email sending uses the local Postfix MTA on b-haven.org. No authentication required when running on the server.
+
+The following environment variables can be used to customize SMTP settings:
 
 ```bash
-export EMAIL_PASSWORD="your-app-password-here"
+# Optional: Override defaults
+export EMAIL_SMTP_HOST="localhost"        # Default: localhost
+export EMAIL_USERNAME="yolo@b-haven.org"  # Default: yolo@b-haven.org
+export EMAIL_FROM_ADDRESS="yolo@b-haven.org"  # Default: yolo@b-haven.org
+export EMAIL_FROM_NAME="YOLO"             # Default: YOLO
 ```
 
 ### Default Configuration
 
 | Setting | Default | Environment Variable |
 |---------|---------|---------------------|
-| SMTP Host | b-haven.org | EMAIL_SMTP_HOST |
-| SMTP Port | 587 | - |
+| SMTP Host | localhost | EMAIL_SMTP_HOST |
+| SMTP Port | 25 | - |
 | Username | yolo@b-haven.org | EMAIL_USERNAME |
 | From Address | yolo@b-haven.org | EMAIL_FROM_ADDRESS |
 | From Name | YOLO | EMAIL_FROM_NAME |
+
+### Sending via Postfix
+
+The email system connects to `localhost:25` and uses the local Postfix server which handles:
+- DKIM signing automatically
+- Message routing and delivery
+- TLS encryption for outbound connections
+
+No password authentication is needed when using the local MTA.
 
 ---
 
@@ -99,8 +114,8 @@ Notify when something requires human attention:
   "name": "send_email",
   "arguments": {
     "to": "scott@stg.net",
-    "subject": "⚠️ Blocker: Missing SMTP Credentials",
-    "body": "Hi Scott,\n\nI need the EMAIL_PASSWORD environment variable to be set so I can send emails. Without this, I cannot use the email tools.\n\nPlease configure and let me know when ready.\n\n- YOLO"
+    "subject": "⚠️ Blocker: Need Guidance",
+    "body": "Hi Scott,\n\nI've completed the concurrency improvements and all tests pass. Would you like me to:\n\n1. Research additional optimization opportunities?\n2. Work on new features?\n3. Document everything and wait for feedback?\n\n- YOLO"
   }
 }
 ```
@@ -130,14 +145,9 @@ Report interesting findings from research:
    Subject: YOLO Update
 ```
 
-### Error (Missing Password)
-```
-Error: EMAIL_PASSWORD not configured. Set the environment variable or configure SMTP credentials.
-```
-
 ### Error (SMTP Failure)
 ```
-Error sending email: dial tcp b-haven.org:587: i/o timeout
+Error sending email: dial tcp localhost:25: connection refused
 ```
 
 ---
@@ -161,9 +171,30 @@ YOLO → send_report → scott@stg.net
                     ↓
               Scott replies with feedback/directions
                     ↓
-              YOLO reads inbox (via gog gmail)
+              Email arrives at yolo@b-haven.org inbox (/var/mail/b-haven.org/yolo/new/)
+                    ↓
+              YOLO checks Maildir for new messages (via gog gmail or custom tool)
                     ↓
               YOLO takes action based on feedback
 ```
 
 This enables a semi-autonomous workflow where YOLO can report progress and receive guidance without direct console interaction.
+
+### Reading Incoming Email
+
+YOLO can read incoming emails via the `gog` tool (gmail integration) or by polling the Maildir directly:
+
+```bash
+# Check for new messages
+ls /var/mail/b-haven.org/yolo/new/
+
+# Read a message content
+cat /var/mail/b-haven.org/yolo/new/1709932800.v35.b-haven.org.Pid.HASH
+```
+
+### Using gog Tool for Gmail
+
+If the email account is also configured with Gmail/Google Workspace:
+- `gog "gmail list"` - List recent messages
+- `gog "gmail search query"` - Search inbox
+- Full integration with Google Workspace tools available
