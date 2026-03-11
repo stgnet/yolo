@@ -58,31 +58,35 @@ func TestSendReportToolDefinition(t *testing.T) {
 	}
 }
 
-func TestSendEmailMissingPassword(t *testing.T) {
-	// Unset email password to test error handling
+func TestSendEmailIntegration(t *testing.T) {
+	// Unset email password (no longer needed with sendmail)
 	os.Unsetenv("EMAIL_PASSWORD")
 
 	executor := NewToolExecutor("/tmp", nil)
 	result := executor.sendEmail(map[string]any{
-		"subject": "Test",
-		"body":    "Test body",
+		"subject": "YOLO Test Email",
+		"body":    "This is a test email from YOLO.",
+		"to":      "scott@stg.net",
 	})
 
-	if result == "" || !strings.Contains(result, "Error") {
-		t.Error("Expected error when EMAIL_PASSWORD not configured")
+	// Should succeed with sendmail/postfix configured
+	if result == "" || !strings.Contains(result, "Email sent successfully") {
+		t.Logf("Result: %s", result)
+		t.Error("Expected email to be sent successfully via sendmail")
 	}
 }
 
-func TestSendReportMissingPassword(t *testing.T) {
+func TestSendReportIntegration(t *testing.T) {
 	os.Unsetenv("EMAIL_PASSWORD")
 
 	executor := NewToolExecutor("/tmp", nil)
 	result := executor.sendReport(map[string]any{
-		"body": "Test body",
+		"body": "This is a test progress report from YOLO.",
 	})
 
-	if result == "" || !strings.Contains(result, "Error") {
-		t.Error("Expected error when EMAIL_PASSWORD not configured")
+	if result == "" || !strings.Contains(result, "Progress report sent successfully") {
+		t.Logf("Result: %s", result)
+		t.Error("Expected report to be sent successfully via sendmail")
 	}
 }
 
@@ -124,8 +128,9 @@ func TestSendEmailDefaultRecipient(t *testing.T) {
 		"body":    "Test body",
 	})
 
-	// Should either error on missing password or mention scott@stg.net as default
-	if !strings.Contains(result, "scott@stg.net") && !strings.Contains(result, "EMAIL_PASSWORD") {
-		t.Error("Expected default recipient scott@stg.net to be mentioned")
+	// Should succeed and use default recipient scott@stg.net
+	if !strings.Contains(result, "scott@stg.net") || !strings.Contains(result, "Email sent successfully") {
+		t.Logf("Result: %s", result)
+		t.Error("Expected default recipient scott@stg.net to be used and email to send successfully")
 	}
 }

@@ -1,4 +1,6 @@
-// Package concurrency provides thread pool and worker management utilities
+// Package concurrency provides structured concurrency utilities for Go programs.
+// Implements patterns like thread pools, rate limiters, and groups that ensure
+// proper goroutine lifecycle management inspired by JEP 428 Structured Concurrency.
 package concurrency
 
 import (

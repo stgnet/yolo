@@ -1,4 +1,6 @@
-// Package concurrency provides thread pool and worker management utilities
+// Package concurrency provides structured concurrency utilities for Go programs.
+// Implements patterns like thread pools, rate limiters, and groups that ensure
+// proper goroutine lifecycle management inspired by JEP 428 Structured Concurrency.
 package concurrency
 
 import (
@@ -69,6 +71,21 @@ func (tp *ThreadPool) Close() {
 		close(tp.jobs)
 		tp.wg.Wait()
 	}
+}
+
+// Wait blocks until all submitted jobs are completed
+func (tp *ThreadPool) Wait() {
+	tp.wg.Wait()
+}
+
+// QueueSize returns the number of pending jobs in the queue
+func (tp *ThreadPool) QueueSize() int {
+	return len(tp.jobs)
+}
+
+// WorkerCount returns the number of workers in the pool
+func (tp *ThreadPool) WorkerCount() int {
+	return tp.numWorkers
 }
 
 // SubmitWithContext submits a job that respects context cancellation
