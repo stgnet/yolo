@@ -341,19 +341,10 @@ func emailShouldRespond(email EmailMessage) bool {
 		return true
 	}
 
-	// Respond to emails from prioritized human senders (can be configured)
-	if email.From != "" {
-		// Check for known human sender patterns
-		if strings.Contains(email.From, "@") && len(email.From) > 5 {
-			// Looks like a valid email address
-			return true
-		}
-	}
-
 	// Respond to short emails (< 5000 chars) that look like human communication
 	// Exclude very short automated-looking messages
 	if len(email.Content) < 5000 && email.From != "" {
-		// Check if content looks more like automation than human text
+		// Check if content looks more like automation than human text FIRST
 		automationIndicators := []string{
 			"build completed", "build finished", "test run", "ci check",
 			"job finished", "process completed", "execution complete",
@@ -368,7 +359,33 @@ func emailShouldRespond(email EmailMessage) bool {
 			}
 		}
 
-		if !isAutomation {
+		// Skip automated messages
+		if isAutomation {
+			return false
+		}
+
+		// Check for known human sender patterns
+		if strings.Contains(email.From, "@") && len(email.From) > 5 {
+			// Looks like a valid email address - respond to it
+			return true
+		}
+	} else if email.From != "" {
+		// For long emails, also check automation indicators and senders
+		automationIndicators := []string{
+			"build completed", "build finished", "test run", "ci check",
+			"job finished", "process completed", "execution complete",
+			"system notification", "automated", "scheduled",
+		}
+
+		isAutomation := false
+		for _, indicator := range automationIndicators {
+			if strings.Contains(body, indicator) {
+				isAutomation = true
+				break
+			}
+		}
+
+		if !isAutomation && strings.Contains(email.From, "@") {
 			return true
 		}
 	}
@@ -385,7 +402,7 @@ func (t *ToolExecutor) getCurrentTime() time.Time {
 func (t *ToolExecutor) composeResponseToEmail(email EmailMessage) string {
 	now := t.getCurrentTime()
 
-	response := fmt.Sprintf("Thank you for your message regarding '%s'.\n\n", email.Subject)
+	response := fmt.Sprintf("Thank you for your message regarding '%s' from %s.\n\n", email.Subject, email.From)
 	response += fmt.Sprintf("YOLO received your email on %s.\n\n", now.Format(time.RFC1123))
 	response += "I'm currently in autonomous operation mode. If this was a question or request:\n"
 	response += "- I'll process it according to my current priorities\n"
