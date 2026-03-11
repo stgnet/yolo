@@ -12,6 +12,30 @@ import (
 	"golang.org/x/term"
 )
 
+// ─── Agent Window Constants ─────────────────────────────────────────
+
+const (
+	// SubagentContentRows is the number of content lines per subagent window.
+	SubagentContentRows = 4
+	// SubagentWindowRows is divider + content per subagent window.
+	SubagentWindowRows = SubagentContentRows + 1
+	// MaxVisibleSubWindows caps how many subagent windows are shown at once.
+	MaxVisibleSubWindows = 3
+	// SubagentWindowTimeout removes completed subagent windows after this duration.
+	SubagentWindowTimeout = 300 * time.Second
+	// MinScrollRows is the minimum rows reserved for the main agent scroll area.
+	MinScrollRows = 4
+)
+
+// AgentWindow represents a subagent's output window displayed at the top of the terminal.
+type AgentWindow struct {
+	id          int
+	label       string
+	textBuf     strings.Builder
+	completed   bool
+	completedAt time.Time
+}
+
 // ─── Terminal Output ──────────────────────────────────────────────────
 
 // globalUI is set once the split UI is active. Before that, output goes to stdout directly.
@@ -169,10 +193,14 @@ type TerminalUI struct {
 	prompt         string // kept for compatibility
 	outRow         int    // tracked row of cursor in output region
 	outCol         int    // tracked col of cursor in output region
+	scrollStart    int    // first row of the main agent scroll region
 	scrollEnd      int    // last row of the scroll region (dynamic)
 	peakBottomRows int    // high-water mark for bottom area (grow-only)
 	streaming      bool   // true while inline output is in progress (prevents scroll region changes)
 	pendingWrap    bool   // true when last output char filled the last column (terminal pending wrap state)
+
+	// Subagent windows displayed at the top of the terminal
+	subWindows []*AgentWindow
 
 	// Rate-limited redraw support
 	inputDirty atomic.Bool // set when input changes; cleared by redraw tick
@@ -249,14 +277,15 @@ func NewTerminalUI() *TerminalUI {
 		cols = 80
 	}
 	return &TerminalUI{
-		fd:         fd,
-		rows:       rows,
-		cols:       cols,
-		outRow:     1,
-		outCol:     1,
-		scrollEnd:  rows - 2,
-		redrawStop: make(chan struct{}),
-		redrawDone: make(chan struct{}),
+		fd:          fd,
+		rows:        rows,
+		cols:        cols,
+		outRow:      2,
+		outCol:      1,
+		scrollStart: 2, // row 1 is the agent divider
+		scrollEnd:   rows - 2,
+		redrawStop:  make(chan struct{}),
+		redrawDone:  make(chan struct{}),
 	}
 }
 
@@ -272,14 +301,20 @@ func (ui *TerminalUI) Setup() {
 		ui.cols = cols
 	}
 
+	ui.scrollStart = ui.topFixedRows() + 2 // +1 for agent divider row, +1 for 1-based
 	ui.scrollEnd = ui.rows - 2
 
 	// Build the entire setup sequence in a buffer, flush once
 	var buf strings.Builder
-	buf.WriteString("\033[2J")                    // clear screen
-	fmt.Fprintf(&buf, "\033[1;%dr", ui.scrollEnd) // set scroll region
-	ui.writeDividerTo(&buf)
-	ui.outRow = 1
+	buf.WriteString("\033[2J") // clear screen
+
+	// Render any subagent windows at the top
+	ui.renderAllFixedRowsTo(&buf)
+
+	// Set scroll region for main agent output
+	fmt.Fprintf(&buf, "\033[%d;%dr", ui.scrollStart, ui.scrollEnd)
+	ui.writeDividerTo(&buf) // "you" divider
+	ui.outRow = ui.scrollStart
 	ui.outCol = 1
 	fmt.Fprintf(&buf, "\033[%d;%dH", ui.outRow, ui.outCol)
 	os.Stdout.WriteString(buf.String())
@@ -323,6 +358,88 @@ func (ui *TerminalUI) writeDividerTo(buf *strings.Builder) {
 	}
 	divider := label + strings.Repeat("─", remaining)
 	fmt.Fprintf(buf, "\033[%d;1H%s%s%s", dividerRow, Gray, divider, Reset)
+}
+
+// writeAgentDividerTo draws the "──agent──" divider at the specified row.
+func (ui *TerminalUI) writeAgentDividerTo(buf *strings.Builder, row int) {
+	label := "──agent"
+	remaining := ui.cols - len(label)
+	if remaining < 0 {
+		remaining = 0
+	}
+	divider := label + strings.Repeat("─", remaining)
+	fmt.Fprintf(buf, "\033[%d;1H%s%s%s", row, Cyan, divider, Reset)
+}
+
+// writeSubDividerTo draws a "──subagent #N──" divider for a subagent window.
+func (ui *TerminalUI) writeSubDividerTo(buf *strings.Builder, w *AgentWindow, row int) {
+	status := ""
+	color := Magenta
+	if w.completed {
+		status = " (done)"
+		color = Gray
+	}
+	label := fmt.Sprintf("──subagent #%d%s", w.id, status)
+	remaining := ui.cols - len(label)
+	if remaining < 0 {
+		remaining = 0
+	}
+	divider := label + strings.Repeat("─", remaining)
+	fmt.Fprintf(buf, "\033[%d;1H%s%s%s", row, color, divider, Reset)
+}
+
+// topFixedRows returns the number of rows occupied by subagent windows at the top.
+func (ui *TerminalUI) topFixedRows() int {
+	return len(ui.subWindows) * SubagentWindowRows
+}
+
+// renderAllFixedRowsTo renders all subagent windows and the agent divider.
+func (ui *TerminalUI) renderAllFixedRowsTo(buf *strings.Builder) {
+	for i, w := range ui.subWindows {
+		startRow := i*SubagentWindowRows + 1
+		ui.writeSubDividerTo(buf, w, startRow)
+		ui.renderSubWindowContentTo(buf, w, startRow+1)
+	}
+	// Agent divider is always the row just before scrollStart
+	agentDivRow := ui.topFixedRows() + 1
+	ui.writeAgentDividerTo(buf, agentDivRow)
+}
+
+// renderSubWindowContentTo renders the content rows of a subagent window.
+func (ui *TerminalUI) renderSubWindowContentTo(buf *strings.Builder, w *AgentWindow, contentStartRow int) {
+	text := w.textBuf.String()
+	// Strip ANSI codes for clean wrapping in the small window
+	text = stripAnsiCodes(text)
+
+	// Split into lines and wrap
+	rawLines := strings.Split(text, "\n")
+	var wrapped []string
+	for _, line := range rawLines {
+		if line == "" {
+			wrapped = append(wrapped, "")
+			continue
+		}
+		for len(line) > ui.cols {
+			wrapped = append(wrapped, line[:ui.cols])
+			line = line[ui.cols:]
+		}
+		wrapped = append(wrapped, line)
+	}
+
+	// Take last SubagentContentRows lines
+	visible := wrapped
+	if len(visible) > SubagentContentRows {
+		visible = visible[len(visible)-SubagentContentRows:]
+	}
+
+	// Render content rows
+	for i := 0; i < SubagentContentRows; i++ {
+		row := contentStartRow + i
+		fmt.Fprintf(buf, "\033[%d;1H\033[2K", row)
+		if i < len(visible) {
+			rawWriteTo(buf, visible[i])
+		}
+	}
 }
 
 // Teardown restores the full scroll region, resets terminal attributes, and
@@ -532,6 +649,9 @@ func (ui *TerminalUI) renderInputFullTo(buf *strings.Builder) {
 	}
 
 	newScrollEnd := ui.rows - bottomRows - 1
+	if newScrollEnd < ui.scrollStart+MinScrollRows-1 {
+		newScrollEnd = ui.scrollStart + MinScrollRows - 1
+	}
 	if newScrollEnd < 1 {
 		newScrollEnd = 1
 	}
@@ -547,9 +667,12 @@ func (ui *TerminalUI) renderInputFullTo(buf *strings.Builder) {
 		ui.pendingWrap = false
 	}
 	ui.scrollEnd = newScrollEnd
-	fmt.Fprintf(buf, "\033[1;%dr", ui.scrollEnd)
+	fmt.Fprintf(buf, "\033[%d;%dr", ui.scrollStart, ui.scrollEnd)
 	if ui.outRow > ui.scrollEnd {
 		ui.outRow = ui.scrollEnd
+	}
+	if ui.outRow < ui.scrollStart {
+		ui.outRow = ui.scrollStart
 	}
 
 	// Clear everything below divider
@@ -701,10 +824,155 @@ func (ui *TerminalUI) RefreshSize() {
 	if cols, rows, err := term.GetSize(ui.fd); err == nil && (rows != ui.rows || cols != ui.cols) {
 		ui.rows = rows
 		ui.cols = cols
+		ui.scrollStart = ui.topFixedRows() + 2
 		if !ui.streaming {
-			ui.renderInputFull()
+			ui.recalcLayoutLocked()
 		}
 		// If streaming, OutputFinishLine will redraw with updated dimensions
 	}
+}
+
+// ─── Subagent Window Management ─────────────────────────────────────
+
+// AddSubagentWindow creates a new subagent output window at the top of the
+// terminal. It recalculates the layout and redraws the screen. Returns the
+// window so the caller can write output to it.
+func (ui *TerminalUI) AddSubagentWindow(id int, label string) {
+	ui.mu.Lock()
+	defer ui.mu.Unlock()
+
+	// Enforce maximum visible windows — remove oldest completed first
+	for len(ui.subWindows) >= MaxVisibleSubWindows {
+		removed := false
+		for i, w := range ui.subWindows {
+			if w.completed {
+				ui.subWindows = append(ui.subWindows[:i], ui.subWindows[i+1:]...)
+				removed = true
+				break
+			}
+		}
+		if !removed {
+			// Remove the oldest running window as last resort
+			ui.subWindows = ui.subWindows[1:]
+		}
+	}
+
+	w := &AgentWindow{
+		id:    id,
+		label: label,
+	}
+	ui.subWindows = append(ui.subWindows, w)
+	ui.recalcLayoutLocked()
+}
+
+// RemoveSubagentWindow removes a subagent window and reclaims its screen space.
+func (ui *TerminalUI) RemoveSubagentWindow(id int) {
+	ui.mu.Lock()
+	defer ui.mu.Unlock()
+
+	for i, w := range ui.subWindows {
+		if w.id == id {
+			ui.subWindows = append(ui.subWindows[:i], ui.subWindows[i+1:]...)
+			ui.recalcLayoutLocked()
+			return
+		}
+	}
+}
+
+// WriteToSubagentWindow appends text to a subagent's window buffer and
+// re-renders the window's content rows. This is safe to call from any goroutine.
+func (ui *TerminalUI) WriteToSubagentWindow(id int, text string) {
+	ui.mu.Lock()
+	defer ui.mu.Unlock()
+
+	var w *AgentWindow
+	var idx int
+	for i, sw := range ui.subWindows {
+		if sw.id == id {
+			w = sw
+			idx = i
+			break
+		}
+	}
+	if w == nil {
+		return
+	}
+
+	w.textBuf.WriteString(text)
+
+	// Re-render this window's content rows
+	contentStartRow := idx*SubagentWindowRows + 2 // +1 for 1-based, +1 to skip divider
+	var buf strings.Builder
+	ui.renderSubWindowContentTo(&buf, w, contentStartRow)
+	// Restore cursor to main agent output position
+	fmt.Fprintf(&buf, "\033[%d;%dH", ui.outRow, ui.outCol)
+	os.Stdout.WriteString(buf.String())
+}
+
+// MarkSubagentComplete marks a subagent window as complete and schedules
+// its removal after SubagentWindowTimeout.
+func (ui *TerminalUI) MarkSubagentComplete(id int) {
+	ui.mu.Lock()
+	for _, w := range ui.subWindows {
+		if w.id == id {
+			w.completed = true
+			w.completedAt = time.Now()
+			break
+		}
+	}
+	// Re-render divider to show "(done)" status
+	for i, w := range ui.subWindows {
+		if w.id == id {
+			dividerRow := i*SubagentWindowRows + 1
+			var buf strings.Builder
+			ui.writeSubDividerTo(&buf, w, dividerRow)
+			fmt.Fprintf(&buf, "\033[%d;%dH", ui.outRow, ui.outCol)
+			os.Stdout.WriteString(buf.String())
+			break
+		}
+	}
+	ui.mu.Unlock()
+
+	// Schedule removal after timeout
+	go func() {
+		time.Sleep(SubagentWindowTimeout)
+		ui.RemoveSubagentWindow(id)
+	}()
+}
+
+// recalcLayoutLocked recalculates the screen layout after subagent windows
+// are added or removed. It clears the screen, re-renders all fixed rows,
+// sets the new scroll region, and redraws the input area.
+// Caller must hold ui.mu.
+func (ui *TerminalUI) recalcLayoutLocked() {
+	ui.scrollStart = ui.topFixedRows() + 2 // +1 for agent divider, +1 for 1-based
+	newScrollEnd := ui.rows - 2
+	if newScrollEnd < ui.scrollStart+MinScrollRows-1 {
+		newScrollEnd = ui.scrollStart + MinScrollRows - 1
+	}
+	ui.scrollEnd = newScrollEnd
+
+	var buf strings.Builder
+
+	// Clear entire screen
+	buf.WriteString("\033[r")       // reset scroll region temporarily
+	buf.WriteString("\033[2J")      // clear screen
+
+	// Render subagent windows and agent divider
+	ui.renderAllFixedRowsTo(&buf)
+
+	// Set scroll region for main agent
+	fmt.Fprintf(&buf, "\033[%d;%dr", ui.scrollStart, ui.scrollEnd)
+
+	// Reset cursor to top of scroll region
+	ui.outRow = ui.scrollStart
+	ui.outCol = 1
+	ui.pendingWrap = false
+	fmt.Fprintf(&buf, "\033[%d;%dH", ui.outRow, ui.outCol)
+
+	// Render you divider and input
+	ui.renderInputFullTo(&buf)
+
+	os.Stdout.WriteString(buf.String())
 }
 
