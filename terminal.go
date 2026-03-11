@@ -64,18 +64,24 @@ func rawWriteTo(buf *strings.Builder, s string) {
 }
 
 func cprint(color, text string) {
+	s := fmt.Sprintf("%s%s%s\n", color, text, Reset)
 	if globalUI != nil {
-		globalUI.OutputPrint(fmt.Sprintf("%s%s%s\n", color, text, Reset))
+		globalUI.OutputPrint(s)
+	} else if bufferUI != nil {
+		bufferUI.Write(s)
 	} else {
-		rawWrite(fmt.Sprintf("%s%s%s\n", color, text, Reset))
+		rawWrite(s)
 	}
 }
 
 func cprintNoNL(color, text string) {
+	s := fmt.Sprintf("%s%s%s", color, text, Reset)
 	if globalUI != nil {
-		globalUI.OutputPrint(fmt.Sprintf("%s%s%s", color, text, Reset))
+		globalUI.OutputPrint(s)
+	} else if bufferUI != nil {
+		bufferUI.Write(s)
 	} else {
-		rawWrite(fmt.Sprintf("%s%s%s", color, text, Reset))
+		rawWrite(s)
 	}
 }
 
