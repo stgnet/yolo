@@ -324,30 +324,12 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		})
 
 		// Execute each tool and add tool-role result.
-		// If the user has typed a message, hand off remaining tools to a
-		// background executor so the main agent can respond immediately.
-		handedOff := false
-		for i, call := range toolCalls {
-			// Check for queued input before each tool
-			if len(a.inputMgr.Lines) > 0 {
-				remaining := toolCalls[i:]
-				cprint(Cyan, fmt.Sprintf("  [handoff] User input queued — forking %d remaining tool(s) to background", len(remaining)))
-				a.handoffRemainingTools(remaining)
-				// Tell the agent what happened so it has context
-				roundMsgs = append(roundMsgs, ChatMessage{
-					Role: "system",
-					Content: fmt.Sprintf(
-						"IMPORTANT: The user has typed a new message and is waiting for you. "+
-							"The %d remaining tool call(s) in this batch have been handed off to a "+
-							"background executor — they will complete automatically and their results "+
-							"will be available in your next turn. You do NOT need to re-run them. "+
-							"Respond to the user's message now. Briefly mention that background work "+
-							"is still in progress if relevant.", len(remaining)),
-				})
-				handedOff = true
-				break
-			}
-
+		// Track whether the user typed something mid-tool-loop.
+		// We don't interrupt execution — tools keep running normally —
+		// but we consume the queued message so the agent sees it on
+		// its next LLM round without waiting for drainQueuedInput.
+		userInterjected := false
+		for _, call := range toolCalls {
 			name := call.Name
 			args := call.Args
 			if args == nil {
@@ -376,41 +358,34 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 			toolLog = append(toolLog, toolLogEntry{name: name, args: args, result: cleanResult})
 		}
 
-		// If tools were handed off, do one final LLM call so the agent can
-		// acknowledge the handoff and wrap up, then break the tool loop.
-		if handedOff {
-			allMsgs := make([]ChatMessage, 0, len(baseMsgs)+len(roundMsgs))
-			allMsgs = append(allMsgs, baseMsgs...)
-			allMsgs = append(allMsgs, roundMsgs...)
-
-			ctx, cancel := context.WithCancel(context.Background())
-			a.mu.Lock()
-			a.cancelChat = cancel
-			a.mu.Unlock()
-
-			wrapResult, wrapErr := a.ollama.Chat(ctx, a.history.GetModel(), allMsgs, nil) // no tools — just respond
-			cancel()
-			a.mu.Lock()
-			a.cancelChat = nil
-			a.mu.Unlock()
-
-			if wrapErr == nil && wrapResult != nil {
-				finalText = wrapResult.DisplayText
-			}
-			break
-		}
-
-		// Also check after the batch completes (in case the queue filled
-		// during execution of the last tool)
+		// After the tool batch completes, check if the user typed something
+		// while tools were running.  Instead of a generic "wrap up" nudge,
+		// consume the queued message and inject it as a real user message
+		// so the agent responds to it on the very next LLM round.
 		if len(a.inputMgr.Lines) > 0 {
-			cprint(Cyan, "  [nudge] User input queued — asking agent to wrap up")
-			roundMsgs = append(roundMsgs, ChatMessage{
-				Role: "system",
-				Content: "IMPORTANT: The user has typed a new message and is waiting for you. " +
-					"You MUST finish immediately. Do NOT call any more tools. " +
-					"Provide a brief summary of what you've done so far, then stop so " +
-					"the user's message can be processed.",
-			})
+			select {
+			case qLine := <-a.inputMgr.Lines:
+				qText := strings.TrimSpace(qLine.Text)
+				if qText != "" {
+					cprint(Cyan, "  [interjection] Delivering queued user message to agent")
+					cprint(Green, fmt.Sprintf("  you> %s", qText))
+					if globalUI != nil {
+						a.inputMgr.SyncToUI()
+						globalUI.RemoveQueuedMessage()
+					}
+					// Record in persistent history as a real user message
+					a.history.AddMessage("user", qText, nil)
+					// Inject into the current round so the agent sees it
+					roundMsgs = append(roundMsgs, ChatMessage{
+						Role:    "user",
+						Content: qText,
+					})
+					userInterjected = true
+					_ = userInterjected // reserved for future use
+				}
+			default:
+				// Channel drained between len check and receive; no-op
+			}
 		}
 
 		roundNum++
