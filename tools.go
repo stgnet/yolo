@@ -1771,7 +1771,11 @@ func (t *ToolExecutor) parseDuckDuckGoHTML(query string, count int, data []byte)
 
 				// Look for URL in this line or nearby lines
 				var url string
-				for j := i - 2; j <= i+2 && j < len(lines); j++ {
+				startIdx := i - 2
+				if startIdx < 0 {
+					startIdx = 0
+				}
+				for j := startIdx; j <= i+2 && j < len(lines); j++ {
 					if strings.Contains(lines[j], `href="http`) {
 						urlMatch := regexp.MustCompile(`href="(https?://[^"]+)"`).FindStringSubmatch(lines[j])
 						if len(urlMatch) > 1 {

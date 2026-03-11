@@ -202,7 +202,7 @@ func TestClientSendNoSMTP(t *testing.T) {
 
 func TestGetRFC2822Date(t *testing.T) {
 	date := getRFC2822Date()
-	
+
 	if date == "" {
 		t.Error("Expected non-empty RFC 2822 date")
 	}
