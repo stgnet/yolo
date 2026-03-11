@@ -223,6 +223,26 @@ func (a *YoloAgent) showHelpHint() {
 	cprint(Gray, "  Type a message, or /help for commands.\n")
 }
 
+// enableTerminalMode switches from buffer mode to the classic split-screen terminal UI.
+func (a *YoloAgent) enableTerminalMode() {
+	bufferUI = nil
+	globalUI = NewTerminalUI()
+	globalUI.Setup()
+	a.config.SetTerminalMode(true)
+	cprint(Cyan, "  Terminal mode enabled (split-screen UI)")
+}
+
+// disableTerminalMode switches from the split-screen terminal UI to buffer mode.
+func (a *YoloAgent) disableTerminalMode() {
+	if globalUI != nil {
+		globalUI.Teardown()
+		globalUI = nil
+	}
+	bufferUI = NewBufferUI()
+	a.config.SetTerminalMode(false)
+	cprint(Cyan, "  Terminal mode disabled (buffer mode)")
+}
+
 // ── Chat loop ──
 
 // chatWithAgent sends userMessage (or an autonomous prompt when userMessage is
@@ -912,6 +932,7 @@ func (a *YoloAgent) handleCommand(cmd string) {
 	case "/help", "/h":
 		cprint(Cyan, "Commands:")
 		cprint(Reset, "  /help            Show this help")
+		cprint(Reset, "  /terminal [on|off] Toggle terminal mode (split-screen UI)")
 		cprint(Reset, "  /model           Current model")
 		cprint(Reset, "  /models          List available models")
 		cprint(Reset, "  /switch <name>   Switch model")
@@ -922,6 +943,32 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		cprint(Reset, "  /learn           Run autonomous research for self-improvement")
 		cprint(Reset, "  /restart         Restart YOLO")
 		cprint(Reset, "  /exit, /quit     Exit YOLO")
+
+	case "/terminal":
+		currentMode := a.config.GetTerminalMode()
+		switch strings.ToLower(strings.TrimSpace(arg)) {
+		case "on":
+			if currentMode {
+				cprint(Cyan, "  Terminal mode is already enabled")
+			} else {
+				a.enableTerminalMode()
+			}
+		case "off":
+			if !currentMode {
+				cprint(Cyan, "  Terminal mode is already disabled (buffer mode)")
+			} else {
+				a.disableTerminalMode()
+			}
+		case "":
+			// Toggle
+			if currentMode {
+				a.disableTerminalMode()
+			} else {
+				a.enableTerminalMode()
+			}
+		default:
+			cprint(Red, "  Usage: /terminal [on|off]")
+		}
 
 	case "/model":
 		cprint(Cyan, fmt.Sprintf("  Model: %s", a.config.GetModel()))
@@ -1029,14 +1076,22 @@ func (a *YoloAgent) showCacheStatus(arg string) {
 // ── Main loop ──
 
 func (a *YoloAgent) showPrompt() {
-	// No "you>" prompt — the divider label "──you──" serves as the indicator.
+	if bufferUI != nil && globalUI == nil {
+		// Buffer mode: prompt appears when user starts typing.
+		return
+	}
+	// Terminal mode: the divider label "──you──" serves as the indicator.
 	// Just trigger a redraw of the input area.
 	a.inputMgr.ShowPrompt("")
 }
 
 // echoUserInput prints the user's (possibly multiline) message to the
-// output area with a "you>" prefix on the first line.
+// output area with a "you>" prefix on the first line. In buffer mode the
+// text is already visible in the scrollback, so nothing is printed.
 func (a *YoloAgent) echoUserInput(text string) {
+	if bufferUI != nil && globalUI == nil {
+		return // text already on screen in buffer mode
+	}
 	lines := strings.Split(text, "\n")
 	for i, line := range lines {
 		if i == 0 {
@@ -1061,12 +1116,20 @@ func (a *YoloAgent) Run() {
 		a.setupFirstRun()
 	}
 
-	// Set up split terminal UI (MUST be done before ANY output)
-	globalUI = NewTerminalUI()
-	globalUI.Setup()
+	// Set up UI based on terminal mode config.
+	// Default (terminal_mode=false) uses buffer mode for scrollable history.
+	if a.config.GetTerminalMode() {
+		globalUI = NewTerminalUI()
+		globalUI.Setup()
+	} else {
+		bufferUI = NewBufferUI()
+	}
 	defer func() {
-		globalUI.Teardown()
-		globalUI = nil
+		if globalUI != nil {
+			globalUI.Teardown()
+			globalUI = nil
+		}
+		bufferUI = nil
 	}()
 
 	// Display session resumption message AFTER terminal is set up
