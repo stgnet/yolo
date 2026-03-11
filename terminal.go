@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"golang.org/x/term"
 )
@@ -28,6 +30,13 @@ func rawWrite(s string) {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	s = strings.ReplaceAll(s, "\n", "\r\n")
 	fmt.Print(s)
+}
+
+// rawWriteTo appends text to a builder, converting lone \n to \r\n for raw terminal mode.
+func rawWriteTo(buf *strings.Builder, s string) {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\n", "\r\n")
+	buf.WriteString(s)
 }
 
 func cprint(color, text string) {
@@ -165,6 +174,11 @@ type TerminalUI struct {
 	peakBottomRows int      // high-water mark for bottom area (grow-only)
 	streaming      bool     // true while inline output is in progress (prevents scroll region changes)
 	pendingWrap    bool     // true when last output char filled the last column (terminal pending wrap state)
+
+	// Rate-limited redraw support
+	inputDirty  atomic.Bool // set when input changes; cleared by redraw tick
+	redrawStop  chan struct{}
+	redrawDone  chan struct{}
 }
 
 // wrapText wraps text to the given width, inserting newlines at word boundaries.
@@ -236,16 +250,19 @@ func NewTerminalUI() *TerminalUI {
 		cols = 80
 	}
 	return &TerminalUI{
-		fd:        fd,
-		rows:      rows,
-		cols:      cols,
-		outRow:    1,
-		outCol:    1,
-		scrollEnd: rows - 2,
+		fd:         fd,
+		rows:       rows,
+		cols:       cols,
+		outRow:     1,
+		outCol:     1,
+		scrollEnd:  rows - 2,
+		redrawStop: make(chan struct{}),
+		redrawDone: make(chan struct{}),
 	}
 }
 
-// Setup initializes the scroll region and draws the divider.
+// Setup initializes the scroll region, draws the divider, and starts the
+// rate-limited redraw goroutine.
 func (ui *TerminalUI) Setup() {
 	ui.mu.Lock()
 	defer ui.mu.Unlock()
@@ -257,27 +274,65 @@ func (ui *TerminalUI) Setup() {
 	}
 
 	ui.scrollEnd = ui.rows - 2
-	// Clear screen, set scroll region, draw divider
-	fmt.Print("\033[2J")
-	fmt.Printf("\033[1;%dr", ui.scrollEnd)
-	ui.drawDividerLocked()
+
+	// Build the entire setup sequence in a buffer, flush once
+	var buf strings.Builder
+	buf.WriteString("\033[2J")                            // clear screen
+	fmt.Fprintf(&buf, "\033[1;%dr", ui.scrollEnd)        // set scroll region
+	ui.writeDividerTo(&buf)
 	ui.outRow = 1
 	ui.outCol = 1
-	fmt.Printf("\033[%d;%dH", ui.outRow, ui.outCol)
+	fmt.Fprintf(&buf, "\033[%d;%dH", ui.outRow, ui.outCol)
+	os.Stdout.WriteString(buf.String())
+
+	// Start rate-limited redraw goroutine
+	go ui.redrawLoop()
 }
 
-func (ui *TerminalUI) drawDividerLocked() {
+// redrawLoop runs in its own goroutine. It checks the dirty flag at ~60fps
+// and redraws the input area only when something changed. This coalesces
+// multiple rapid input events (typing, backspace) into a single redraw.
+func (ui *TerminalUI) redrawLoop() {
+	ticker := time.NewTicker(16 * time.Millisecond) // ~60fps
+	defer ticker.Stop()
+	defer close(ui.redrawDone)
+
+	for {
+		select {
+		case <-ui.redrawStop:
+			return
+		case <-ticker.C:
+			if ui.inputDirty.CompareAndSwap(true, false) {
+				ui.mu.Lock()
+				if ui.streaming {
+					ui.renderInputTextOnlyTo()
+				} else {
+					ui.renderInputFull()
+				}
+				ui.mu.Unlock()
+			}
+		}
+	}
+}
+
+func (ui *TerminalUI) writeDividerTo(buf *strings.Builder) {
 	dividerRow := ui.scrollEnd + 1
 	divider := strings.Repeat("─", ui.cols)
-	fmt.Printf("\033[%d;1H%s%s%s", dividerRow, Gray, divider, Reset)
+	fmt.Fprintf(buf, "\033[%d;1H%s%s%s", dividerRow, Gray, divider, Reset)
 }
 
-// Teardown restores the full scroll region.
+// Teardown restores the full scroll region and stops the redraw goroutine.
 func (ui *TerminalUI) Teardown() {
+	// Stop the redraw goroutine first (outside the lock)
+	close(ui.redrawStop)
+	<-ui.redrawDone
+
 	ui.mu.Lock()
 	defer ui.mu.Unlock()
-	fmt.Printf("\033[1;%dr", ui.rows)
-	fmt.Printf("\033[%d;1H\n", ui.rows)
+	var buf strings.Builder
+	fmt.Fprintf(&buf, "\033[1;%dr", ui.rows)
+	fmt.Fprintf(&buf, "\033[%d;1H\n", ui.rows)
+	os.Stdout.WriteString(buf.String())
 }
 
 func (ui *TerminalUI) trackCursorMovement(stripped string) {
@@ -346,82 +401,63 @@ func (ui *TerminalUI) trackCursorMovement(stripped string) {
 	}
 }
 
-// resolvePendingWrap forces the terminal to scroll when the last output
-// character filled the final column at the bottom of the scroll region.
-// Without this, the next explicit cursor-positioning (\033[row;colH) would
-// cancel the terminal's internal pending-wrap flag WITHOUT scrolling,
-// causing subsequent text to overwrite the current line.
-func (ui *TerminalUI) resolvePendingWrap() {
+// resolvePendingWrapTo appends the escape sequence that forces the terminal
+// to scroll when the last output character filled the final column at the
+// bottom of the scroll region.
+func (ui *TerminalUI) resolvePendingWrapTo(buf *strings.Builder) {
 	if !ui.pendingWrap {
 		return
 	}
-	// Move to the last column of the bottom row (cancels any stale terminal
-	// pending-wrap if the cursor was moved away by drawInputLocked), then
-	// emit Index (ESC D) which advances one line — scrolling the region if
-	// the cursor is at the bottom — then CR to return to column 1.
-	fmt.Printf("\033[%d;%dH\033D\r", ui.scrollEnd, ui.cols)
+	fmt.Fprintf(buf, "\033[%d;%dH\033D\r", ui.scrollEnd, ui.cols)
 	ui.pendingWrap = false
-	ui.outRow = ui.scrollEnd // scroll kept us at the bottom
+	ui.outRow = ui.scrollEnd
 	ui.outCol = 1
 }
 
 // OutputPrint writes text to the output (scrolling) region.
+// All ANSI escape sequences are buffered and flushed in a single write.
 func (ui *TerminalUI) OutputPrint(text string) {
 	ui.mu.Lock()
 	defer ui.mu.Unlock()
 
-	// Expand tabs to spaces before outputting AND tracking.
-	// Tab characters advance to the next tab stop in the terminal (every 8
-	// columns), but trackCursorMovement counts them as 1 column, causing
-	// the tracker to fall behind the real cursor. By expanding tabs before
-	// both rawWrite and trackCursorMovement, they see the same column count.
 	text = expandTabs(text, ui.outCol)
-
-	// Wrap text to terminal width before outputting
 	text = ui.wrapText(text)
 
-	ui.resolvePendingWrap()
-	// Move cursor to tracked output position within the scroll region
-	fmt.Printf("\033[%d;%dH", ui.outRow, ui.outCol)
-	// Write the text (rawWrite converts \n to \r\n for raw terminal mode)
-	rawWrite(text)
-	// Track where the cursor ended up.
-	// Strip ANSI codes before counting to avoid off-by-several errors from color codes.
+	var buf strings.Builder
+	ui.resolvePendingWrapTo(&buf)
+	fmt.Fprintf(&buf, "\033[%d;%dH", ui.outRow, ui.outCol)
+	rawWriteTo(&buf, text)
+
 	stripped := stripAnsiCodes(text)
 	ui.trackCursorMovement(stripped)
-	// Redraw input line (output may have scrolled and clobbered it).
-	// Skip during streaming to avoid resizing the scroll region mid-stream
-	// which would desync the cursor tracker.
+
 	if !ui.streaming {
-		ui.drawInputLocked()
+		ui.renderInputFullTo(&buf)
 	}
+
+	os.Stdout.WriteString(buf.String())
 }
 
 // OutputPrintInline writes text without moving cursor back to input line.
 // Used for streaming tokens within a single Chat response.
 // Call OutputFinishLine when done with a block of inline output.
+// The lock is held only for the output write itself; input redraws happen
+// asynchronously via the rate-limited redraw goroutine.
 func (ui *TerminalUI) OutputPrintInline(text string) {
 	ui.mu.Lock()
 	defer ui.mu.Unlock()
 
 	ui.streaming = true
 
-	// Expand tabs to spaces before outputting AND tracking.
-	// Tab characters advance to the next tab stop in the terminal (every 8
-	// columns), but trackCursorMovement counts them as 1 column. This drift
-	// causes the tracker to miss line wraps, positioning the cursor on a
-	// previous row and overwriting existing text ("output overwriting" bug).
 	text = expandTabs(text, ui.outCol)
 
-	// Do NOT wrap streaming tokens — they are fragments, not complete lines.
-	// The terminal handles character-level wrapping, and trackCursorMovement
-	// already accounts for it.
+	var buf strings.Builder
+	ui.resolvePendingWrapTo(&buf)
+	fmt.Fprintf(&buf, "\033[%d;%dH", ui.outRow, ui.outCol)
+	rawWriteTo(&buf, text)
 
-	ui.resolvePendingWrap()
-	fmt.Printf("\033[%d;%dH", ui.outRow, ui.outCol)
-	// rawWrite converts \n to \r\n for raw terminal mode
-	rawWrite(text)
-	// Strip ANSI codes before counting to avoid off-by-several errors from color codes.
+	os.Stdout.WriteString(buf.String())
+
 	stripped := stripAnsiCodes(text)
 	ui.trackCursorMovement(stripped)
 }
@@ -431,43 +467,46 @@ func (ui *TerminalUI) OutputFinishLine() {
 	ui.mu.Lock()
 	defer ui.mu.Unlock()
 	ui.streaming = false
-	ui.drawInputLocked()
+	ui.renderInputFull()
 }
 
-func (ui *TerminalUI) drawInputLocked() {
+// renderInputFull renders the complete input area (scroll region adjustment,
+// divider, queued messages, input line) to a buffer and flushes it atomically.
+func (ui *TerminalUI) renderInputFull() {
+	var buf strings.Builder
+	ui.renderInputFullTo(&buf)
+	os.Stdout.WriteString(buf.String())
+}
+
+// renderInputFullTo appends the complete input area rendering to buf.
+// Caller must hold ui.mu.
+func (ui *TerminalUI) renderInputFullTo(buf *strings.Builder) {
 	promptStr := ui.prompt
 	inputStr := string(ui.inputBuf)
 	promptWidth := len(stripAnsiCodes(promptStr))
 
-	// Calculate how many rows the wrapped input occupies.
-	// When the cursor is at the end and totalChars is a multiple of cols,
-	// it wraps to the next row, so we need floor(totalChars/cols)+1.
 	totalChars := promptWidth + len(inputStr)
 	inputRowCount := 1
 	if totalChars > 0 {
 		inputRowCount = totalChars/ui.cols + 1
 	}
 
-	// Flatten queued messages into individual display lines (handles multi-line messages).
-	// First line of each message gets "  [queued] " prefix, continuation lines get aligned spaces.
-	// Long lines are wrapped (not truncated) so the full message is visible.
 	var queuedDisplayLines []string
 	for _, msg := range ui.queuedMsgs {
 		msgLines := strings.Split(msg, "\n")
 		for j, line := range msgLines {
 			prefix := "  [queued] "
 			if j > 0 {
-				prefix = "           " // 11 chars, aligned with prefix above
+				prefix = "           "
 			}
 			maxLen := ui.cols - len(prefix)
 			if maxLen <= 0 {
 				maxLen = 1
 			}
-			// Wrap long lines instead of truncating
 			for len(line) > maxLen {
 				queuedDisplayLines = append(queuedDisplayLines, prefix+line[:maxLen])
 				line = line[maxLen:]
-				prefix = "           " // continuation lines use aligned spaces
+				prefix = "           "
 			}
 			queuedDisplayLines = append(queuedDisplayLines, prefix+line)
 		}
@@ -475,12 +514,10 @@ func (ui *TerminalUI) drawInputLocked() {
 	totalQueuedLines := len(queuedDisplayLines)
 	neededBottomRows := totalQueuedLines + inputRowCount
 
-	// Grow-only behavior: the input area never shrinks UNLESS the queue is
-	// empty AND the input buffer is empty, at which point it collapses to 1 row.
 	canShrink := len(ui.queuedMsgs) == 0 && len(ui.inputBuf) == 0
 	var bottomRows int
 	if canShrink {
-		bottomRows = 1 // single empty input line
+		bottomRows = 1
 		ui.peakBottomRows = 0
 	} else {
 		if neededBottomRows > ui.peakBottomRows {
@@ -489,7 +526,6 @@ func (ui *TerminalUI) drawInputLocked() {
 		bottomRows = ui.peakBottomRows
 	}
 
-	// Cap: leave at least 3 rows for output + 1 for divider
 	maxBottom := ui.rows - 4
 	if maxBottom < 1 {
 		maxBottom = 1
@@ -501,8 +537,6 @@ func (ui *TerminalUI) drawInputLocked() {
 		}
 	}
 
-	// Determine how many queued lines and input rows to actually display
-	// (may need to cap if bottom area is too small for all content)
 	displayQueuedLines := totalQueuedLines
 	displayInputRows := inputRowCount
 	if displayQueuedLines+displayInputRows > bottomRows {
@@ -516,52 +550,44 @@ func (ui *TerminalUI) drawInputLocked() {
 		}
 	}
 
-	newScrollEnd := ui.rows - bottomRows - 1 // -1 for divider
+	newScrollEnd := ui.rows - bottomRows - 1
 	if newScrollEnd < 1 {
 		newScrollEnd = 1
 	}
 
 	oldScrollEnd := ui.scrollEnd
-	// Clean transition: when the scroll region is growing (scrollEnd increasing,
-	// bottom area shrinking), clear the rows transitioning into the scroll region
-	// so stale divider/queued content doesn't linger inside the output area.
 	if newScrollEnd > oldScrollEnd {
 		for r := oldScrollEnd + 1; r <= newScrollEnd; r++ {
-			fmt.Printf("\033[%d;1H\033[2K", r)
+			fmt.Fprintf(buf, "\033[%d;1H\033[2K", r)
 		}
 	}
 
-	// Update scroll region
 	if newScrollEnd != ui.scrollEnd {
-		ui.pendingWrap = false // scroll region changed; pending wrap is stale
+		ui.pendingWrap = false
 	}
 	ui.scrollEnd = newScrollEnd
-	fmt.Printf("\033[1;%dr", ui.scrollEnd)
+	fmt.Fprintf(buf, "\033[1;%dr", ui.scrollEnd)
 	if ui.outRow > ui.scrollEnd {
 		ui.outRow = ui.scrollEnd
 	}
 
-	// Clear everything below the scroll region
 	for r := ui.scrollEnd + 1; r <= ui.rows; r++ {
-		fmt.Printf("\033[%d;1H\033[2K", r)
+		fmt.Fprintf(buf, "\033[%d;1H\033[2K", r)
 	}
 
-	// Draw divider
 	divider := strings.Repeat("─", ui.cols)
-	fmt.Printf("\033[%d;1H%s%s%s", ui.scrollEnd+1, Gray, divider, Reset)
+	fmt.Fprintf(buf, "\033[%d;1H%s%s%s", ui.scrollEnd+1, Gray, divider, Reset)
 
-	// Draw queued message lines (show most recent if capped)
 	row := ui.scrollEnd + 2
 	startIdx := len(queuedDisplayLines) - displayQueuedLines
 	if startIdx < 0 {
 		startIdx = 0
 	}
 	for i := startIdx; i < len(queuedDisplayLines); i++ {
-		fmt.Printf("\033[%d;1H%s%s%s", row, Gray, queuedDisplayLines[i], Reset)
+		fmt.Fprintf(buf, "\033[%d;1H%s%s%s", row, Gray, queuedDisplayLines[i], Reset)
 		row++
 	}
 
-	// Draw input (prompt + text, terminal auto-wraps)
 	inputStartRow := row
 	displayInput := inputStr
 	maxChars := displayInputRows*ui.cols - promptWidth
@@ -569,53 +595,56 @@ func (ui *TerminalUI) drawInputLocked() {
 		maxChars = ui.cols
 	}
 	if len(displayInput) > maxChars {
-		// Truncate from the left so the cursor stays visible at the end
 		displayInput = displayInput[len(displayInput)-maxChars:]
 	}
-	fmt.Printf("\033[%d;1H%s%s", inputStartRow, promptStr, displayInput)
+	fmt.Fprintf(buf, "\033[%d;1H%s%s", inputStartRow, promptStr, displayInput)
 
-	// Position cursor at end of displayed text
 	dispTotal := promptWidth + len(displayInput)
 	cursorRow := inputStartRow + dispTotal/ui.cols
 	cursorCol := dispTotal%ui.cols + 1
-	fmt.Printf("\033[%d;%dH", cursorRow, cursorCol)
+	fmt.Fprintf(buf, "\033[%d;%dH", cursorRow, cursorCol)
 }
 
-// UpdateInput updates the UI's copy of the input state for redrawing.
+// drawInputLocked renders the input area. Used by legacy callers and tests.
+// Caller must hold ui.mu.
+func (ui *TerminalUI) drawInputLocked() {
+	ui.renderInputFull()
+}
+
+// UpdateInput updates the UI's copy of the input state and marks input as dirty
+// for the rate-limited redraw goroutine.
 func (ui *TerminalUI) UpdateInput(prompt string, buf []byte) {
 	ui.mu.Lock()
 	ui.prompt = prompt
 	ui.inputBuf = make([]byte, len(buf))
 	copy(ui.inputBuf, buf)
 	ui.mu.Unlock()
+	ui.inputDirty.Store(true)
 }
 
-// RedrawInput redraws just the input line.
+// RedrawInput marks the input as dirty so the redraw goroutine picks it up.
+// For non-streaming callers that need an immediate redraw, it does the redraw
+// synchronously.
 func (ui *TerminalUI) RedrawInput() {
 	ui.mu.Lock()
 	defer ui.mu.Unlock()
 	if ui.streaming {
-		// During streaming, do a lightweight redraw that updates the input
-		// text without recalculating or changing the scroll region (which
-		// would desync the cursor tracker). This ensures typed characters
-		// are echoed immediately even while the agent is streaming output.
-		ui.drawInputTextOnly()
+		// During streaming, just mark dirty — the redraw goroutine will
+		// handle it within 16ms without blocking the streaming path.
+		ui.inputDirty.Store(true)
 		return
 	}
-	ui.drawInputLocked()
+	ui.renderInputFull()
 }
 
-// drawInputTextOnly is a lightweight input redraw used during streaming.
-// It redraws the bottom area (queued messages + input prompt) WITHOUT
-// recalculating or changing the scroll region, which would desync the
-// cursor tracker during streaming. After drawing, it restores the cursor
-// to the current output position so streaming can continue.
-func (ui *TerminalUI) drawInputTextOnly() {
+// renderInputTextOnlyTo renders the input area during streaming without
+// changing the scroll region. After drawing, it restores the cursor to the
+// output position so streaming can continue. Flushes atomically.
+func (ui *TerminalUI) renderInputTextOnlyTo() {
 	promptStr := ui.prompt
 	inputStr := string(ui.inputBuf)
 	promptWidth := len(stripAnsiCodes(promptStr))
 
-	// Compute queued display lines (same logic as drawInputLocked)
 	var queuedDisplayLines []string
 	for _, msg := range ui.queuedMsgs {
 		msgLines := strings.Split(msg, "\n")
@@ -637,8 +666,7 @@ func (ui *TerminalUI) drawInputTextOnly() {
 		}
 	}
 
-	// Calculate available space using current (unchanged) scroll region
-	bottomRows := ui.rows - ui.scrollEnd - 1 // -1 for divider
+	bottomRows := ui.rows - ui.scrollEnd - 1
 	if bottomRows < 1 {
 		bottomRows = 1
 	}
@@ -662,9 +690,11 @@ func (ui *TerminalUI) drawInputTextOnly() {
 		}
 	}
 
+	var buf strings.Builder
+
 	// Clear everything below divider
 	for r := ui.scrollEnd + 2; r <= ui.rows; r++ {
-		fmt.Printf("\033[%d;1H\033[2K", r)
+		fmt.Fprintf(&buf, "\033[%d;1H\033[2K", r)
 	}
 
 	// Draw queued messages
@@ -674,7 +704,7 @@ func (ui *TerminalUI) drawInputTextOnly() {
 		startIdx = 0
 	}
 	for i := startIdx; i < len(queuedDisplayLines); i++ {
-		fmt.Printf("\033[%d;1H%s%s%s", row, Gray, queuedDisplayLines[i], Reset)
+		fmt.Fprintf(&buf, "\033[%d;1H%s%s%s", row, Gray, queuedDisplayLines[i], Reset)
 		row++
 	}
 
@@ -687,17 +717,18 @@ func (ui *TerminalUI) drawInputTextOnly() {
 	if len(displayInput) > maxChars {
 		displayInput = displayInput[len(displayInput)-maxChars:]
 	}
-	fmt.Printf("\033[%d;1H%s%s", row, promptStr, displayInput)
+	fmt.Fprintf(&buf, "\033[%d;1H%s%s", row, promptStr, displayInput)
 
-	// Restore cursor to the output streaming position so streaming continues
-	fmt.Printf("\033[%d;%dH", ui.outRow, ui.outCol)
+	// Restore cursor to the output streaming position
+	fmt.Fprintf(&buf, "\033[%d;%dH", ui.outRow, ui.outCol)
+
+	os.Stdout.WriteString(buf.String())
 }
 
 // WriteToInputLine writes directly to the input line area (for character echo).
 func (ui *TerminalUI) WriteToInputLine(s string) {
 	ui.mu.Lock()
 	defer ui.mu.Unlock()
-	// Just output the character - next redraw will handle positioning
 	fmt.Print(s)
 }
 
@@ -705,9 +736,11 @@ func (ui *TerminalUI) WriteToInputLine(s string) {
 func (ui *TerminalUI) ClearInputLine() {
 	ui.mu.Lock()
 	defer ui.mu.Unlock()
+	var buf strings.Builder
 	for r := ui.scrollEnd + 2; r <= ui.rows; r++ {
-		fmt.Printf("\033[%d;1H\033[2K", r)
+		fmt.Fprintf(&buf, "\033[%d;1H\033[2K", r)
 	}
+	os.Stdout.WriteString(buf.String())
 }
 
 // RefreshSize updates terminal size and redraws layout.
@@ -718,8 +751,7 @@ func (ui *TerminalUI) RefreshSize() {
 		ui.rows = rows
 		ui.cols = cols
 		if !ui.streaming {
-			// drawInputLocked recalculates scrollEnd, scroll region, divider
-			ui.drawInputLocked()
+			ui.renderInputFull()
 		}
 		// If streaming, OutputFinishLine will redraw with updated dimensions
 	}
@@ -731,7 +763,7 @@ func (ui *TerminalUI) AddQueuedMessage(text string) {
 	defer ui.mu.Unlock()
 	ui.queuedMsgs = append(ui.queuedMsgs, text)
 	if !ui.streaming {
-		ui.drawInputLocked()
+		ui.renderInputFull()
 	}
 	// If streaming, OutputFinishLine will redraw with the queued messages
 }
@@ -742,6 +774,6 @@ func (ui *TerminalUI) RemoveQueuedMessage() {
 	defer ui.mu.Unlock()
 	if len(ui.queuedMsgs) > 0 {
 		ui.queuedMsgs = ui.queuedMsgs[1:]
-		ui.drawInputLocked()
+		ui.renderInputFull()
 	}
 }
