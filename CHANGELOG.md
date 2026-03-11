@@ -12,13 +12,18 @@ All notable changes to YOLO will be documented in this file.
   - `send_report`: Send a progress report email to scott@stg.net
   - `send_email`: Send custom emails with subject, body, and recipient
   - Both use SMTP from yolo@b-haven.org (requires EMAIL_PASSWORD env var)
-- **Email documentation** (`EMAIL_SETUP.md`): Setup instructions for configuring email sending
+- **Email integration tests** (`email/email_integration_test.go`): End-to-end tests for email sending functionality that skip safely when EMAIL_PASSWORD is not configured
+- **Autonomous learning system** (`learning.go`, `tools_learning.go`): Self-improvement through internet research:
+  - `learn`: Autonomously discovers improvements from web and Reddit sources
+  - Tracks improvement history in `.yolo_learning.json` with categorization and trending
+  - Categorizes findings by priority (1-5), category, and status
 
 ### Fixed
 - **LimitedConcurrency deadlock**: Race condition when multiple jobs executed
   concurrently without proper synchronization. Changed `wg.Add()` to run before
   goroutine creation in worker loop, and moved semaphore acquisition outside the
   job execution to prevent deadlocks with concurrent job completion.
+- **Barrier race conditions**: Refactored Barrier to use atomic operations (`int32` counter) instead of channel array for better thread safety. Simplified from 47 lines to 38 lines with improved performance and clearer code. Test race conditions fixed in `TestLimiterGroup` by properly synchronizing `wg.Done()` calls.
 - **Visible queued messages**: Messages typed while the agent is busy are
   displayed as `[queued] text` between the divider and input prompt. They
   remain visible until processed, making it clear what's pending.
