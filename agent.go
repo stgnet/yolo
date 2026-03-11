@@ -368,22 +368,35 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 			select {
 			case qLine := <-a.inputMgr.Lines:
 				qText := strings.TrimSpace(qLine.Text)
+				qLower := strings.ToLower(qText)
 				if qText != "" {
-					cprint(Cyan, "  [interjection] Delivering queued user message to agent")
-					cprint(Green, fmt.Sprintf("  you> %s", qText))
 					if globalUI != nil {
 						a.inputMgr.SyncToUI()
 						globalUI.RemoveQueuedMessage()
 					}
-					// Record in persistent history as a real user message
-					a.history.AddMessage("user", qText, nil)
-					// Inject into the current round so the agent sees it
-					roundMsgs = append(roundMsgs, ChatMessage{
-						Role:    "user",
-						Content: qText,
-					})
-					userInterjected = true
-					_ = userInterjected // reserved for future use
+					// Handle slash commands and exit/quit instead of
+					// injecting them as user messages to the LLM.
+					if qLower == "exit" || qLower == "quit" {
+						a.running = false
+						return
+					} else if strings.HasPrefix(qText, "/") {
+						a.handleCommand(qText)
+						if !a.running {
+							return
+						}
+					} else {
+						cprint(Cyan, "  [interjection] Delivering queued user message to agent")
+						cprint(Green, fmt.Sprintf("  you> %s", qText))
+						// Record in persistent history as a real user message
+						a.history.AddMessage("user", qText, nil)
+						// Inject into the current round so the agent sees it
+						roundMsgs = append(roundMsgs, ChatMessage{
+							Role:    "user",
+							Content: qText,
+						})
+						userInterjected = true
+						_ = userInterjected // reserved for future use
+					}
 				}
 			default:
 				// Channel drained between len check and receive; no-op
