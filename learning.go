@@ -94,38 +94,45 @@ func (lm *LearningManager) ResearchAndLearn() (*LearningSession, error) {
 	researchAreas := []ResearchArea{
 		{
 			Category:        "AI Agent Architecture",
-			WebQuery:        "AI agent architecture patterns 2025 best practices",
-			RedditSubreddit: "ArtificialIntelligence",
-			RedditSearch:    "AI agent design patterns",
-			Keywords:        []string{"autonomous", "planning", "memory", "tools", "multi-agent"},
+			WebQuery:        "autonomous AI agent best practices 2025 implementation patterns tool use memory",
+			RedditSubreddit: "LocalLLaMA",
+			RedditSearch:    "autonomous agent implementation tool use patterns",
+			Keywords:        []string{"autonomous", "planning", "memory", "tools", "multi-agent", "implementation", "pattern"},
 		},
 		{
 			Category:        "LLM Tool Integration",
-			WebQuery:        "LLM function calling tool use best practices 2025",
+			WebQuery:        "LLM function calling implementation patterns error handling context limits 2025",
 			RedditSubreddit: "LocalLLaMA",
-			RedditSearch:    "tool use function calling patterns",
-			Keywords:        []string{"function calling", "tool use", "context management"},
+			RedditSearch:    "function calling implementation best practices error handling",
+			Keywords:        []string{"function calling", "tool use", "context management", "error handling", "implementation"},
 		},
 		{
 			Category:        "Developer Experience",
-			WebQuery:        "AI coding assistant features 2025 developer productivity",
-			RedditSubreddit: "programming",
-			RedditSearch:    "AI coding tools best features",
-			Keywords:        []string{"developer experience", "productivity", "automation"},
+			WebQuery:        "AI coding assistant developer productivity automation features implementation 2025",
+			RedditSubreddit: "golang",
+			RedditSearch:    "Go AI tools productivity automation best practices",
+			Keywords:        []string{"developer experience", "productivity", "automation", "workflow", "implementation"},
 		},
 		{
 			Category:        "Testing & Evaluation",
-			WebQuery:        "AI agent testing evaluation frameworks 2025",
+			WebQuery:        "AI agent testing evaluation frameworks benchmarking performance metrics 2025",
 			RedditSubreddit: "MachineLearning",
-			RedditSearch:    "testing AI agents evaluation",
-			Keywords:        []string{"testing", "evaluation", "benchmarking"},
+			RedditSearch:    "testing AI agents evaluation benchmarks implementation",
+			Keywords:        []string{"testing", "evaluation", "benchmarking", "metrics", "regression"},
 		},
 		{
 			Category:        "Go Performance",
-			WebQuery:        "Go performance optimization patterns 2025 concurrency",
+			WebQuery:        "Go concurrent programming patterns performance optimization race conditions 2025",
 			RedditSubreddit: "golang",
-			RedditSearch:    "Go performance best practices",
-			Keywords:        []string{"performance", "concurrency", "optimization"},
+			RedditSearch:    "Go concurrency patterns performance best practices race conditions",
+			Keywords:        []string{"performance", "concurrency", "optimization", "race condition", "goroutine"},
+		},
+		{
+			Category:        "Security & Reliability",
+			WebQuery:        "AI agent security sandboxing file system access safe path validation 2025",
+			RedditSubreddit: "security",
+			RedditSearch:    "AI security sandboxing file access best practices",
+			Keywords:        []string{"security", "sandboxing", "file access", "validation", "safe"},
 		},
 	}
 
@@ -187,6 +194,12 @@ func (lm *LearningManager) researchArea(area ResearchArea, session *LearningSess
 func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result string) []Improvement {
 	var improvements []Improvement
 
+	// Filter out generic encyclopedia/intro content
+	genericPatterns := []string{
+		" is a ", " refers to", "in other words", "etymology", "see also",
+		"wikipedia", "encyclopedia", "introduction to", "overview of",
+	}
+
 	// Simple text-based extraction from the JSON-like result
 	// Look for key sections in the output
 
@@ -200,7 +213,8 @@ func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result 
 				end = len(result) - start
 			}
 			content := strings.TrimSpace(result[start : start+end])
-			if len(content) > 50 && lm.isRelevant(content, area.Keywords) {
+			// Skip if too short or contains generic patterns
+			if len(content) > 80 && !containsGenericPattern(content, genericPatterns) && lm.isRelevant(content, area.Keywords) {
 				imp := lm.createImprovement(area, content, "web", "", "instant_answer")
 				if imp != nil {
 					improvements = append(improvements, *imp)
@@ -213,7 +227,8 @@ func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result 
 	lines := strings.Split(result, "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		if len(line) > 100 && lm.isRelevant(line, area.Keywords) {
+		// Filter: must be substantial, relevant, and not generic
+		if len(line) > 150 && !containsGenericPattern(line, genericPatterns) && lm.isRelevant(line, area.Keywords) {
 			imp := lm.createImprovement(area, truncateText(line, 500), "web", "", "search_result")
 			if imp != nil {
 				improvements = append(improvements, *imp)
@@ -228,12 +243,18 @@ func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result 
 func (lm *LearningManager) extractImprovementsFromReddit(area ResearchArea, result string) []Improvement {
 	var improvements []Improvement
 
+	// Filter out low-quality or generic content
+	genericPatterns := []string{
+		"edit:", "thanks for sharing", "upvote if you agree",
+	}
+
 	// Parse the Reddit JSON response structure
 	lines := strings.Split(result, "\n")
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		if len(line) > 100 && lm.isRelevant(line, area.Keywords) {
+		// Filter: must be substantial, relevant, not generic, and contain actionable content
+		if len(line) > 200 && !containsGenericPattern(line, genericPatterns) && lm.isRelevant(line, area.Keywords) && containsActionableContent(line) {
 			url := fmt.Sprintf("https://reddit.com/r/%s", area.RedditSubreddit)
 			imp := lm.createImprovement(area, truncateText(line, 500), "reddit", url, "reddit_post")
 			if imp != nil {
@@ -390,4 +411,31 @@ func extractKeywords(text string, suggested []string) []string {
 	}
 
 	return keywords
+}
+
+// containsGenericPattern checks if text contains generic/encyclopedic patterns
+func containsGenericPattern(text string, patterns []string) bool {
+	textLower := strings.ToLower(text)
+	for _, pattern := range patterns {
+		if strings.Contains(textLower, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// containsActionableContent checks if text has actionable improvement content
+func containsActionableContent(text string) bool {
+	actionableKeywords := []string{
+		"should", "recommend", "best practice", "improve", "optimize",
+		"implement", "use case", "pattern", "solution", "approach",
+		"tip", "trick", "hack", "feature", "enhancement",
+	}
+	textLower := strings.ToLower(text)
+	for _, kw := range actionableKeywords {
+		if strings.Contains(textLower, kw) {
+			return true
+		}
+	}
+	return false
 }
