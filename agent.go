@@ -705,8 +705,10 @@ func (a *YoloAgent) handoffRemainingTools(remaining []ParsedToolCall) *handoffRe
 			})
 		}
 
+		a.mu.Lock()
 		hr.Results = results
 		cprint(Magenta, fmt.Sprintf("  [handoff #%d] complete (%d tools executed)", hid, len(results)))
+		a.mu.Unlock()
 	}()
 
 	return hr
