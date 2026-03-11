@@ -55,6 +55,19 @@ func cprintNoNL(color, text string) {
 	}
 }
 
+// echoInput prints the user's (possibly multiline) message to the output
+// area with a "you>" prefix. It is safe to call from any goroutine.
+func echoInput(text string) {
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		if i == 0 {
+			cprint(Green, fmt.Sprintf("  you> %s", line))
+		} else {
+			cprint(Green, fmt.Sprintf("        %s", line))
+		}
+	}
+}
+
 // ─── Text Utilities ───────────────────────────────────────────────────
 
 // expandTabs replaces tab characters with spaces aligned to 8-column tab stops.
@@ -316,7 +329,7 @@ func (ui *TerminalUI) redrawLoop() {
 
 func (ui *TerminalUI) writeDividerTo(buf *strings.Builder) {
 	dividerRow := ui.scrollEnd + 1
-	label := "──you"
+	label := "── you> "
 	remaining := ui.cols - len(label)
 	if remaining < 0 {
 		remaining = 0

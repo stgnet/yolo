@@ -18,8 +18,9 @@ import (
 
 // InputLine represents a completed input block from the user.
 type InputLine struct {
-	Text string
-	OK   bool // false means EOF/Ctrl-C
+	Text   string
+	OK     bool // false means EOF/Ctrl-C
+	Echoed bool // true if text was already echoed to the output area
 }
 
 // InputManager reads from stdin continuously. The user can type multiple
@@ -206,8 +207,12 @@ func (im *InputManager) sendBuffer() {
 	text = strings.TrimRight(text, "\n")
 
 	if strings.TrimSpace(text) != "" {
+		// Echo the text to the output area BEFORE redrawing (clearing)
+		// the input area so the text appears to jump up across the
+		// divider rather than disappearing and reappearing.
+		echoInput(text)
 		im.syncAndRedraw()
-		im.Lines <- InputLine{Text: text, OK: true}
+		im.Lines <- InputLine{Text: text, OK: true, Echoed: true}
 	} else {
 		im.syncAndRedraw()
 	}

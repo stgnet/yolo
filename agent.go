@@ -383,7 +383,9 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 						}
 					} else {
 						cprint(Cyan, "  [interjection] Delivering user message to agent")
-						a.echoUserInput(qText)
+						if !qLine.Echoed {
+							a.echoUserInput(qText)
+						}
 						a.history.AddMessage("user", qText, nil)
 						roundMsgs = append(roundMsgs, ChatMessage{
 							Role:    "user",
@@ -886,14 +888,7 @@ func (a *YoloAgent) showPrompt() {
 // echoUserInput prints the user's (possibly multiline) message to the
 // output area with a "you>" prefix on the first line.
 func (a *YoloAgent) echoUserInput(text string) {
-	lines := strings.Split(text, "\n")
-	for i, line := range lines {
-		if i == 0 {
-			cprint(Green, fmt.Sprintf("  you> %s", line))
-		} else {
-			cprint(Green, fmt.Sprintf("        %s", line))
-		}
-	}
+	echoInput(text)
 }
 
 // Run is the top-level entry point. It loads (or creates) session history,
@@ -974,8 +969,10 @@ func (a *YoloAgent) Run() {
 				a.busy = true
 				a.mu.Unlock()
 
-				// Echo user's multiline input
-				a.echoUserInput(stripped)
+				// Echo user's multiline input (skip if already echoed by sendBuffer)
+				if !line.Echoed {
+					a.echoUserInput(stripped)
+				}
 
 				a.chatWithAgent(stripped, false)
 
