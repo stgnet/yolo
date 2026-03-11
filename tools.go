@@ -617,14 +617,15 @@ func (t *ToolExecutor) moveFile(args map[string]any) string {
 
 // ─── globRecursive handles recursive glob patterns with **/ wildcards ──
 
-func (t *ToolExecutor) globRecursive(pattern string) ([]string, error) {
+// globFiles is a standalone helper for recursive glob pattern matching
+func globFiles(baseDir, pattern string) ([]string, error) {
 	var matches []string
 
 	// Handle patterns like **/*.txt or **/directory/*
 	if strings.HasPrefix(pattern, "**/") {
 		basePattern := pattern[3:]
 
-		err := filepath.Walk(t.baseDir, func(path string, info os.FileInfo, err error) error {
+		err := filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return nil
 			}
@@ -636,7 +637,7 @@ func (t *ToolExecutor) globRecursive(pattern string) ([]string, error) {
 				}
 			}
 
-			relPath, _ := filepath.Rel(t.baseDir, path)
+			relPath, _ := filepath.Rel(baseDir, path)
 			if relPath == "." {
 				relPath = ""
 			}
@@ -658,12 +659,12 @@ func (t *ToolExecutor) globRecursive(pattern string) ([]string, error) {
 	// For patterns like dir/**/*.txt
 	parts := strings.SplitN(pattern, "**", 2)
 	if len(parts) == 2 {
-		baseDir := t.baseDir
+		walkBaseDir := baseDir
 		if parts[0] != "" {
-			baseDir = filepath.Join(t.baseDir, strings.TrimSuffix(parts[0], "/"))
+			walkBaseDir = filepath.Join(baseDir, strings.TrimSuffix(parts[0], "/"))
 		}
 
-		err := filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
+		err := filepath.Walk(walkBaseDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return nil
 			}
@@ -701,7 +702,12 @@ func (t *ToolExecutor) globRecursive(pattern string) ([]string, error) {
 		return matches, err
 	}
 
-	return filepath.Glob(filepath.Join(t.baseDir, pattern))
+	return filepath.Glob(filepath.Join(baseDir, pattern))
+}
+
+// globRecursive calls the standalone helper with the executor's base directory
+func (t *ToolExecutor) globRecursive(pattern string) ([]string, error) {
+	return globFiles(t.baseDir, pattern)
 }
 
 func (t *ToolExecutor) searchFiles(args map[string]any) string {
