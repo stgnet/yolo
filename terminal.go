@@ -551,12 +551,102 @@ func (ui *TerminalUI) RedrawInput() {
 	ui.mu.Lock()
 	defer ui.mu.Unlock()
 	if ui.streaming {
-		// During streaming, skip full redraw to avoid resizing the scroll
-		// region (which desyncs the cursor tracker). The input area will be
-		// refreshed when OutputFinishLine is called after streaming ends.
+		// During streaming, do a lightweight redraw that updates the input
+		// text without recalculating or changing the scroll region (which
+		// would desync the cursor tracker). This ensures typed characters
+		// are echoed immediately even while the agent is streaming output.
+		ui.drawInputTextOnly()
 		return
 	}
 	ui.drawInputLocked()
+}
+
+// drawInputTextOnly is a lightweight input redraw used during streaming.
+// It redraws the bottom area (queued messages + input prompt) WITHOUT
+// recalculating or changing the scroll region, which would desync the
+// cursor tracker during streaming. After drawing, it restores the cursor
+// to the current output position so streaming can continue.
+func (ui *TerminalUI) drawInputTextOnly() {
+	promptStr := ui.prompt
+	inputStr := string(ui.inputBuf)
+	promptWidth := len(stripAnsiCodes(promptStr))
+
+	// Compute queued display lines (same logic as drawInputLocked)
+	var queuedDisplayLines []string
+	for _, msg := range ui.queuedMsgs {
+		msgLines := strings.Split(msg, "\n")
+		for j, line := range msgLines {
+			prefix := "  [queued] "
+			if j > 0 {
+				prefix = "           "
+			}
+			maxLen := ui.cols - len(prefix)
+			if maxLen <= 0 {
+				maxLen = 1
+			}
+			for len(line) > maxLen {
+				queuedDisplayLines = append(queuedDisplayLines, prefix+line[:maxLen])
+				line = line[maxLen:]
+				prefix = "           "
+			}
+			queuedDisplayLines = append(queuedDisplayLines, prefix+line)
+		}
+	}
+
+	// Calculate available space using current (unchanged) scroll region
+	bottomRows := ui.rows - ui.scrollEnd - 1 // -1 for divider
+	if bottomRows < 1 {
+		bottomRows = 1
+	}
+
+	totalChars := promptWidth + len(inputStr)
+	inputRowCount := 1
+	if totalChars > 0 {
+		inputRowCount = totalChars/ui.cols + 1
+	}
+
+	displayQueuedLines := len(queuedDisplayLines)
+	displayInputRows := inputRowCount
+	if displayQueuedLines+displayInputRows > bottomRows {
+		displayInputRows = bottomRows - displayQueuedLines
+		if displayInputRows < 1 {
+			displayInputRows = 1
+			displayQueuedLines = bottomRows - 1
+			if displayQueuedLines < 0 {
+				displayQueuedLines = 0
+			}
+		}
+	}
+
+	// Clear everything below divider
+	for r := ui.scrollEnd + 2; r <= ui.rows; r++ {
+		fmt.Printf("\033[%d;1H\033[2K", r)
+	}
+
+	// Draw queued messages
+	row := ui.scrollEnd + 2
+	startIdx := len(queuedDisplayLines) - displayQueuedLines
+	if startIdx < 0 {
+		startIdx = 0
+	}
+	for i := startIdx; i < len(queuedDisplayLines); i++ {
+		fmt.Printf("\033[%d;1H%s%s%s", row, Gray, queuedDisplayLines[i], Reset)
+		row++
+	}
+
+	// Draw input
+	displayInput := inputStr
+	maxChars := displayInputRows*ui.cols - promptWidth
+	if maxChars < 0 {
+		maxChars = ui.cols
+	}
+	if len(displayInput) > maxChars {
+		displayInput = displayInput[len(displayInput)-maxChars:]
+	}
+	fmt.Printf("\033[%d;1H%s%s", row, promptStr, displayInput)
+
+	// Restore cursor to the output streaming position so streaming continues
+	fmt.Printf("\033[%d;%dH", ui.outRow, ui.outCol)
 }
 
 // WriteToInputLine writes directly to the input line area (for character echo).
