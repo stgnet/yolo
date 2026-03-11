@@ -45,15 +45,12 @@ func TestNewTerminalUI(t *testing.T) {
 	if ui.scrollEnd != ui.rows-2 {
 		t.Errorf("Initial scrollEnd=%d; want rows-2=%d", ui.scrollEnd, ui.rows-2)
 	}
-	if ui.queuedMsgs != nil {
-		t.Errorf("Initial queuedMsgs should be nil, got %v", ui.queuedMsgs)
-	}
 }
 
 // Test TerminalUI UpdateInput and RedrawInput
 func TestTerminalUI_UpdateInput(t *testing.T) {
 	ui := NewTerminalUI()
-	prompt := "[blue]user[reset]> "
+	prompt := ""
 	input := []byte("test input")
 
 	ui.UpdateInput(prompt, input)
@@ -307,162 +304,116 @@ func TestColorPrinting(t *testing.T) {
 	cprintNoNL("test", "blue")
 }
 
-// Test AddQueuedMessage and RemoveQueuedMessage
-func TestTerminalUI_QueuedMessages(t *testing.T) {
-	ui := NewTerminalUI()
-
-	// Initially empty
-	if len(ui.queuedMsgs) != 0 {
-		t.Errorf("Expected 0 queued messages, got %d", len(ui.queuedMsgs))
-	}
-
-	// Add messages
-	ui.AddQueuedMessage("first")
-	if len(ui.queuedMsgs) != 1 || ui.queuedMsgs[0] != "first" {
-		t.Errorf("After AddQueuedMessage: got %v", ui.queuedMsgs)
-	}
-
-	ui.AddQueuedMessage("second")
-	ui.AddQueuedMessage("third")
-	if len(ui.queuedMsgs) != 3 {
-		t.Errorf("Expected 3 queued messages, got %d", len(ui.queuedMsgs))
-	}
-
-	// Remove (FIFO order)
-	ui.RemoveQueuedMessage()
-	if len(ui.queuedMsgs) != 2 || ui.queuedMsgs[0] != "second" {
-		t.Errorf("After first remove: got %v", ui.queuedMsgs)
-	}
-
-	ui.RemoveQueuedMessage()
-	if len(ui.queuedMsgs) != 1 || ui.queuedMsgs[0] != "third" {
-		t.Errorf("After second remove: got %v", ui.queuedMsgs)
-	}
-
-	ui.RemoveQueuedMessage()
-	if len(ui.queuedMsgs) != 0 {
-		t.Errorf("After third remove: expected empty, got %v", ui.queuedMsgs)
-	}
-
-	// Remove on empty should be a no-op (not panic)
-	ui.RemoveQueuedMessage()
-	if len(ui.queuedMsgs) != 0 {
-		t.Errorf("Remove on empty: expected empty, got %v", ui.queuedMsgs)
-	}
-}
-
-// Test that scrollEnd adjusts dynamically when queued messages are added
+// Test that scrollEnd adjusts dynamically with multiline input
 func TestTerminalUI_DynamicScrollEnd(t *testing.T) {
 	ui := &TerminalUI{rows: 24, cols: 80, outRow: 1, outCol: 1, scrollEnd: 22}
-	ui.prompt = "you> "
 	ui.inputBuf = []byte{}
 
-	// With no queued messages: scrollEnd should be rows - 1(input) - 1(divider) = 22
+	// With empty input: scrollEnd should be rows - 1(input) - 1(divider) = 22
 	ui.drawInputLocked()
 	if ui.scrollEnd != 22 {
-		t.Errorf("No queued msgs: scrollEnd=%d, want 22", ui.scrollEnd)
+		t.Errorf("Empty input: scrollEnd=%d, want 22", ui.scrollEnd)
 	}
 
-	// Add one queued message: bottom grows by 1
-	ui.queuedMsgs = []string{"msg1"}
-	ui.drawInputLocked()
-	if ui.scrollEnd != 21 {
-		t.Errorf("1 queued msg: scrollEnd=%d, want 21", ui.scrollEnd)
-	}
-
-	// Add more
-	ui.queuedMsgs = []string{"msg1", "msg2", "msg3"}
-	ui.drawInputLocked()
-	if ui.scrollEnd != 19 {
-		t.Errorf("3 queued msgs: scrollEnd=%d, want 19", ui.scrollEnd)
-	}
-
-	// Remove one: area should NOT shrink (grow-only) — peak was 4 bottom rows
-	ui.queuedMsgs = []string{"msg2", "msg3"}
-	ui.drawInputLocked()
-	if ui.scrollEnd != 19 {
-		t.Errorf("After removing 1 (grow-only): scrollEnd=%d, want 19", ui.scrollEnd)
-	}
-
-	// Remove all but input buffer is not empty: should NOT shrink
-	ui.queuedMsgs = nil
+	// Single line of input: scrollEnd stays at 22 (1 row of input)
 	ui.inputBuf = []byte("typing")
 	ui.drawInputLocked()
-	if ui.scrollEnd != 19 {
-		t.Errorf("Queue empty but input not empty: scrollEnd=%d, want 19", ui.scrollEnd)
+	// peakBottomRows grows to 1, scrollEnd = 24 - 1 - 1 = 22
+	if ui.scrollEnd != 22 {
+		t.Errorf("Single line input: scrollEnd=%d, want 22", ui.scrollEnd)
 	}
 
-	// Remove all AND clear input: should shrink back to single line
-	ui.queuedMsgs = nil
+	// Multi-line input: 3 lines = 3 bottom rows
+	ui.peakBottomRows = 0
+	ui.inputBuf = []byte("line1\nline2\nline3")
+	ui.drawInputLocked()
+	// 3 lines = 3 bottom rows, scrollEnd = 24 - 3 - 1 = 20
+	if ui.scrollEnd != 20 {
+		t.Errorf("3-line input: scrollEnd=%d, want 20", ui.scrollEnd)
+	}
+
+	// Remove lines but peak holds (grow-only)
+	ui.inputBuf = []byte("line1")
+	ui.drawInputLocked()
+	if ui.scrollEnd != 20 {
+		t.Errorf("After shrinking input (grow-only): scrollEnd=%d, want 20", ui.scrollEnd)
+	}
+
+	// Clear input: should shrink back to single line
 	ui.inputBuf = []byte{}
 	ui.drawInputLocked()
 	if ui.scrollEnd != 22 {
-		t.Errorf("After clearing both: scrollEnd=%d, want 22", ui.scrollEnd)
+		t.Errorf("After clearing input: scrollEnd=%d, want 22", ui.scrollEnd)
 	}
 }
 
-// Test multi-line queued messages expand the bottom area correctly
-func TestTerminalUI_MultiLineQueuedMessages(t *testing.T) {
-	ui := &TerminalUI{rows: 24, cols: 80, outRow: 1, outCol: 1, scrollEnd: 22}
-	ui.prompt = "you> "
-	ui.inputBuf = []byte{}
+// Test multiline input display line computation
+func TestTerminalUI_ComputeInputDisplayLines(t *testing.T) {
+	ui := &TerminalUI{cols: 80}
 
-	// A queued message with 3 lines should take 3 rows
-	ui.queuedMsgs = []string{"line1\nline2\nline3"}
-	ui.drawInputLocked()
-	// 3 queued lines + 1 input row + 1 divider = 5, scrollEnd = 24 - 4 - 1 = 19
-	if ui.scrollEnd != 19 {
-		t.Errorf("3-line queued msg: scrollEnd=%d, want 19", ui.scrollEnd)
-	}
-
-	// Two messages, one multi-line: 2 + 1 = 3 queued lines
-	ui.peakBottomRows = 0 // reset for this test
-	ui.queuedMsgs = []string{"first\nsecond", "third"}
-	ui.drawInputLocked()
-	// 3 queued lines + 1 input = 4 bottom rows, scrollEnd = 24 - 4 - 1 = 19
-	if ui.scrollEnd != 19 {
-		t.Errorf("2 msgs (one multi-line): scrollEnd=%d, want 19", ui.scrollEnd)
-	}
-
-	// A long message should wrap to multiple display lines, not truncate.
-	// cols=80, prefix "  [queued] " is 11 chars, so maxLen per line = 69.
-	// A 150-char message should produce ceil(150/69) = 3 display lines.
-	ui.peakBottomRows = 0
-	ui.queuedMsgs = []string{strings.Repeat("X", 150)}
-	ui.drawInputLocked()
-	// 3 wrapped lines + 1 input = 4 bottom rows, scrollEnd = 24 - 4 - 1 = 19
-	if ui.scrollEnd != 19 {
-		t.Errorf("150-char wrapped queued msg: scrollEnd=%d, want 19", ui.scrollEnd)
-	}
-}
-
-// Test multi-line input row calculation
-func TestInputRowCount(t *testing.T) {
 	tests := []struct {
-		name         string
-		promptWidth  int
-		inputLen     int
-		cols         int
-		wantRowCount int
+		name      string
+		input     string
+		wantLines int
 	}{
-		{"empty input", 5, 0, 80, 1},
-		{"short input", 5, 10, 80, 1},       // 15 chars total, fits in 1 row
-		{"fills one row", 5, 75, 80, 2},     // 80 chars = 1 full row, cursor wraps → 2
-		{"just over one row", 5, 76, 80, 2}, // 81 chars → 2 rows
-		{"two full rows", 5, 155, 80, 3},    // 160 chars → 2 full rows + cursor → 3
-		{"narrow terminal", 5, 10, 10, 2},   // 15 chars / 10 cols → 2 rows
+		{"empty", "", 1},
+		{"single line", "hello", 1},
+		{"two lines", "hello\nworld", 2},
+		{"trailing newline", "hello\n", 2},
+		{"three lines", "a\nb\nc", 3},
+		{"blank lines", "a\n\nb", 3},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			totalChars := tt.promptWidth + tt.inputLen
-			rowCount := 1
-			if totalChars > 0 {
-				rowCount = totalChars/tt.cols + 1
+			lines := ui.computeInputDisplayLines(tt.input)
+			if len(lines) != tt.wantLines {
+				t.Errorf("computeInputDisplayLines(%q) = %d lines, want %d. Lines: %v",
+					tt.input, len(lines), tt.wantLines, lines)
 			}
-			if rowCount != tt.wantRowCount {
-				t.Errorf("totalChars=%d, cols=%d: got %d rows, want %d",
-					totalChars, tt.cols, rowCount, tt.wantRowCount)
+		})
+	}
+}
+
+// Test that long input lines wrap correctly
+func TestTerminalUI_ComputeInputDisplayLinesWrapping(t *testing.T) {
+	ui := &TerminalUI{cols: 10}
+
+	// 25-char line should wrap to 3 display lines (10+10+5)
+	lines := ui.computeInputDisplayLines(strings.Repeat("X", 25))
+	if len(lines) != 3 {
+		t.Errorf("25 chars at cols=10: got %d lines, want 3", len(lines))
+	}
+
+	// Multiline with wrapping
+	lines = ui.computeInputDisplayLines(strings.Repeat("A", 15) + "\n" + strings.Repeat("B", 5))
+	// First logical line: 15 chars → 2 display lines (10+5)
+	// Second logical line: 5 chars → 1 display line
+	if len(lines) != 3 {
+		t.Errorf("15+5 chars at cols=10: got %d lines, want 3", len(lines))
+	}
+}
+
+// Test multi-line input row calculation (no prompt width now)
+func TestInputRowCount(t *testing.T) {
+	ui := &TerminalUI{cols: 80}
+
+	tests := []struct {
+		name      string
+		input     string
+		wantRows  int
+	}{
+		{"empty", "", 1},
+		{"short", "hello", 1},
+		{"newline", "hello\nworld", 2},
+		{"three lines", "a\nb\nc", 3},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lines := ui.computeInputDisplayLines(tt.input)
+			if len(lines) != tt.wantRows {
+				t.Errorf("input %q: got %d rows, want %d", tt.input, len(lines), tt.wantRows)
 			}
 		})
 	}
@@ -471,14 +422,17 @@ func TestInputRowCount(t *testing.T) {
 // Test that bottom area is capped to prevent overwhelming the output region
 func TestTerminalUI_BottomAreaCap(t *testing.T) {
 	ui := &TerminalUI{rows: 10, cols: 80, outRow: 1, outCol: 1, scrollEnd: 8}
-	ui.prompt = "you> "
 	ui.inputBuf = []byte{}
 
-	// Add many queued messages — should be capped (rows-4 = 6 max bottom)
-	ui.queuedMsgs = make([]string, 20)
-	for i := range ui.queuedMsgs {
-		ui.queuedMsgs[i] = "msg"
+	// A very tall multiline input should be capped (rows-4 = 6 max bottom)
+	var longInput strings.Builder
+	for i := 0; i < 20; i++ {
+		if i > 0 {
+			longInput.WriteByte('\n')
+		}
+		longInput.WriteString("msg")
 	}
+	ui.inputBuf = []byte(longInput.String())
 	ui.drawInputLocked()
 
 	// scrollEnd must stay >= 1
@@ -487,18 +441,17 @@ func TestTerminalUI_BottomAreaCap(t *testing.T) {
 	}
 	// At least 3 rows for output
 	if ui.scrollEnd < 3 {
-		t.Logf("Note: scrollEnd=%d with 10-row terminal and 20 queued messages", ui.scrollEnd)
+		t.Logf("Note: scrollEnd=%d with 10-row terminal and 20-line input", ui.scrollEnd)
 	}
 }
 
 // Test that outRow is capped when scroll region shrinks
 func TestTerminalUI_OutRowCapping(t *testing.T) {
 	ui := &TerminalUI{rows: 24, cols: 80, outRow: 22, outCol: 1, scrollEnd: 22}
-	ui.prompt = "you> "
 	ui.inputBuf = []byte{}
 
-	// Adding queued messages shrinks scroll region; outRow should be capped
-	ui.queuedMsgs = []string{"a", "b", "c", "d", "e"}
+	// Multiline input shrinks scroll region; outRow should be capped
+	ui.inputBuf = []byte("a\nb\nc\nd\ne")
 	ui.drawInputLocked()
 
 	if ui.outRow > ui.scrollEnd {
