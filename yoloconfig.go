@@ -16,8 +16,9 @@ import (
 
 // YoloConfigData is the top-level JSON structure for config.json.
 type YoloConfigData struct {
-	Version int    `json:"version"`
-	Model   string `json:"model,omitempty"` // currently selected Ollama model
+	Version      int    `json:"version"`
+	Model        string `json:"model,omitempty"`         // currently selected Ollama model
+	TerminalMode bool   `json:"terminal_mode,omitempty"` // true = classic split-screen UI; false (default) = buffer mode
 }
 
 // YoloConfig owns the in-memory config and handles reading/writing to disk.
@@ -86,6 +87,21 @@ func (c *YoloConfig) GetModel() string {
 func (c *YoloConfig) SetModel(model string) {
 	c.mu.Lock()
 	c.Data.Model = model
+	c.mu.Unlock()
+	c.Save()
+}
+
+// GetTerminalMode returns whether classic split-screen terminal mode is enabled.
+func (c *YoloConfig) GetTerminalMode() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Data.TerminalMode
+}
+
+// SetTerminalMode updates the terminal mode setting and persists to disk.
+func (c *YoloConfig) SetTerminalMode(enabled bool) {
+	c.mu.Lock()
+	c.Data.TerminalMode = enabled
 	c.mu.Unlock()
 	c.Save()
 }

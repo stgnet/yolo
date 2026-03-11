@@ -266,6 +266,8 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 			outFn(s)
 		} else if globalUI != nil {
 			globalUI.OutputPrintInline(s)
+		} else if bufferUI != nil {
+			bufferUI.Write(s)
 		} else {
 			rawWrite(s)
 		}
