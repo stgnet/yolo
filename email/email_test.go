@@ -13,40 +13,28 @@ func TestDefaultConfig(t *testing.T) {
 		t.Error("SMTPHost should have a default value")
 	}
 
-	if cfg.SMTPPort != 587 {
-		t.Errorf("Expected default SMTPPort 587, got %d", cfg.SMTPPort)
-	}
-
-	if cfg.Username == "" {
-		t.Error("Username should have a default value")
-	}
-
-	if cfg.FromAddress == "" {
-		t.Error("FromAddress should have a default value")
+	// Sendmail is the default, SMTP settings are fallbacks
+	if cfg.SendmailPath == "" {
+		t.Error("SendmailPath should have a default value")
 	}
 }
 
 func TestConfigDefaults(t *testing.T) {
 	cfg := DefaultConfig()
 
-	expectedHost := "b-haven.org"
+	expectedHost := "localhost"
 	if cfg.SMTPHost != expectedHost {
 		t.Errorf("Expected SMTPHost %q, got %q", expectedHost, cfg.SMTPHost)
 	}
 
-	expectedUser := "yolo@b-haven.org"
-	if cfg.Username != expectedUser {
-		t.Errorf("Expected Username %q, got %q", expectedUser, cfg.Username)
+	expectedSendmail := "/usr/sbin/sendmail"
+	if cfg.SendmailPath != expectedSendmail {
+		t.Errorf("Expected SendmailPath %q, got %q", expectedSendmail, cfg.SendmailPath)
 	}
 
-	expectedFrom := "yolo@b-haven.org"
-	if cfg.FromAddress != expectedFrom {
-		t.Errorf("Expected FromAddress %q, got %q", expectedFrom, cfg.FromAddress)
-	}
-
-	expectedName := "YOLO"
-	if cfg.FromName != expectedName {
-		t.Errorf("Expected FromName %q, got %q", expectedName, cfg.FromName)
+	expectedPort := 25
+	if cfg.SMTPPort != expectedPort {
+		t.Errorf("Expected SMTPPort %d, got %d", expectedPort, cfg.SMTPPort)
 	}
 }
 
@@ -91,4 +79,44 @@ func TestMessageMultipleRecipients(t *testing.T) {
 			t.Errorf("Recipient %d: expected %q, got %q", i, expected, msg.To[i])
 		}
 	}
+}
+
+func TestPrepareMessage(t *testing.T) {
+	c := Client{config: DefaultConfig()}
+	msg := &Message{
+		To:      []string{"test@example.com"},
+		Subject: "Test Subject",
+		Body:    "Test Body",
+	}
+
+	body := c.prepareMessage(msg)
+
+	if !contains(body, "From: yolo@b-haven.org") {
+		t.Error("Message should contain default From address")
+	}
+
+	if !contains(body, "To: test@example.com") {
+		t.Error("Message should contain To address")
+	}
+
+	if !contains(body, "Subject: Test Subject") {
+		t.Error("Message should contain Subject")
+	}
+
+	if !contains(body, "Test Body") {
+		t.Error("Message should contain Body")
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && findSubstring(s, substr))
+}
+
+func findSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
