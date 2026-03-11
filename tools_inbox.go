@@ -22,8 +22,9 @@ import (
 
 // cleanEmailField extracts the email address from a From field which may include display names.
 // Examples: "Scott Griepentrog <scott@griepentrog.com>" -> "scott@griepentrog.com"
-//           "test@stg.net" -> "test@stg.net"
-//           "Name <user@example.org>" -> "user@example.org"
+//
+//	"test@stg.net" -> "test@stg.net"
+//	"Name <user@example.org>" -> "user@example.org"
 func cleanEmailField(field string) string {
 	// Try to extract email from angle brackets first
 	emailRegex := regexp.MustCompile(`<([^>]+)>`)
