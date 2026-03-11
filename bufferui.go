@@ -2,9 +2,12 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/term"
 )
 
 // bufferUI is the global buffer-mode output manager. Set when terminal mode is
@@ -23,6 +26,7 @@ type BufferUI struct {
 	promptShown    bool            // true once input prompt is ready
 	promptReady    chan struct{}   // closed when prompt becomes ready
 	midLine        bool            // true if last Write did not end with \n
+	pastFirstLine  bool            // true after first Enter in current input session
 }
 
 // NewBufferUI creates a new buffer-mode output manager.
@@ -137,6 +141,8 @@ func (b *BufferUI) showPromptLocked() {
 
 // RedrawPrompt redraws the "you> " prompt with the current input line.
 // Called by InputManager after each keystroke in buffer mode. Thread-safe.
+// The "you> " prefix is only shown on the first line; continuation lines
+// after Enter show no prefix.
 func (b *BufferUI) RedrawPrompt(inputBuf string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -152,7 +158,32 @@ func (b *BufferUI) RedrawPrompt(inputBuf string) {
 	} else {
 		lastLine = inputBuf
 	}
-	rawWrite(fmt.Sprintf("\r\033[K%syou> %s%s", Green, lastLine, Reset))
+
+	// Determine available terminal width
+	cols := 80
+	if c, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && c > 0 {
+		cols = c
+	}
+
+	var line string
+	if b.pastFirstLine {
+		// After first Enter, no "you> " prefix
+		if len(lastLine) > cols {
+			lastLine = lastLine[:cols]
+		}
+		line = fmt.Sprintf("\r\033[K%s%s%s", Green, lastLine, Reset)
+	} else {
+		// First line: show "you> " prefix
+		maxContent := cols - 5 // "you> " is 5 chars
+		if maxContent < 0 {
+			maxContent = 0
+		}
+		if len(lastLine) > maxContent {
+			lastLine = lastLine[:maxContent]
+		}
+		line = fmt.Sprintf("\r\033[K%syou> %s%s", Green, lastLine, Reset)
+	}
+	rawWrite(line)
 }
 
 // EnterKey outputs a carriage-return + line-feed for the Enter key in buffer
@@ -162,6 +193,7 @@ func (b *BufferUI) EnterKey() {
 	defer b.mu.Unlock()
 	if b.promptShown {
 		rawWrite("\r\n")
+		b.pastFirstLine = true
 	}
 }
 
@@ -179,6 +211,7 @@ func (b *BufferUI) FlushBuffer() {
 	b.userWantsInput = false
 	b.buffering = false
 	b.promptShown = false
+	b.pastFirstLine = false
 }
 
 // CancelInput resets buffer state and flushes pending output (e.g., on Ctrl-C).
