@@ -296,10 +296,14 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		}
 
 		toolCalls := result.ToolCalls
+		textParsed := false
 
 		// Also check for text-based tool calls as fallback
 		if len(toolCalls) == 0 {
 			toolCalls = a.parseTextToolCalls(result.DisplayText)
+			if len(toolCalls) > 0 {
+				textParsed = true
+			}
 		}
 
 		// Deduplicate: streaming or text-parsing may yield duplicate calls
@@ -323,9 +327,20 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 				},
 			})
 		}
+
+		// When tool calls were parsed from text (not native), strip the
+		// tool call markup from the assistant content so the model only
+		// sees clean content alongside the native tool_calls and results.
+		// Leaving both the text-based syntax and native tool_calls confuses
+		// the model into thinking its tools didn't execute.
+		assistantContent := result.ContentText
+		if textParsed {
+			assistantContent = stripTextToolCalls(assistantContent)
+		}
+
 		roundMsgs = append(roundMsgs, ChatMessage{
 			Role:      "assistant",
-			Content:   result.ContentText,
+			Content:   assistantContent,
 			ToolCalls: nativeTCs,
 		})
 
@@ -454,6 +469,21 @@ func (a *YoloAgent) parseTextToolCalls(text string) []ParsedToolCall {
 		}
 	}
 
+	// Format 2b: bare <function=name><parameter=key>value</parameter>...</function> (no <tool_call> wrapper)
+	if len(calls) == 0 {
+		re2b := regexp.MustCompile(`(?s)<function=(\w+)>(.*?)</function>`)
+		reParam2b := regexp.MustCompile(`(?s)<parameter=(\w+)>\s*(.*?)\s*</parameter>`)
+		for _, match := range re2b.FindAllStringSubmatch(text, -1) {
+			name := match[1]
+			body := match[2]
+			args := map[string]any{}
+			for _, pm := range reParam2b.FindAllStringSubmatch(body, -1) {
+				args[pm[1]] = pm[2]
+			}
+			calls = append(calls, ParsedToolCall{Name: name, Args: args})
+		}
+	}
+
 	// Format 3: [tool_name] {"key": "value", ...} or [tool_name] => result
 	if len(calls) == 0 {
 		re3 := regexp.MustCompile(`(?m)\[(\w+)\]\s*(?:=>[^{]*)?\s*(\{.*?\})`)
@@ -565,6 +595,30 @@ func parseParamString(paramStr string) map[string]any {
 		}
 	}
 	return result
+}
+
+// stripTextToolCalls removes text-based tool call syntax from assistant
+// content so that the model does not see both its own textual tool calls
+// and the native tool_calls representation. This prevents the model from
+// getting confused and thinking its tools didn't execute.
+func stripTextToolCalls(text string) string {
+	// Remove [tool activity]...[/tool activity] blocks (may span multiple lines)
+	reActivity := regexp.MustCompile(`(?s)\[tool activity\].*?\[/tool activity\]`)
+	text = reActivity.ReplaceAllString(text, "")
+
+	// Remove <tool_call>...</tool_call> blocks
+	reToolCall := regexp.MustCompile(`(?s)<tool_call>.*?</tool_call>`)
+	text = reToolCall.ReplaceAllString(text, "")
+
+	// Remove bare <function=name>...</function> blocks (without <tool_call> wrapper)
+	reBareFunc := regexp.MustCompile(`(?s)<function=\w+>.*?</function>`)
+	text = reBareFunc.ReplaceAllString(text, "")
+
+	// Collapse multiple blank lines into one
+	reBlank := regexp.MustCompile(`\n{3,}`)
+	text = reBlank.ReplaceAllString(text, "\n\n")
+
+	return strings.TrimSpace(text)
 }
 
 // ── Model switching ──
@@ -1113,4 +1167,3 @@ func (a *YoloAgent) Run() {
 	fmt.Print("\r\n")
 	cprint(Cyan, "  Session saved. Goodbye!\n")
 }
-
