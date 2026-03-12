@@ -69,16 +69,21 @@ func (t *TodoList) Load() error {
 	return nil
 }
 
-func (t *TodoList) Save() error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
+// saveLocked writes todos to disk. Caller must hold t.mu.
+func (t *TodoList) saveLocked() error {
 	data, err := json.MarshalIndent(t.todos, "", "  ")
 	if err != nil {
 		return err
 	}
 
 	return os.WriteFile(t.filePath, data, 0644)
+}
+
+func (t *TodoList) Save() error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	return t.saveLocked()
 }
 
 // Add adds a new todo item
@@ -93,7 +98,7 @@ func (t *TodoList) Add(title string) TodoItem {
 	}
 
 	t.todos = append(t.todos, todo)
-	t.Save()
+	t.saveLocked()
 
 	return todo
 }
@@ -107,7 +112,7 @@ func (t *TodoList) Complete(title string) bool {
 		if strings.EqualFold(t.todos[i].Title, title) && !t.todos[i].Done {
 			t.todos[i].Done = true
 			t.todos[i].CompletedAt = time.Now()
-			t.Save()
+			t.saveLocked()
 			return true
 		}
 	}

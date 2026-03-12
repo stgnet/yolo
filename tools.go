@@ -304,6 +304,29 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 	}
 }
 
+// executeWithTimeout runs a tool with a ToolTimeout-second deadline.
+// If the tool hangs (e.g. due to a deadlock), the agent receives an error
+// message describing the timeout so it can recover and avoid the tool.
+// The hung goroutine is abandoned (Go has no way to kill a goroutine),
+// but the agent loop remains responsive.
+func executeWithTimeout(te *ToolExecutor, name string, args map[string]any) string {
+	type result struct{ s string }
+	done := make(chan result, 1)
+
+	go func() {
+		done <- result{te.Execute(name, args)}
+	}()
+
+	select {
+	case r := <-done:
+		return r.s
+	case <-time.After(time.Duration(ToolTimeout) * time.Second):
+		return fmt.Sprintf("Error: tool '%s' timed out after %d seconds (possible deadlock or hang). "+
+			"The tool did not respond and has been abandoned. "+
+			"Avoid calling this tool again with the same arguments.", name, ToolTimeout)
+	}
+}
+
 // ─── Argument Helpers ─────────────────────────────────────────────────
 
 func getStringArg(args map[string]any, key, fallback string) string {
