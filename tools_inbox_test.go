@@ -23,7 +23,6 @@ func TestComposeResponseToEmailWithMockLLM(t *testing.T) {
 		body               string
 		subject            string
 		from               string
-		expectSubjPrefix   string
 		expectBodyContains string
 	}{
 		{
@@ -31,7 +30,6 @@ func TestComposeResponseToEmailWithMockLLM(t *testing.T) {
 			body:               "Hi YOLO, I heard you're autonomous. How's it going?",
 			subject:            "Hello from outside!",
 			from:               "user@example.com",
-			expectSubjPrefix:   "", // Response is just body text, subject handled separately
 			expectBodyContains: "MOCKED",
 		},
 		{
@@ -39,7 +37,6 @@ func TestComposeResponseToEmailWithMockLLM(t *testing.T) {
 			body:               "",
 			subject:            "Just checking",
 			from:               "checker@test.com",
-			expectSubjPrefix:   "",
 			expectBodyContains: "MOCKED",
 		},
 	}
@@ -52,15 +49,76 @@ func TestComposeResponseToEmailWithMockLLM(t *testing.T) {
 				t.Errorf("response body should contain %q, got: %q", tc.expectBodyContains, response)
 			}
 
-			// For non-empty body, response should be the mocked LLM output
-			if tc.body != "" && len(response) < 20 {
+			// Response should be at least the mocked content
+			if len(response) < 20 {
 				t.Errorf("response too short: %q", response)
 			}
+		})
+	}
+}
 
-			// For empty body, it should still generate something (not just error message)
-			if tc.body == "" && !strings.Contains(response, "MOCKED") {
-				t.Error("empty body should still get mocked response")
+// Test limitString function
+func TestLimitString(t *testing.T) {
+	testCases := []struct {
+		name     string
+		input    string
+		maxLen   int
+		expected string
+	}{
+		{
+			name:     "string shorter than maxLen",
+			input:    "Hello",
+			maxLen:   10,
+			expected: "Hello",
+		},
+		{
+			name:     "string equal to maxLen",
+			input:    "Hello",
+			maxLen:   5,
+			expected: "Hello",
+		},
+		{
+			name:     "string longer than maxLen",
+			input:    "Hello World",
+			maxLen:   5,
+			expected: "Hello...",
+		},
+		{
+			name:     "empty string",
+			input:    "",
+			maxLen:   5,
+			expected: "",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := limitString(tc.input, tc.maxLen)
+			if result != tc.expected {
+				t.Errorf("limitString(%q, %d) = %q, want %q", tc.input, tc.maxLen, result, tc.expected)
 			}
 		})
+	}
+}
+
+// Test processInboxWorkflow with mock LLM
+func TestProcessInboxWorkflow(t *testing.T) {
+	// Save original LLM generator
+	origLLMGen := llmResponseGenerator
+
+	// Mock LLM response
+	llmResponseGenerator = func(prompt string) string {
+		return "Test auto-reply to your email"
+	}
+
+	defer func() {
+		llmResponseGenerator = origLLMGen
+	}()
+
+	// Test the compose function directly (hard to test full workflow without real mailbox)
+	response := composeResponseToEmail("Test email body", "Test Subject", "test@example.com")
+
+	if !strings.Contains(response, "Test auto-reply") {
+		t.Errorf("Response should contain mock reply, got: %s", response)
 	}
 }
