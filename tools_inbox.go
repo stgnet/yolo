@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 // Email represents a parsed email message
@@ -195,6 +196,12 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 	return output.String()
 }
 
+// llmResponseGenerator is a function type for generating LLM responses
+// This allows tests to inject mock generators without needing actual Ollama
+var llmResponseGenerator = func(prompt string) string {
+	return generateLLMText(prompt)
+}
+
 // composeResponseToEmail generates a response to an incoming email using LLM directly
 // ALL emails are sent directly to the LLM - no pattern matching, no templates
 func composeResponseToEmail(body, subject, from string) string {
@@ -220,7 +227,7 @@ REQUIREMENTS:
 
 Write your email response now:`, from, subject, body)
 
-	response := generateLLMText(prompt)
+	response := llmResponseGenerator(prompt)
 
 	return strings.TrimSpace(response)
 }
@@ -241,7 +248,10 @@ func generateLLMText(prompt string) string {
 		{Role: "user", Content: prompt},
 	}
 
-	result, err := client.Chat(context.Background(), "qwen3.5:27b", messages, nil, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	result, err := client.Chat(ctx, "qwen3.5:27b", messages, nil, nil)
 	if err != nil {
 		return fmt.Sprintf("[Error generating response: %v]", err)
 	}

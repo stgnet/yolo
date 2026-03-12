@@ -12,6 +12,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -279,90 +280,106 @@ func TestSendReportValidation(t *testing.T) {
 
 // **************************************************************************
 // ** UNIT TESTS FOR composeResponseToEmail                              **
-// ** These tests validate email response generation WITHOUT sending      **
-// ** any real emails. They test the composeResponseToEmail function      **
-// ** directly, which calls the LLM but does not invoke sendmail.         **
+// ** These tests validate email response generation WITHOUT relying on    **
+// ** external Ollama service. They use mocked LLM responses to test the   **
+// ** email handling logic comprehensively.                               **
 // **************************************************************************
 
-func TestComposeResponseToEmail(t *testing.T) {
-	tests := []struct {
-		name    string
-		body    string
-		subject string
-		from    string
-	}{
-		{
-			name:    "simple greeting",
-			body:    "Hello YOLO, how are you?",
-			subject: "Greeting",
-			from:    "test@example.com",
-		},
-		{
-			name:    "question about capabilities",
-			body:    "What can you do?",
-			subject: "YOLO Capabilities",
-			from:    "curious@example.com",
-		},
-		{
-			name:    "request for help",
-			body:    "I need help with my Go project",
-			subject: "Need assistance",
-			from:    "developer@example.com",
-		},
+func TestComposeResponseToEmailWithMock(t *testing.T) {
+	// Save original generator and restore after test
+	originalGenerator := llmResponseGenerator
+	defer func() { llmResponseGenerator = originalGenerator }()
+
+	// Set up mock generator
+	callCount := 0
+	llmResponseGenerator = func(prompt string) string {
+		callCount++
+		// Verify the prompt contains expected data
+		if !strings.Contains(prompt, "test@example.com") {
+			t.Error("Prompt should contain sender email")
+		}
+		if !strings.Contains(prompt, "Greeting") {
+			t.Error("Prompt should contain subject")
+		}
+		if !strings.Contains(prompt, "Hello YOLO") {
+			t.Error("Prompt should contain body content")
+		}
+		return "Hi! I'm doing great, thanks for asking. How can I help you today?"
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			response := composeResponseToEmail(tt.body, tt.subject, tt.from)
+	response := composeResponseToEmail("Hello YOLO, how are you?", "Greeting", "test@example.com")
 
-			// Response should not be empty
-			if response == "" {
-				t.Error("Expected non-empty response from composeResponseToEmail")
-			}
+	if callCount != 1 {
+		t.Errorf("Expected llmResponseGenerator to be called once, got %d calls", callCount)
+	}
 
-			// Response should contain some meaningful text (more than just error message)
-			if len(response) < 5 {
-				t.Errorf("Response too short: %q", response)
-			}
+	if response == "" {
+		t.Error("Expected non-empty response")
+	}
 
-			// If there was an error, it should be formatted as an error message
-			if strings.Contains(response, "[Error") {
-				t.Logf("LLM error in response: %s", response)
-			}
-		})
+	expected := "Hi! I'm doing great, thanks for asking. How can I help you today?"
+	if response != expected {
+		t.Errorf("Expected %q, got %q", expected, response)
 	}
 }
 
 func TestComposeResponseToEmailEmptyBody(t *testing.T) {
+	// Save original generator and restore after test
+	originalGenerator := llmResponseGenerator
+	defer func() { llmResponseGenerator = originalGenerator }()
+
+	// Set up mock generator that tracks the prompt
+	var capturedPrompt string
+	llmResponseGenerator = func(prompt string) string {
+		capturedPrompt = prompt
+		return "Thank you for your email."
+	}
+
 	response := composeResponseToEmail("", "Test Subject", "sender@example.com")
 
 	if response == "" {
 		t.Error("Expected non-empty response even with empty body")
 	}
 
-	// Empty body should be handled gracefully (replaced with "No content")
-	if !strings.Contains(response, "[Error") && len(response) < 5 {
-		t.Errorf("Response too short for empty body case: %q", response)
+	// Verify empty body is replaced with "No content"
+	if !strings.Contains(capturedPrompt, "No content") {
+		t.Error("Empty body should be replaced with 'No content' in prompt")
 	}
 }
 
 func TestComposeResponseToEmailLongMessage(t *testing.T) {
+	// Save original generator and restore after test
+	originalGenerator := llmResponseGenerator
+	defer func() { llmResponseGenerator = originalGenerator }()
+
 	longBody := strings.Repeat("This is a test sentence. ", 100)
+
+	llmResponseGenerator = func(prompt string) string {
+		// Verify the long message is included in prompt
+		if !strings.Contains(prompt, longBody) {
+			t.Error("Long body should be included in prompt")
+		}
+		return "I've received your detailed message."
+	}
+
 	response := composeResponseToEmail(longBody, "Long Message Test", "sender@example.com")
 
 	if response == "" {
 		t.Error("Expected non-empty response for long message")
-	}
-
-	// Should handle long messages without crashing
-	if strings.Contains(response, "[Error") && !strings.Contains(response, "context deadline exceeded") {
-		t.Logf("Unexpected error: %s", response)
 	}
 }
 
 func TestComposeResponseToEmailNoSendmail(t *testing.T) {
 	// This test verifies that composeResponseToEmail does NOT invoke sendmail
 	// It only generates the response text, it doesn't send anything
+
+	// Save original generator and restore after test
+	originalGenerator := llmResponseGenerator
+	defer func() { llmResponseGenerator = originalGenerator }()
+
+	llmResponseGenerator = func(prompt string) string {
+		return "This is a mock response"
+	}
 
 	response := composeResponseToEmail("Test body", "Test Subject", "test@example.com")
 
@@ -372,5 +389,66 @@ func TestComposeResponseToEmailNoSendmail(t *testing.T) {
 
 	// The function should return a generated response, not attempt to send it
 	// If we got here without actually sending an email, the test passes
-	_ = response
+	if response != "This is a mock response" {
+		t.Errorf("Expected mock response, got %q", response)
+	}
+}
+
+func TestComposeResponseToEmailTrimWhitespace(t *testing.T) {
+	// Save original generator and restore after test
+	originalGenerator := llmResponseGenerator
+	defer func() { llmResponseGenerator = originalGenerator }()
+
+	// Mock returns response with leading/trailing whitespace
+	llmResponseGenerator = func(prompt string) string {
+		return "  \n\nThis is the response.\n\n  "
+	}
+
+	response := composeResponseToEmail("Test", "Subject", "test@example.com")
+
+	if strings.HasPrefix(response, " ") || strings.HasSuffix(response, " ") {
+		t.Errorf("Response should have whitespace trimmed, got %q", response)
+	}
+
+	if strings.HasPrefix(response, "\n") || strings.HasSuffix(response, "\n") {
+		t.Errorf("Response should have newlines trimmed, got %q", response)
+	}
+}
+
+func TestComposeResponseToEmailPromptStructure(t *testing.T) {
+	// Save original generator and restore after test
+	originalGenerator := llmResponseGenerator
+	defer func() { llmResponseGenerator = originalGenerator }()
+
+	// Capture the full prompt to verify structure
+	var capturedPrompt string
+	llmResponseGenerator = func(prompt string) string {
+		capturedPrompt = prompt
+		return "Mock response"
+	}
+
+	body := "I have a question about your capabilities"
+	subject := "YOLO Questions"
+	from := "curious@user.com"
+
+	composeResponseToEmail(body, subject, from)
+
+	// Verify prompt contains all required sections
+	expectedElements := []string{
+		"You are YOLO",
+		"INCOMING EMAIL:",
+		fmt.Sprintf("Sender: %s", from),
+		fmt.Sprintf("Subject: %s", subject),
+		"Message body:",
+		body,
+		"REQUIREMENTS:",
+		"Reply DIRECTLY",
+		"Write your email response now:",
+	}
+
+	for _, element := range expectedElements {
+		if !strings.Contains(capturedPrompt, element) {
+			t.Errorf("Prompt should contain %q, got:\n%s", element, capturedPrompt)
+		}
+	}
 }
