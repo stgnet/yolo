@@ -35,7 +35,7 @@ func TestGetSystemPrompt(t *testing.T) {
 		baseDir: tempDir,
 		config:  NewYoloConfig(tempDir),
 	}
-	
+
 	promptPath := filepath.Join(tempDir, "SYSTEM_PROMPT.md")
 	content := []byte("Test prompt with {model} and {timestamp}")
 	if err := os.WriteFile(promptPath, content, 0644); err != nil {
@@ -61,7 +61,7 @@ func TestEnableDisableTerminalMode(t *testing.T) {
 	if bufferUI != nil {
 		t.Error("Expected bufferUI to be nil after enabling terminal mode")
 	}
-	
+
 	// Test disabling terminal mode (terminal UI should be torn down)
 	bufferUI = oldBufferUI // restore for test
 	agent.disableTerminalMode()
