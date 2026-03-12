@@ -146,3 +146,51 @@ func TestEmailShouldRespond(t *testing.T) {
 		})
 	}
 }
+
+func TestComposeResponseToEmail_ContextualQuestions(t *testing.T) {
+	agent := &YoloAgent{config: NewYoloConfig(".")}
+	executor := NewToolExecutor(".", agent)
+
+	tests := []struct {
+		name           string
+		email          EmailMessage
+		expectedPhrase string
+	}{
+		{
+			name: "question about ability to answer earlier messages",
+			email: EmailMessage{
+				From:    "scott@stg.net",
+				Subject: "Re: Email handling",
+				Content: "Are you now able to answer my questions posed in the earlier message?",
+			},
+			expectedPhrase: "Yes, I can answer questions from earlier messages",
+		},
+		{
+			name: "generic question with word 'question'",
+			email: EmailMessage{
+				From:    "user@example.com",
+				Subject: "I have a question",
+				Content: "I have a question about the project",
+			},
+			expectedPhrase: "I can see you have questions or requests",
+		},
+		{
+			name: "testing message",
+			email: EmailMessage{
+				From:    "test@example.com",
+				Subject: "Test",
+				Content: "Just testing the email system",
+			},
+			expectedPhrase: "Test received!",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			response := executor.composeResponseToEmail(tt.email)
+			if !strings.Contains(response, tt.expectedPhrase) {
+				t.Errorf("Response doesn't contain expected phrase '%s'. Got: %s", tt.expectedPhrase, response)
+			}
+		})
+	}
+}
