@@ -15,6 +15,7 @@
 2. NO pattern matching or template fallbacks
 3. Hand every email body/subject/sender directly to the prompt
 4. Let the LLM generate natural, conversational responses
+5. **Testing:** To test email responses without sending - simulate inbound email, check response generation, prevent actual send
 
 ## File Paths Reference
 - Email inbox: `/var/mail/b-haven.org/yolo/new/`
