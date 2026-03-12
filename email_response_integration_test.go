@@ -26,17 +26,17 @@ func TestEmailResponseShowsActionsTaken(t *testing.T) {
 	}
 
 	// Should show at least one action
-	hasAction := strings.Contains(response, "Generating system status") || 
-		         strings.Contains(response, "Gathering current status") ||
-		         strings.Contains(response, "Checking test coverage")
+	hasAction := strings.Contains(response, "Generating system status") ||
+		strings.Contains(response, "Gathering current status") ||
+		strings.Contains(response, "Checking test coverage")
 	if !hasAction {
 		t.Error("Expected response to show at least one action taken")
 	}
 
 	// Should provide actual answers with data
 	hasData := strings.Contains(response, "Test Coverage:") ||
-	          strings.Contains(response, "tests") && strings.Contains(response, "passing") ||
-	          strings.Contains(response, "status")
+		strings.Contains(response, "tests") && strings.Contains(response, "passing") ||
+		strings.Contains(response, "status")
 	if !hasData {
 		t.Error("Expected response to include actual system data/status information")
 	}

@@ -27,11 +27,11 @@ func TestNewBufferUI(t *testing.T) {
 // TestBufferUI_Write tests the Write method in various states
 func TestBufferUI_Write(t *testing.T) {
 	tests := []struct {
-		name           string
-		initialState   func(*BufferUI)
-		input          string
-		checkOutput    func(*BufferUI) bool
-		description    string
+		name         string
+		initialState func(*BufferUI)
+		input        string
+		checkOutput  func(*BufferUI) bool
+		description  string
 	}{
 		{
 			name:         "write when not buffering and no user input",
@@ -50,7 +50,7 @@ func TestBufferUI_Write(t *testing.T) {
 				// Create new promptReady channel since it's closed by default
 				u.promptReady = make(chan struct{})
 			},
-			input:        "test output\n",
+			input: "test output\n",
 			checkOutput: func(u *BufferUI) bool {
 				return u.buffering && strings.Contains(u.buffer.String(), "test output")
 			},
@@ -63,7 +63,7 @@ func TestBufferUI_Write(t *testing.T) {
 				u.midLine = false
 				u.promptReady = make(chan struct{}) // Fresh channel for this test
 			},
-			input:        "first line\nsecond line",
+			input: "first line\nsecond line",
 			checkOutput: func(u *BufferUI) bool {
 				return u.buffering && !u.midLine
 			},
@@ -128,13 +128,13 @@ func TestBufferUI_NotifyKeypress(t *testing.T) {
 			ui := NewBufferUI()
 			tt.initialState(ui)
 			ui.NotifyKeypress()
-			
+
 			// Wait for potential async operations
 			time.Sleep(300 * time.Millisecond)
-			
+
 			promptShown := ui.IsPromptShown()
 			if !tt.checkAfter(ui, promptShown) {
-				t.Errorf("%s - Check failed. userWantsInput=%v, buffering=%v, promptShown=%v", 
+				t.Errorf("%s - Check failed. userWantsInput=%v, buffering=%v, promptShown=%v",
 					tt.description, ui.userWantsInput, ui.buffering, promptShown)
 			}
 		})
@@ -156,7 +156,7 @@ func TestBufferUI_AccessorMethods(t *testing.T) {
 	// After NotifyKeypress, user should be typing
 	ui.NotifyKeypress()
 	time.Sleep(100 * time.Millisecond)
-	
+
 	if !ui.IsUserTyping() {
 		t.Error("Expected IsUserTyping to return true after NotifyKeypress")
 	}
@@ -165,11 +165,11 @@ func TestBufferUI_AccessorMethods(t *testing.T) {
 // TestBufferUI_RedrawPrompt tests the prompt redraw functionality
 func TestBufferUI_RedrawPrompt(t *testing.T) {
 	ui := NewBufferUI()
-	
+
 	// Redraw should be safe to call multiple times
 	ui.RedrawPrompt("test input")
 	ui.RedrawPrompt("updated input")
-	
+
 	// Should not panic or cause issues
 	if ui == nil {
 		t.Fatal("BufferUI became nil during RedrawPrompt")
@@ -200,7 +200,7 @@ func TestBufferUI_ThreadSafety(t *testing.T) {
 	// Wait for both goroutines to complete
 	<-done
 	<-done
-	
+
 	// Should not have caused any race conditions or panics
 	if ui == nil {
 		t.Fatal("BufferUI became nil during concurrent access")
