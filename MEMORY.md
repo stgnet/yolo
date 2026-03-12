@@ -1,20 +1,28 @@
-# YOLO Memory - Important Reminders
+# YOLO Memory - Important Corrections
 
 ## File Paths
-- **Your source code is in `.` (current directory)**, NOT in `yolo/` subdirectory
-- Example: Use `tools_inbox.go`, NOT `yolo/tools_inbox.go`
-- The working directory IS your source code directory
+- **Source code location:** `.` (current directory), NOT `yolo/`
+- Example: `tools_inbox.go` not `yolo/tools_inbox.go`
+- Working directory: `/Users/sgriepentrog/src/yolo`
 
-## Email Handling Rules
-1. NO pattern matching or templates
-2. Send EVERY email directly to LLM for response generation
-3. LLM should give direct, conversational answers
-4. Skip email tests (they require actual AI generation which won't work in test environment)
+## Restarting YOLO
+- **Use the `restart` tool** to rebuild and restart YOLO
+- DO NOT use `os.Exit()` - this kills YOLO instead of restarting it properly
+- The `restart` tool handles building, testing, and clean restart
 
-## When Fixing Things
-1. Read file from correct path first
-2. Make changes
-3. `go build` to compile
-4. `go test -v ./...` to run tests
-5. Commit with `git commit -am "message"`
-6. Use `restart` tool (NOT shell commands like kill/restart)
+## Email Response Testing
+- To test email responses without actually sending:
+  - Simulate inbound email in test
+  - Check what response would be generated
+  - Prevent actual email from being sent during test
+  
+## Current Model
+- Using: `qwen3.5:27b`
+
+## Tools Available (21 total)
+- web_search, reddit, gog, spawn_subagent, read_webpage, send_email, send_report, check_inbox, process_inbox_with_response, restart, think, learn, etc.
+
+## Email Handling Workflow
+1. `check_inbox` - read emails from Maildir
+2. `process_inbox_with_response` - full automation (read → respond → delete)
+3. `send_report` - status updates to scott@stg.net
