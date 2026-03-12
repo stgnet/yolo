@@ -1,6 +1,6 @@
 # YOLO - Your Own Living Operator
 
-**Version**: 1.0 | **Status**: ✅ Production Ready | **Last Updated**: 2026-03-11T10:06:15-04:00
+**Version**: 1.0 | **Status**: ✅ Production Ready | **Last Updated**: 2026-03-12T13:59:00-04:00
 
 ## Overview
 
@@ -19,7 +19,7 @@ YOLO is a self-evolving AI agent for autonomous software development. It operate
 
 Automatic email processing system:
 - ✅ Read inbound emails from Maildir (`/var/mail/b-haven.org/yolo/`)
-- ✅ Compose intelligent auto-responses
+- ✅ Compose intelligent auto-responses using direct LLM generation
 - ✅ Delete processed messages after responding (as requested)
 - ✅ Smart heuristics to avoid responding to system logs
 - ✅ Prioritize messages from Scott (@stg.net)
@@ -57,7 +57,9 @@ See `EMAIL_PROCESSING.md` for detailed documentation.
 1. **Fixed critical data race** in `handoffRemainingTools()` goroutine
 2. **Implemented comprehensive email processing** with auto-response workflow
 3. **Enhanced test coverage** for email package to 90%
-4. **Added extensive documentation** including:
+4. **Added mock-based unit tests** for email response generation (avoids LLM calls in CI)
+5. **Direct LLM email responses**: All emails now go through direct LLM generation instead of pattern matching
+6. **Added extensive documentation** including:
    - `EMAIL_PROCESSING.md` - Email system documentation
    - `GOOGLE_INTEGRATION.md` - Google Workspace integration guide
    - `ARCHITECTURE.md` - System architecture overview
@@ -88,8 +90,22 @@ git log --oneline -5
 ### Configuration
 - Working directory: `/Users/sgriepentrog/src/yolo`
 - Email address: `yolo@b-haven.org`
-- Current model: `qwen3.5:35b-a3b`
+- Current model: `qwen3.5:27b`
 - Ollama server: localhost:11434
+
+### Testing with Mocks
+The codebase uses function variable injection for testable LLM integration:
+```go
+// In tools_inbox.go - replace this to mock
+var llmResponseGenerator = func(prompt string) string {
+    return generateLLMText(prompt)
+}
+
+// In tests - override it
+llmResponseGenerator = func(prompt string) string {
+    return "MOCKED response"
+}
+```
 
 ## Security Checklist
 
