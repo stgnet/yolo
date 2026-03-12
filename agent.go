@@ -384,7 +384,7 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 			}
 			cprint(Yellow, fmt.Sprintf("  [%s] %s", name, shortStr))
 
-			resultStr := a.tools.Execute(name, args)
+			resultStr := executeWithTimeout(a.tools, name, args)
 
 			preview := resultStr
 			if len(preview) > 200 {
@@ -827,7 +827,7 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 				}
 				cprint(Yellow, fmt.Sprintf("%s [%s] %s", prefix, call.Name, shortStr))
 
-				resultStr := a.tools.Execute(call.Name, args)
+				resultStr := executeWithTimeout(a.tools, call.Name, args)
 
 				preview := resultStr
 				if len(preview) > 200 {
@@ -907,7 +907,7 @@ func (a *YoloAgent) handoffRemainingTools(remaining []ParsedToolCall) *handoffRe
 			}
 			cprint(Yellow, fmt.Sprintf("  [handoff #%d] [%s] %s", hid, call.Name, shortStr))
 
-			resultStr := a.tools.Execute(call.Name, args)
+			resultStr := executeWithTimeout(a.tools, call.Name, args)
 
 			preview := resultStr
 			if len(preview) > 200 {
