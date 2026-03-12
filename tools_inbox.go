@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -248,7 +249,7 @@ func generateLLMText(prompt string) string {
 		{Role: "user", Content: prompt},
 	}
 
-	result, err := client.Chat(nil, "qwen3.5:27b", messages, nil, nil)
+	result, err := client.Chat(context.Background(), "qwen3.5:27b", messages, nil, nil)
 	if err != nil {
 		return fmt.Sprintf("[Error generating response: %v]", err)
 	}
