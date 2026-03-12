@@ -28,3 +28,10 @@
 - composeResponseToEmail calls generateLLMText which calls Ollama for AI responses
 - Email workflow: check_inbox → respond with LLM → delete original
 - Maildir format at `/var/mail/b-haven.org/yolo/new/`
+
+## Tools Available
+- 21 built-in tools including web_search, reddit, gog (Google Workspace)
+- Todo management: add_todo, complete_todo, list_todos
+- File operations: read_file, write_file, edit_file, copy_file, move_file
+- Subagent support for parallel tasks
+- Email handling: check_inbox, process_inbox_with_response, send_email, send_report
