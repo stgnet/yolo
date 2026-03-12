@@ -18,6 +18,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Error: yolo requires an interactive terminal (stdin is not a TTY)")
 		os.Exit(1)
 	}
+	if !term.IsTerminal(int(os.Stdout.Fd())) {
+		fmt.Fprintln(os.Stderr, "Error: yolo requires an interactive terminal (stdout is not a TTY)")
+		os.Exit(1)
+	}
 	if !term.IsTerminal(int(os.Stderr.Fd())) {
 		fmt.Fprintln(os.Stderr, "Error: yolo requires an interactive terminal (stderr is not a TTY)")
 		os.Exit(1)

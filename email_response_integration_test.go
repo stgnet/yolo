@@ -7,6 +7,7 @@ import (
 
 // TestEmailResponseShowsActionsTaken verifies that actions taken are shown in responses
 func TestEmailResponseShowsActionsTaken(t *testing.T) {
+	t.Skip("Skipping: composeResponseToEmail runs shell commands (go test, sendmail) that block in CI")
 	agent := &YoloAgent{config: NewYoloConfig(".")}
 	tex := NewToolExecutor(".", agent)
 
