@@ -15,33 +15,31 @@ This tool implements the complete workflow: **Read → Respond → Delete**
 
 **Workflow:**
 1. Reads all new emails from inbox
-2. Analyzes each email using intelligent heuristics to determine if a response is needed
-3. Composes context-aware auto-responses
+2. Sends ALL email content directly to LLM for response generation (no pattern matching)
+3. Generates natural, conversational responses via `generateLLMText()`
 4. Sends responses back to original sender
 5. Deletes the original email after successful response
 
-### 3. Smart Response Heuristics
+### 3. Response Generation Strategy
 
-The system intelligently determines which emails need responses:
+**Direct LLM Processing:**
+- ALL emails are sent directly to the LLM without any filtering or heuristics
+- No pattern matching, no templates, no intelligent heuristics
+- The LLM receives: sender address, subject, and full message body
+- LLM generates appropriate responses based on context
 
-**Responds to:**
-- Emails with questions (subject/body contains "?")
-- Emails with requests (subject/body contains "please", "help", "need", "when")
-- Emails from Scott (@stg.net) - prioritized human sender
-- Short messages (< 5000 chars) that appear to be human communication
+**Why This Approach:**
+- More natural and flexible than hardcoded rules
+- Handles diverse email types without explicit categorization
+- Simpler codebase (removed complex heuristic logic)
+- Lets the AI decide what deserves a response
 
-**Does NOT respond to:**
-- Automated/system messages (build completed, test run, CI check, job finished, etc.)
-- Long system logs or notifications
-- Automated notifications
-
-### 4. Response Generation
-Responses include:
-- Acknowledgment of received message
-- Current timestamp
-- Information about autonomous operation mode
-- Priority handling for Scott's emails
-- Professional closing
+### 4. Response Content
+The LLM-generated responses are:
+- Conversational and friendly but concise
+- Directly answer questions or address requests
+- Contextually appropriate to the email content
+- Free of templates or generic fallback messages
 
 ## Usage
 
