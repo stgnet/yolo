@@ -20,3 +20,19 @@
 - The function generates response text but does NOT send the email
 - processInboxWithResponse calls composeResponseToEmail then sendEmail separately
 - This separation allows testing response generation without sending emails
+
+## File Path Conventions
+- All file paths are relative to working directory (/Users/sgriepentrog/src/yolo)
+- Use `tools_inbox.go`, NOT `yolo/tools_inbox.go`
+- The `path` parameter in tools expects relative paths from the root
+
+## Test Timeouts
+- Tests that call LLM (like TestComposeResponseToEmail) may timeout with default 30s limit
+- Use `-timeout` flag for longer-running tests: `go test -timeout 120s -run TestComposeResponseToEmail`
+- Consider mocking LLM calls for faster unit tests in CI/CD
+
+## Autonomous Improvement Checklist
+- After code changes: go build, go test (with appropriate timeouts), git commit, restart tool
+- Keep working directory clean - remove temp/test files after use
+- Use subagents for parallel development tasks
+- Check email inbox regularly and process with process_inbox_with_response
