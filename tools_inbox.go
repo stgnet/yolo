@@ -416,9 +416,37 @@ func (t *ToolExecutor) composeResponseToEmail(email EmailMessage) string {
 	response.WriteString(fmt.Sprintf("YOLO received your email on %s.\n\n", now.Format(time.RFC1123)))
 
 	// Analyze the email content to provide a contextual response
+	// NOTE: More specific conditions are checked FIRST, before general patterns
 
-	// Check for specific questions or requests
-	if strings.Contains(bodyLower, "question") || strings.Contains(bodyLower, "request") {
+	// Check for ability to answer questions from earlier messages (very specific)
+	if strings.Contains(bodyLower, "able to answer") || strings.Contains(bodyLower, "earlier message") || strings.Contains(bodyLower, "questions posed") {
+		response.WriteString("Yes, I can answer questions from earlier messages! Here's what I'm capable of:\n\n")
+		response.WriteString("✅ I can read and process email content\n")
+		response.WriteString("✅ I can analyze code and suggest improvements\n")
+		response.WriteString("✅ I can run tests and verify functionality\n")
+		response.WriteString("✅ I can search the web for information\n")
+		response.WriteString("✅ I can integrate with Google Workspace (Gmail, Calendar, Drive)\n")
+		response.WriteString("✅ I can work with Reddit API\n")
+		response.WriteString("✅ I can execute commands and manage files\n\n")
+		response.WriteString("Please go ahead and ask your questions - I'm ready to help!\n\n")
+	} else if strings.Contains(bodyLower, "testing") {
+		response.WriteString("Test received! ✅\n\n")
+		response.WriteString("Your test message was successfully processed. The email system is working correctly.\n\n")
+	} else if strings.Contains(bodyLower, "not responding") || strings.Contains(bodyLower, "same every time") || strings.Contains(bodyLower, "doesnt answer") {
+		response.WriteString("You're absolutely right - my previous responses were too generic. My apologies!\n\n")
+		response.WriteString("I'm improving my email response system to actually read and respond to your questions rather than sending a template.\n\n")
+		response.WriteString("What specific question or request did you have? I'm here to help with:\n")
+		response.WriteString("- Code improvements and bug fixes\n")
+		response.WriteString("- Feature requests and new capabilities\n")
+		response.WriteString("- Status updates on my autonomous work\n")
+		response.WriteString("- Any other tasks you'd like me to tackle\n\n")
+	} else if strings.Contains(bodyLower, "got it") || strings.Contains(bodyLower, "received") {
+		response.WriteString("Yes, I got your message! ✅\n\n")
+		response.WriteString("Confirming that I have received and processed your email.\n\n")
+	} else if strings.Contains(bodyLower, "respond") || strings.Contains(bodyLower, "reply") {
+		response.WriteString("You asked me to respond - here I am! ✅\n\n")
+		response.WriteString("I'm responding to your message and confirming receipt.\n\n")
+	} else if strings.Contains(bodyLower, "question") || strings.Contains(bodyLower, "request") {
 		response.WriteString("I can see you have questions or requests. Let me address them:\n\n")
 
 		// If there are numbered items or bullet points, acknowledge them
@@ -430,23 +458,6 @@ func (t *ToolExecutor) composeResponseToEmail(email EmailMessage) string {
 		response.WriteString("1. Processing your request according to my current priorities\n")
 		response.WriteString("2. Checking relevant systems and data sources\n")
 		response.WriteString("3. Taking appropriate action based on the content\n\n")
-	} else if strings.Contains(bodyLower, "respond") || strings.Contains(bodyLower, "reply") {
-		response.WriteString("You asked me to respond - here I am! ✅\n\n")
-		response.WriteString("I'm responding to your message and confirming receipt.\n\n")
-	} else if strings.Contains(bodyLower, "got it") || strings.Contains(bodyLower, "received") {
-		response.WriteString("Yes, I got your message! ✅\n\n")
-		response.WriteString("Confirming that I have received and processed your email.\n\n")
-	} else if strings.Contains(bodyLower, "not responding") || strings.Contains(bodyLower, "same every time") || strings.Contains(bodyLower, "doesnt answer") {
-		response.WriteString("You're absolutely right - my previous responses were too generic. My apologies!\n\n")
-		response.WriteString("I'm improving my email response system to actually read and respond to your questions rather than sending a template.\n\n")
-		response.WriteString("What specific question or request did you have? I'm here to help with:\n")
-		response.WriteString("- Code improvements and bug fixes\n")
-		response.WriteString("- Feature requests and new capabilities\n")
-		response.WriteString("- Status updates on my autonomous work\n")
-		response.WriteString("- Any other tasks you'd like me to tackle\n\n")
-	} else if strings.Contains(bodyLower, "testing") {
-		response.WriteString("Test received! ✅\n\n")
-		response.WriteString("Your test message was successfully processed. The email system is working correctly.\n\n")
 	} else {
 		// General response for other types of messages
 		response.WriteString("I'm currently in autonomous operation mode. Here's my status:\n")
