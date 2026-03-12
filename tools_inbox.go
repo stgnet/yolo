@@ -196,15 +196,11 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 }
 
 // composeResponseToEmail generates a response to an incoming email using LLM directly
+// ALL emails are sent directly to the LLM - no pattern matching, no templates
 func composeResponseToEmail(body, subject, from string) string {
 	if body == "" {
 		body = "No content"
 	}
-
-	fmt.Printf("[DEBUG] Composing response for email from: %s\n", from)
-	fmt.Printf("[DEBUG] Subject: %s\n", subject)
-	fmt.Printf("[DEBUG] Body preview (first 500 chars):\n%s...\n",
-		limitString(body, 500))
 
 	prompt := fmt.Sprintf(`You are YOLO, an autonomous AI assistant running on a Mac. 
 Your job is to reply to emails directly and helpfully.
@@ -224,11 +220,7 @@ REQUIREMENTS:
 
 Write your email response now:`, from, subject, body)
 
-	fmt.Printf("[DEBUG] Sending prompt to LLM (length: %d)\n", len(prompt))
-
 	response := generateLLMText(prompt)
-
-	fmt.Printf("[DEBUG] Received response (length: %d):\n%s\n", len(response), response)
 
 	return strings.TrimSpace(response)
 }
