@@ -33,6 +33,11 @@ const (
 	// (run_command tool) is allowed to run before being killed.
 	CommandTimeout = 30
 
+	// ToolTimeout is the maximum wall-clock seconds any tool execution
+	// is allowed to run before being reported as hung to the agent.
+	// This catches deadlocks, infinite loops, and other hangs.
+	ToolTimeout = 60
+
 	// MaxSubagentRounds is the maximum number of LLM ↔ tool-execution
 	// rounds a sub-agent is allowed before it must return.
 	MaxSubagentRounds = 20
