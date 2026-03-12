@@ -18,17 +18,17 @@ type Email struct {
 // parseEmail extracts fields from raw email text
 func parseEmail(raw string) Email {
 	email := Email{Raw: raw}
-	
+
 	lines := strings.Split(raw, "\n")
 	inBody := false
 	var bodyLines []string
-	
+
 	for _, line := range lines {
 		if inBody {
 			bodyLines = append(bodyLines, line)
 			continue
 		}
-		
+
 		if strings.HasPrefix(line, "From: ") || strings.HasPrefix(line, "From\t") {
 			parts := strings.SplitN(line, ":", 2)
 			if len(parts) == 2 {
@@ -40,7 +40,7 @@ func parseEmail(raw string) Email {
 				}
 			}
 		}
-		
+
 		if strings.HasPrefix(line, "To: ") || strings.HasPrefix(line, "To\t") {
 			parts := strings.SplitN(line, ":", 2)
 			if len(parts) == 2 {
@@ -52,7 +52,7 @@ func parseEmail(raw string) Email {
 				}
 			}
 		}
-		
+
 		if strings.HasPrefix(line, "Subject: ") || strings.HasPrefix(line, "Subject\t") {
 			parts := strings.SplitN(line, ":", 2)
 			if len(parts) == 2 {
@@ -64,12 +64,12 @@ func parseEmail(raw string) Email {
 				}
 			}
 		}
-		
+
 		if line == "" || strings.HasPrefix(line, "--") {
 			inBody = true
 		}
 	}
-	
+
 	email.Body = strings.Join(bodyLines, "\n")
 	return email
 }
@@ -78,7 +78,7 @@ func parseEmail(raw string) Email {
 func (t *ToolExecutor) checkInbox(args map[string]any) string {
 	markRead := getBoolArg(args, "mark_read", false)
 	inboxPath := "/var/mail/b-haven.org/yolo/new/"
-	
+
 	files, err := os.ReadDir(inboxPath)
 	if err != nil {
 		return fmt.Sprintf("❌ Error reading inbox: %v", err)
@@ -104,11 +104,11 @@ func (t *ToolExecutor) checkInbox(args map[string]any) string {
 		}
 
 		parsedEmail := parseEmail(string(emailContent))
-		
+
 		// Display email summary
 		output.WriteString(fmt.Sprintf("=== Email from: %s ===\n", parsedEmail.From))
 		output.WriteString(fmt.Sprintf("Subject: %s\n", parsedEmail.Subject))
-		
+
 		if markRead {
 			curPath := fmt.Sprintf("/var/mail/b-haven.org/yolo/cur/%s", file.Name())
 			err = os.Rename(filePath, curPath)
@@ -125,7 +125,7 @@ func (t *ToolExecutor) checkInbox(args map[string]any) string {
 // processInboxWithResponse handles the complete email workflow: read, respond, delete
 func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 	inboxPath := "/var/mail/b-haven.org/yolo/new/"
-	
+
 	files, err := os.ReadDir(inboxPath)
 	if err != nil {
 		return fmt.Sprintf("❌ Error reading inbox: %v", err)
@@ -151,27 +151,27 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 		}
 
 		parsedEmail := parseEmail(string(emailContent))
-		
+
 		output.WriteString(fmt.Sprintf("--- Processing email from: %s ---\n", parsedEmail.From))
 		output.WriteString(fmt.Sprintf("Subject: %s\n\n", parsedEmail.Subject))
-		
-		// Generate response using LLM
+
+		// Generate response using LLM directly (no pattern matching)
 		response := composeResponseToEmail(parsedEmail.Body, parsedEmail.Subject, parsedEmail.From)
-		
+
 		if response == "" {
 			output.WriteString("Warning: Empty response generated, skipping send.\n\n")
 			continue
 		}
-		
+
 		output.WriteString(fmt.Sprintf("Generated response:\n%s\n", response))
-		
+
 		// Prepare send_email args
 		emailArgs := map[string]any{
 			"subject": "Re: " + parsedEmail.Subject,
 			"body":    response,
 			"to":      parsedEmail.From,
 		}
-		
+
 		// Send the response using existing sendEmail method
 		result := t.sendEmail(emailArgs)
 		if strings.HasPrefix(result, "Error:") {
@@ -179,7 +179,7 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 		} else {
 			output.WriteString("✓ Response sent successfully\n")
 		}
-		
+
 		// Delete original email from inbox (move to trash or remove)
 		err = os.Remove(filePath)
 		if err != nil {
@@ -187,7 +187,7 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 		} else {
 			output.WriteString("✓ Original email removed\n")
 		}
-		
+
 		output.WriteString("---\n\n")
 	}
 
@@ -199,12 +199,12 @@ func composeResponseToEmail(body, subject, from string) string {
 	if body == "" {
 		body = "No content"
 	}
-	
+
 	fmt.Printf("[DEBUG] Composing response for email from: %s\n", from)
 	fmt.Printf("[DEBUG] Subject: %s\n", subject)
-	fmt.Printf("[DEBUG] Body preview (first 500 chars):\n%s...\n", 
+	fmt.Printf("[DEBUG] Body preview (first 500 chars):\n%s...\n",
 		limitString(body, 500))
-	
+
 	prompt := fmt.Sprintf(`You are YOLO, an autonomous AI assistant running on a Mac. 
 Your job is to reply to emails directly and helpfully.
 
@@ -222,13 +222,13 @@ REQUIREMENTS:
 5. Do NOT use placeholders like [ACTION_NEEDED] or similar
 
 Write your email response now:`, from, subject, body)
-	
+
 	fmt.Printf("[DEBUG] Sending prompt to LLM (length: %d)\n", len(prompt))
-	
+
 	response := generateLLMText(prompt)
-	
+
 	fmt.Printf("[DEBUG] Received response (length: %d):\n%s\n", len(response), response)
-	
+
 	return strings.TrimSpace(response)
 }
 
@@ -243,15 +243,15 @@ func limitString(s string, maxLen int) string {
 // generateLLMText sends a prompt to Ollama and returns the text response
 func generateLLMText(prompt string) string {
 	client := NewOllamaClient("http://localhost:11434")
-	
+
 	messages := []ChatMessage{
 		{Role: "user", Content: prompt},
 	}
-	
+
 	result, err := client.Chat(nil, "qwen3.5:27b", messages, nil, nil)
 	if err != nil {
 		return fmt.Sprintf("[Error generating response: %v]", err)
 	}
-	
+
 	return result.ContentText
 }
