@@ -363,7 +363,7 @@ func TestComposeResponseToEmailLongMessage(t *testing.T) {
 func TestComposeResponseToEmailNoSendmail(t *testing.T) {
 	// This test verifies that composeResponseToEmail does NOT invoke sendmail
 	// It only generates the response text, it doesn't send anything
-	
+
 	response := composeResponseToEmail("Test body", "Test Subject", "test@example.com")
 
 	if response == "" {
