@@ -13,6 +13,15 @@ const (
 	// history, sub-agent results, and other state files are stored.
 	YoloDir = ".yolo"
 
+	// IMPORTANT: Source code is in current directory (.), NOT in yolo/
+	// File paths should be relative to: /Users/sgriepentrog/src/yolo
+	// Example: Use "tools_inbox.go", NOT "yolo/tools_inbox.go"
+	_SourceCodeLocation = "."
+
+	// CRITICAL: Use the restart tool to rebuild, NEVER call os.Exit()
+	// The restart tool handles: go build → go test → git commit → clean restart
+	_UseRestartTool = true
+
 	// MaxContextMessages caps how many history messages are included in the
 	// context window sent to the LLM.
 	MaxContextMessages = 40
