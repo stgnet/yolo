@@ -240,17 +240,21 @@ func extractBody(reader io.Reader, contentType string) string {
 	return string(data)
 }
 
-// processInboxWithResponse checks inbox, composes responses for qualifying emails, and deletes them
+// processInboxWithResponse checks inbox (both new/ and cur/), composes responses for qualifying emails, and deletes them
 func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 	newDir := "/var/mail/b-haven.org/yolo/new/"
 	curDir := "/var/mail/b-haven.org/yolo/cur/"
 
+	// Read from new/ directory first
 	emails, _, err := readMaildir(newDir, curDir, false)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "📭 No inbox directory found - may need to create /var/mail/b-haven.org/yolo/"
-		}
+	if err != nil && !os.IsNotExist(err) {
 		return fmt.Sprintf("❌ Error reading inbox: %v", err)
+	}
+
+	// Also read from cur/ directory to catch emails that were marked as read but not yet responded to
+	curEmails, _, err := readMaildir(curDir, newDir, false)
+	if err == nil {
+		emails = append(emails, curEmails...)
 	}
 
 	if len(emails) == 0 {
