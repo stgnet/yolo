@@ -116,9 +116,7 @@ func TestToolChaining(t *testing.T) {
 
 // TestWebSearchIntegration tests the web_search tool end-to-end
 func TestWebSearchIntegration(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping network test")
-	}
+	t.Skip("Skipping network-dependent integration test")
 
 	executor := NewToolExecutor("/tmp/test", nil)
 	if executor == nil {
@@ -144,9 +142,7 @@ func TestWebSearchIntegration(t *testing.T) {
 
 // TestRedditIntegration tests the Reddit API integration
 func TestRedditIntegration(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping network test")
-	}
+	t.Skip("Skipping network-dependent integration test")
 
 	executor := NewToolExecutor("/tmp/test", nil)
 	if executor == nil {
