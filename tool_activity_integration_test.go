@@ -225,7 +225,7 @@ EOF`,
 			},
 		},
 		{
-			name: "properly closed tags still work via earlier formats",
+			name:    "properly closed tags still work via earlier formats",
 			content: `<function=read_file><parameter=path>main.go</parameter></function>`,
 			expected: []ParsedToolCall{
 				{Name: "read_file", Args: map[string]any{"path": "main.go"}},
