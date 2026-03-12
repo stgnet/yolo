@@ -146,6 +146,17 @@ var ollamaTools = []ToolDef{
 	toolDef("process_inbox_with_response", "Process all inbound emails: read each email, compose an auto-response, send it back to the sender, then delete the original message. This implements the complete email handling workflow: check → respond → delete. Use this tool to automatically handle incoming emails.",
 		map[string]ToolParam{},
 		nil),
+	toolDef("add_todo", "Add a new item to the todo list",
+		map[string]ToolParam{
+			"title": {Type: "string", Description: "Title/description of the todo item (required)"},
+		}, []string{"title"}),
+	toolDef("complete_todo", "Mark a todo item as completed by title",
+		map[string]ToolParam{
+			"title": {Type: "string", Description: "Title of the todo item to complete (required)"},
+		}, []string{"title"}),
+	toolDef("list_todos", "List all todos (pending and completed) from .todo.json file",
+		map[string]ToolParam{},
+		nil),
 }
 
 // ─── Tool Executor ───────────────────────────────────────────────────
@@ -157,7 +168,7 @@ var validTools = []string{
 	"search_files", "run_command", "spawn_subagent",
 	"list_subagents", "read_subagent_result", "summarize_subagents",
 	"list_models", "switch_model", "think", "restart",
-	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "read_webpage", "learn", "send_email", "send_report", "check_inbox", "process_inbox_with_response",
+	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "read_webpage", "learn", "send_email", "send_report", "check_inbox", "process_inbox_with_response", "add_todo", "complete_todo", "list_todos",
 }
 
 // subagentTools is the subset of ollamaTools exposed to sub-agents.
@@ -282,6 +293,12 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 		return t.checkInbox(args)
 	case "process_inbox_with_response":
 		return t.processInboxWithResponse(args)
+	case "add_todo":
+		return t.addTodo(args)
+	case "complete_todo":
+		return t.completeTodo(args)
+	case "list_todos":
+		return t.listTodosTool(args)
 	default:
 		return errorMessage("unknown tool '%s'. Available tools: %s", name, strings.Join(validTools, ", "))
 	}

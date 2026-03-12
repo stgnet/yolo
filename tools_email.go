@@ -69,6 +69,12 @@ func (t *ToolExecutor) sendReport(args map[string]any) string {
 		return "Error: body parameter is required"
 	}
 
+	// Append todo list to the report if not already included
+	todoOutput := listTodos()
+	if !strings.Contains(body, "📝 TODO LIST") {
+		body = body + "\n\n" + todoOutput
+	}
+
 	// Use provided recipient or default to scott@stg.net
 	if to == "" {
 		to = "scott@stg.net"
