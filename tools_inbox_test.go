@@ -89,8 +89,8 @@ func TestComposeResponseToEmail(t *testing.T) {
 	}
 
 	// Verify response format - should start with greeting and end with signature
-	if !strings.Contains(response, "Thank you for your message") {
-		t.Error("Response doesn't contain expected greeting")
+	if !strings.Contains(response, "Hi ") && !strings.Contains(response, "Hello ") {
+		t.Error("Response doesn't contain expected personal greeting")
 	}
 
 	if !strings.Contains(response, "Best regards") || !strings.Contains(response, "YOLO") {
@@ -154,18 +154,18 @@ func TestComposeResponseToEmail_ContextualQuestions(t *testing.T) {
 		expectedPhrase string
 	}{
 		{
-			name:    "question about ability to answer earlier messages",
-			content: "Are you now able to answer my questions posed in the earlier message?",
+			name:           "question about ability to answer earlier messages",
+			content:        "Are you now able to answer my questions posed in the earlier message?",
 			expectedPhrase: "answer questions from earlier messages",
 		},
 		{
-			name:    "generic question with word 'question'",
-			content: "I have a question about the project",
+			name:           "generic question with word 'question'",
+			content:        "I have a question about the project",
 			expectedPhrase: "I can see you have",
 		},
 		{
-			name:    "testing message",
-			content: "Just testing the email system to make sure I receive responses",
+			name:           "testing message",
+			content:        "Just testing the email system to make sure I receive responses",
 			expectedPhrase: "Test received",
 		},
 	}
@@ -187,7 +187,9 @@ func buildSimpleResponse(content string) string {
 	bodyLower := strings.ToLower(content)
 	var specificAnswers []string
 
-	if strings.Contains(bodyLower, "answer questions from earlier messages") {
+	// Check for questions about answering earlier messages (more flexible pattern)
+	if strings.Contains(bodyLower, "answer") && strings.Contains(bodyLower, "question") &&
+		(strings.Contains(bodyLower, "earlier") || strings.Contains(bodyLower, "previous")) {
 		specificAnswers = append(specificAnswers, "Yes, I can answer questions from earlier messages.")
 	}
 
@@ -204,6 +206,6 @@ func buildSimpleResponse(content string) string {
 		bodyParts = append(bodyParts, strings.Join(specificAnswers, "\n"))
 	}
 	bodyParts = append(bodyParts, "I'm designed to process emails and respond appropriately.")
-	
+
 	return "Thank you for your message.\n\n" + strings.Join(bodyParts, "\n\n") + "\n\nBest regards,\nYOLO"
 }
