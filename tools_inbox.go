@@ -412,12 +412,12 @@ func (t *ToolExecutor) composeResponseToEmail(email EmailMessage) string {
 
 	// === ACTION TAKING SECTION ===
 	// Detect what the email is asking for and TAKE ACTION
-	
+
 	// Check if they want a status report or progress update
-	if strings.Contains(bodyLower, "status") || strings.Contains(bodyLower, "progress") || 
-	   strings.Contains(bodyLower, "what are you") || strings.Contains(bodyLower, "working on") {
+	if strings.Contains(bodyLower, "status") || strings.Contains(bodyLower, "progress") ||
+		strings.Contains(bodyLower, "what are you") || strings.Contains(bodyLower, "working on") {
 		actionsTaken = append(actionsTaken, "🔍 Generating system status report...")
-		
+
 		// Check test coverage
 		testOutput := t.runCommand(map[string]any{"command": "go test -v -cover ./... 2>&1 | head -50"})
 		if strings.Contains(testOutput, "PASS") {
@@ -425,7 +425,7 @@ func (t *ToolExecutor) composeResponseToEmail(email EmailMessage) string {
 		} else {
 			specificAnswers = append(specificAnswers, "⚠️ Tests have failures - see output above")
 		}
-		
+
 		// Check git status
 		gitStatus := t.runCommand(map[string]any{"command": "git status --short"})
 		if strings.TrimSpace(gitStatus) == "" {
@@ -433,27 +433,27 @@ func (t *ToolExecutor) composeResponseToEmail(email EmailMessage) string {
 		} else {
 			specificAnswers = append(specificAnswers, "📝 There are uncommitted changes")
 		}
-		
+
 		actionsTaken = append(actionsTaken, fmt.Sprintf("→ System checked: %d tests verified, git status confirmed", len(specificAnswers)))
 	}
 
 	// Check if they're asking about email responses (meta-question) or giving feedback
 	if strings.Contains(bodyLower, "not answering") || strings.Contains(bodyLower, "doesnt answer") ||
-	   strings.Contains(bodyLower, "same response") || strings.Contains(bodyLower, "not responding") ||
-	   strings.Contains(bodyLower, "that is a problem") {
+		strings.Contains(bodyLower, "same response") || strings.Contains(bodyLower, "not responding") ||
+		strings.Contains(bodyLower, "that is a problem") {
 		actionsTaken = append(actionsTaken, "🔧 Addressing feedback about email responses...")
-		
+
 		specificAnswers = append(specificAnswers, "You're absolutely right - I apologize. I was sending generic acknowledgments instead of actually answering your questions.")
 		specificAnswers = append(specificAnswers, "Here's what I'm doing differently NOW:")
 		specificAnswers = append(specificAnswers, "  1. Reading each email carefully to identify the ACTUAL question or request")
 		specificAnswers = append(specificAnswers, "  2. Taking CONCRETE ACTION (running tests, checking status, searching web)")
 		specificAnswers = append(specificAnswers, "  3. Providing SPECIFIC ANSWERS with real data and results")
 		specificAnswers = append(specificAnswers, "  4. No more template responses - each reply is customized to your message")
-		
+
 		// Get REAL current status to show we're actually checking
 		testOutput := t.runCommand(map[string]any{"command": "go test ./... -cover 2>&1 | grep -E 'coverage|PASS|FAIL' | head -5"})
 		gitStatus := t.runCommand(map[string]any{"command": "git status --short | head -5"})
-		
+
 		specificAnswers = append(specificAnswers, "\nCurrent System Status (real-time check):")
 		specificAnswers = append(specificAnswers, fmt.Sprintf("  Test Coverage: %s", testOutput))
 		if strings.TrimSpace(gitStatus) == "" {
@@ -461,16 +461,16 @@ func (t *ToolExecutor) composeResponseToEmail(email EmailMessage) string {
 		} else {
 			specificAnswers = append(specificAnswers, fmt.Sprintf("  Git Status: 📝 %s", strings.TrimSpace(gitStatus)))
 		}
-		
+
 		actionsTaken = append(actionsTaken, "→ Analyzed your feedback and updated response approach")
 		actionsTaken = append(actionsTaken, "→ Checked actual system status with real commands")
 	}
 
 	// Check for questions about capabilities or what I can do
-	if strings.Contains(bodyLower, "can you") || strings.Contains(bodyLower, "able to") || 
-	   strings.Contains(bodyLower, "what can") || strings.Contains(bodyLower, "capable of") {
+	if strings.Contains(bodyLower, "can you") || strings.Contains(bodyLower, "able to") ||
+		strings.Contains(bodyLower, "what can") || strings.Contains(bodyLower, "capable of") {
 		actionsTaken = append(actionsTaken, "📋 Verifying capabilities...")
-		
+
 		specificAnswers = append(specificAnswers, "YES - I can and DO the following autonomously:")
 		specificAnswers = append(specificAnswers, "  ✅ Read and modify my own source code (I just did!)")
 		specificAnswers = append(specificAnswers, "  ✅ Run tests and verify functionality before committing")
@@ -485,103 +485,103 @@ func (t *ToolExecutor) composeResponseToEmail(email EmailMessage) string {
 		specificAnswers = append(specificAnswers, "  ✅ Spawn sub-agents for parallel task execution")
 		specificAnswers = append(specificAnswers, "  ✅ Send emails and process incoming messages")
 		specificAnswers = append(specificAnswers, "  ✅ Commit changes to git and push to remote")
-		
+
 		actionsTaken = append(actionsTaken, "→ Verified all capabilities are functional")
 	}
 
 	// Check for requests to do something specific (actionable tasks)
-	if strings.Contains(bodyLower, "please") || strings.Contains(bodyLower, "help me") || 
-	   strings.Contains(bodyLower, "need you to") || strings.Contains(bodyLower, "can you") {
+	if strings.Contains(bodyLower, "please") || strings.Contains(bodyLower, "help me") ||
+		strings.Contains(bodyLower, "need you to") || strings.Contains(bodyLower, "can you") {
 		actionsTaken = append(actionsTaken, "🎯 Processing your request...")
-		
+
 		// Extract the actual request from the email
 		requestText := cleanBody
 		if len(requestText) > 200 {
 			requestText = requestText[:200] + "..."
 		}
-		
+
 		specificAnswers = append(specificAnswers, fmt.Sprintf("I received your request: \"%s\"", requestText))
 		specificAnswers = append(specificAnswers, "I'm taking action on this now.")
-		
+
 		actionsTaken = append(actionsTaken, fmt.Sprintf("→ Request parsed and queued for execution"))
 	}
 
 	// Check for status/progress questions - get real system info
-	if strings.Contains(bodyLower, "how is") || strings.Contains(bodyLower, "status") || 
-	   strings.Contains(bodyLower, "progress") || strings.Contains(bodyLower, "update me") {
+	if strings.Contains(bodyLower, "how is") || strings.Contains(bodyLower, "status") ||
+		strings.Contains(bodyLower, "progress") || strings.Contains(bodyLower, "update me") {
 		actionsTaken = append(actionsTaken, "📊 Gathering current status information...")
-		
+
 		// Get REAL test coverage with actual numbers
 		coverageOutput := t.runCommand(map[string]any{"command": "go test ./... -coverprofile=/tmp/cover.out 2>&1 && go tool cover -func=/tmp/cover.out | grep total"})
-		
+
 		// Get detailed git status
 		gitDetail := t.runCommand(map[string]any{"command": "git status --short 2>/dev/null || echo 'No git repo'"})
-		
+
 		// Get recent commits to show what's been done
 		recentCommits := t.runCommand(map[string]any{"command": "git log --oneline -5 2>/dev/null || echo 'No commits yet'"})
-		
+
 		statusInfo := []string{
 			"Here's my CURRENT status with real data:",
 			fmt.Sprintf("• Test Coverage: %s", strings.TrimSpace(coverageOutput)),
 		}
-		
+
 		if strings.TrimSpace(gitDetail) == "" {
 			statusInfo = append(statusInfo, "• Git Status: ✅ Clean working directory - all changes committed")
 		} else {
 			statusInfo = append(statusInfo, fmt.Sprintf("• Git Status: 📝 Uncommitted changes:\n  %s", strings.TrimSpace(gitDetail)))
 		}
-		
+
 		if recentCommits != "" && !strings.Contains(recentCommits, "No commits") {
 			statusInfo = append(statusInfo, fmt.Sprintf("• Recent Work:\n  %s", strings.TrimSpace(recentCommits)))
 		}
-		
+
 		specificAnswers = append(specificAnswers, strings.Join(statusInfo, "\n"))
 		actionsTaken = append(actionsTaken, "→ Pulled real-time status from system")
 	}
 
 	// Check if they're asking a factual question that needs web search
 	if strings.Contains(bodyLower, "how does") || strings.Contains(bodyLower, "what is") ||
-	   strings.Contains(bodyLower, "tell me about") || strings.Contains(bodyLower, "explain") {
-		
+		strings.Contains(bodyLower, "tell me about") || strings.Contains(bodyLower, "explain") {
+
 		// Try to extract the question topic
 		topic := extractQuestionTopic(cleanBody)
 		if topic != "" {
 			actionsTaken = append(actionsTaken, fmt.Sprintf("🔍 Searching for: %s", topic))
-			
+
 			// Actually perform a web search
 			searchResult := t.webSearch(map[string]any{"query": topic, "count": 3})
-			
+
 			if strings.Contains(searchResult, "No results") || strings.Contains(searchResult, "Error") {
 				specificAnswers = append(specificAnswers, fmt.Sprintf("I searched for '%s' but couldn't find specific information.", topic))
 			} else {
 				specificAnswers = append(specificAnswers, fmt.Sprintf("Here's what I found about %s:\n\n%s", topic, extractKeyInfo(searchResult)))
 			}
-			
+
 			actionsTaken = append(actionsTaken, "→ Web search completed")
 		}
 	}
 
 	// Check for test or verification requests
-	if strings.Contains(bodyLower, "test") || strings.Contains(bodyLower, "verify") || 
-	   strings.Contains(bodyLower, "check if") {
+	if strings.Contains(bodyLower, "test") || strings.Contains(bodyLower, "verify") ||
+		strings.Contains(bodyLower, "check if") {
 		actionsTaken = append(actionsTaken, "🧪 Running verification...")
-		
+
 		testResult := t.runCommand(map[string]any{"command": "go test ./... -v 2>&1 | tail -20"})
-		
+
 		if strings.Contains(testResult, "PASS") && !strings.Contains(testResult, "FAIL") {
 			specificAnswers = append(specificAnswers, "✅ All tests are passing!")
 		} else {
 			specificAnswers = append(specificAnswers, fmt.Sprintf("Test results:\n%s", testResult))
 		}
-		
+
 		actionsTaken = append(actionsTaken, "→ Tests executed")
 	}
 
 	// === RESPONSE COMPOSITION SECTION ===
 	var response strings.Builder
-	
+
 	response.WriteString(fmt.Sprintf("Re: %s\n\n", email.Subject))
-	
+
 	// Show what actions were taken
 	if len(actionsTaken) > 0 {
 		response.WriteString("ACTIONS TAKEN:\n")
@@ -590,7 +590,7 @@ func (t *ToolExecutor) composeResponseToEmail(email EmailMessage) string {
 		}
 		response.WriteString("\n")
 	}
-	
+
 	// Provide specific answers
 	if len(specificAnswers) > 0 {
 		response.WriteString("ANSWERS:\n")
@@ -607,7 +607,7 @@ func (t *ToolExecutor) composeResponseToEmail(email EmailMessage) string {
 		response.WriteString("  • Autonomous code improvement tasks\n")
 		response.WriteString("  • Test coverage enhancements\n")
 		response.WriteString("  • Feature development based on priorities\n\n")
-		
+
 		// If the email has a question mark, acknowledge we should answer it better
 		if strings.Contains(cleanBody, "?") {
 			response.WriteString("If you have specific questions, please let me know - I'm designed to actually answer them!\n\n")
@@ -617,24 +617,24 @@ func (t *ToolExecutor) composeResponseToEmail(email EmailMessage) string {
 	// Sign off
 	response.WriteString(fmt.Sprintf("Best regards,\nYOLO (Your Own Living Operator)\n"))
 	response.WriteString(fmt.Sprintf("%s\n", time.Now().Format(time.RFC1123)))
-	
+
 	return response.String()
 }
 
 // extractQuestionTopic tries to extract the main topic from a question
 func extractQuestionTopic(body string) string {
 	bodyLower := strings.ToLower(body)
-	
+
 	// Common patterns
 	questionMarkers := []string{"what is", "how does", "tell me about", "explain", "what about"}
-	
+
 	for _, marker := range questionMarkers {
 		idx := strings.Index(bodyLower, marker)
 		if idx != -1 {
 			// Extract the topic after the marker
 			topicStart := idx + len(marker)
 			topicEnd := len(body)
-			
+
 			// Look for sentence end markers
 			for _, endMarker := range []string{"?", ".", "!"} {
 				endIdx := strings.Index(body[topicStart:], endMarker)
@@ -642,14 +642,14 @@ func extractQuestionTopic(body string) string {
 					topicEnd = topicStart + endIdx
 				}
 			}
-			
+
 			topic := strings.TrimSpace(body[topicStart:topicEnd])
 			if len(topic) > 2 && len(topic) < 100 {
 				return topic
 			}
 		}
 	}
-	
+
 	return ""
 }
 
@@ -657,7 +657,7 @@ func extractQuestionTopic(body string) string {
 func extractKeyInfo(searchResult string) string {
 	lines := strings.Split(searchResult, "\n")
 	var keyLines []string
-	
+
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if len(line) > 10 && !strings.HasPrefix(line, "Error") && !strings.HasPrefix(line, "Failed") {
@@ -667,7 +667,7 @@ func extractKeyInfo(searchResult string) string {
 			}
 		}
 	}
-	
+
 	return strings.Join(keyLines, "\n")
 }
 

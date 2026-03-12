@@ -128,8 +128,8 @@ func TestComposeResponseToEmail_FactualQuestion(t *testing.T) {
 	}
 
 	// Should either provide info or acknowledge search limitation
-	hasAnswer := strings.Contains(response, "goroutine") || strings.Contains(response, "channel") || 
-	             strings.Contains(response, "mutex") || strings.Contains(response, "searched for")
+	hasAnswer := strings.Contains(response, "goroutine") || strings.Contains(response, "channel") ||
+		strings.Contains(response, "mutex") || strings.Contains(response, "searched for")
 	if !hasAnswer {
 		t.Errorf("Expected response to include information from web search or acknowledgment of search attempt")
 	}
