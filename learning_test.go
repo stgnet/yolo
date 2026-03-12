@@ -453,6 +453,7 @@ func TestFilterImprovementsByPriority(t *testing.T) {
 }
 
 func TestResearchArea(t *testing.T) {
+	t.Skip("Skipping slow network-dependent test")
 	executor := &ToolExecutor{}
 	lm := NewLearningManager(".", executor)
 
