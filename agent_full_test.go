@@ -46,7 +46,10 @@ Timestamp: {timestamp}`
 	}
 }
 
-// TestAgentSetupFirstRun tests first-run setup when no history exists
+// TestAgentSetupFirstRun tests first-run setup when no history exists.
+// SKIPPED: setupFirstRun() reads from stdin (via InputManager/terminal raw mode)
+// to get user input. Without a real TTY, this blocks forever waiting for input
+// that never arrives. DO NOT re-enable without providing a mock input source.
 func TestAgentSetupFirstRun(t *testing.T) {
 	t.Skip("Skipping interactive test that requires user input")
 
@@ -228,7 +231,10 @@ func TestAgentHandleCommand(t *testing.T) {
 	agent.handleCommand("/status")
 }
 
-// TestAgentRun tests the main Run method (integration test)
+// TestAgentRun tests the main Run method (integration test).
+// SKIPPED: agent.Run() starts InputManager which puts the terminal into raw
+// mode and reads from stdin. Without a real TTY, this will either panic or
+// block indefinitely. DO NOT re-enable without mocking the input layer.
 func TestAgentRun(t *testing.T) {
 	t.Parallel()
 	t.Skip("Skipping integration test that requires terminal")

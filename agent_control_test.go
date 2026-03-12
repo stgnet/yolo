@@ -74,10 +74,13 @@ func TestSwitchModel(t *testing.T) {
 	}
 }
 
-// TestRestart tests the restart tool implementation
+// TestRestart tests the restart tool implementation.
+// SKIPPED: executor.restart() runs "go build" to rebuild the yolo binary and
+// then exec's the new binary with syscall.Exec, replacing the current process.
+// Running this in a test would kill the test runner. It also requires a TTY
+// since the newly exec'd process checks for TTY on stdin/stdout/stderr.
+// DO NOT re-enable — this would terminate the entire test suite.
 func TestRestart(t *testing.T) {
-	// This test would actually attempt to rebuild and restart YOLO
-	// which is not appropriate in a unit test environment (requires TTY)
 	t.Skip("Skipping restart test - requires interactive terminal")
 
 	/* Uncomment for manual testing only:
