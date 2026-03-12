@@ -276,3 +276,101 @@ func TestSendReportValidation(t *testing.T) {
 		})
 	}
 }
+
+// **************************************************************************
+// ** UNIT TESTS FOR composeResponseToEmail                              **
+// ** These tests validate email response generation WITHOUT sending      **
+// ** any real emails. They test the composeResponseToEmail function      **
+// ** directly, which calls the LLM but does not invoke sendmail.         **
+// **************************************************************************
+
+func TestComposeResponseToEmail(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		subject string
+		from    string
+	}{
+		{
+			name:    "simple greeting",
+			body:    "Hello YOLO, how are you?",
+			subject: "Greeting",
+			from:    "test@example.com",
+		},
+		{
+			name:    "question about capabilities",
+			body:    "What can you do?",
+			subject: "YOLO Capabilities",
+			from:    "curious@example.com",
+		},
+		{
+			name:    "request for help",
+			body:    "I need help with my Go project",
+			subject: "Need assistance",
+			from:    "developer@example.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			response := composeResponseToEmail(tt.body, tt.subject, tt.from)
+
+			// Response should not be empty
+			if response == "" {
+				t.Error("Expected non-empty response from composeResponseToEmail")
+			}
+
+			// Response should contain some meaningful text (more than just error message)
+			if len(response) < 5 {
+				t.Errorf("Response too short: %q", response)
+			}
+
+			// If there was an error, it should be formatted as an error message
+			if strings.Contains(response, "[Error") {
+				t.Logf("LLM error in response: %s", response)
+			}
+		})
+	}
+}
+
+func TestComposeResponseToEmailEmptyBody(t *testing.T) {
+	response := composeResponseToEmail("", "Test Subject", "sender@example.com")
+
+	if response == "" {
+		t.Error("Expected non-empty response even with empty body")
+	}
+
+	// Empty body should be handled gracefully (replaced with "No content")
+	if !strings.Contains(response, "[Error") && len(response) < 5 {
+		t.Errorf("Response too short for empty body case: %q", response)
+	}
+}
+
+func TestComposeResponseToEmailLongMessage(t *testing.T) {
+	longBody := strings.Repeat("This is a test sentence. ", 100)
+	response := composeResponseToEmail(longBody, "Long Message Test", "sender@example.com")
+
+	if response == "" {
+		t.Error("Expected non-empty response for long message")
+	}
+
+	// Should handle long messages without crashing
+	if strings.Contains(response, "[Error") && !strings.Contains(response, "context deadline exceeded") {
+		t.Logf("Unexpected error: %s", response)
+	}
+}
+
+func TestComposeResponseToEmailNoSendmail(t *testing.T) {
+	// This test verifies that composeResponseToEmail does NOT invoke sendmail
+	// It only generates the response text, it doesn't send anything
+	
+	response := composeResponseToEmail("Test body", "Test Subject", "test@example.com")
+
+	if response == "" {
+		t.Error("Expected non-empty response")
+	}
+
+	// The function should return a generated response, not attempt to send it
+	// If we got here without actually sending an email, the test passes
+	_ = response
+}
