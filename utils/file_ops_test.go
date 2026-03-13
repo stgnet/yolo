@@ -568,18 +568,18 @@ func TestIntegrationWorkflow(t *testing.T) {
 
 func TestDeleteFile_CannotDeleteDirectory(t *testing.T) {
 	tmpdir := t.TempDir()
-	
+
 	// Create a subdirectory
 	subdir := filepath.Join(tmpdir, "subdir")
 	if err := os.Mkdir(subdir, 0755); err != nil {
 		t.Fatalf("Setup failed: %v", err)
 	}
-	
+
 	err := DeleteFile(subdir)
 	if err == nil {
 		t.Fatal("Expected error when trying to delete directory with DeleteFile")
 	}
-	
+
 	// Verify directory still exists
 	if info, statErr := os.Stat(subdir); statErr != nil || !info.IsDir() {
 		t.Error("Directory should still exist after failed DeleteFile attempt")
@@ -590,18 +590,18 @@ func TestMoveFile_CleanupOnFailure(t *testing.T) {
 	tmpdir := t.TempDir()
 	srcPath := filepath.Join(tmpdir, "source.txt")
 	dstPath := filepath.Join(tmpdir, "dest.txt")
-	
+
 	// Create source file
 	if err := os.WriteFile(srcPath, []byte("move me"), 0644); err != nil {
 		t.Fatalf("Setup failed: %v", err)
 	}
-	
+
 	// Test successful move
 	err := MoveFile(srcPath, dstPath)
 	if err != nil {
 		t.Fatalf("Unexpected error on valid move: %v", err)
 	}
-	
+
 	// Verify source is gone and dest exists
 	if FileExists(srcPath) {
 		t.Error("Source file should be deleted after move")
@@ -643,12 +643,12 @@ func TestReadDir_NonExistent(t *testing.T) {
 
 func TestListFiles_EmptyDirectory(t *testing.T) {
 	tmpdir := t.TempDir()
-	
+
 	files, err := ListFiles(tmpdir)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
-	
+
 	if len(files) != 0 {
 		t.Errorf("Expected 0 files in empty directory, got %d: %v", len(files), files)
 	}
@@ -656,28 +656,28 @@ func TestListFiles_EmptyDirectory(t *testing.T) {
 
 func TestListFiles_WithMixedContent(t *testing.T) {
 	tmpdir := t.TempDir()
-	
+
 	// Create some files and a subdirectory
 	for _, name := range []string{"file1.txt", "file2.md"} {
 		if err := os.WriteFile(filepath.Join(tmpdir, name), []byte("test"), 0644); err != nil {
 			t.Fatalf("Setup failed: %v", err)
 		}
 	}
-	
+
 	subdir := filepath.Join(tmpdir, "subdir")
 	if err := os.Mkdir(subdir, 0755); err != nil {
 		t.Fatalf("Setup failed: %v", err)
 	}
-	
+
 	files, err := ListFiles(tmpdir)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
-	
+
 	if len(files) != 2 {
 		t.Errorf("Expected 2 files, got %d: %v", len(files), files)
 	}
-	
+
 	// Verify only files are listed, not the directory
 	for _, f := range files {
 		if f == "subdir" {

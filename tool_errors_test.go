@@ -38,23 +38,23 @@ func TestFileOperationsErrorHandling(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				testFile := "test_tmp_file_" + genRandomString(8) + ".txt"
 				testContent := "Test content for error handling"
-				
+
 				// Write file using os.WriteFile
 				err := os.WriteFile(testFile, []byte(testContent), 0644)
 				if err != nil {
 					t.Fatal(err)
 				}
-				
+
 				// Read and verify using os.ReadFile (actual file operations)
 				readContent, err := os.ReadFile(testFile)
 				if err != nil {
 					t.Fatalf("Failed to read temp file: %v", err)
 				}
-				
+
 				if string(readContent) != testContent {
 					t.Errorf("Expected '%s', got '%s'", testContent, string(readContent))
 				}
-				
+
 				// Cleanup
 				os.Remove(testFile)
 			},
@@ -91,7 +91,7 @@ func TestGoBuildErrorHandling(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer os.Remove(tmpFile)
-				
+
 				result := execCmdWrapper("go build " + tmpFile)
 				if !result.hasError && result.output == "" {
 					t.Error("Expected error for syntax error")
@@ -147,13 +147,13 @@ func hasString(s, substr string) bool {
 func execCmdWrapper(cmd string) cmdResultWrapper {
 	output := fmt.Sprintf("executed: %s", cmd)
 	hasError := false
-	
+
 	// Check for known failure patterns
 	if hasString(cmd, "nonexistent") || hasString(cmd, "syntax_error") {
 		output = "error: command failed"
 		hasError = true
 	}
-	
+
 	return cmdResultWrapper{output: output, hasError: hasError}
 }
 

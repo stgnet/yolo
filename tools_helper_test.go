@@ -194,5 +194,3 @@ func TestGetBoolArgFallback(t *testing.T) {
 		})
 	}
 }
-
-
