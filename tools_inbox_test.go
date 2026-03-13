@@ -122,3 +122,51 @@ func TestProcessInboxWorkflow(t *testing.T) {
 		t.Errorf("Response should contain mock reply, got: %s", response)
 	}
 }
+
+// Test parseEmail function
+func TestParseEmail(t *testing.T) {
+	testCases := []struct {
+		name           string
+		raw            string
+		expectedFrom   string
+		expectedTo     string
+		expectedSubject string
+		expectedBody   string
+	}{
+		{
+			name: "standard email",
+			raw:  "From: sender@example.com\nTo: recipient@example.com\nSubject: Hello\n\nThis is the body.",
+			expectedFrom:   "sender@example.com",
+			expectedTo:     "recipient@example.com",
+			expectedSubject: "Hello",
+			expectedBody:   "This is the body.",
+		},
+		{
+			name: "email with empty body",
+			raw:  "From: test@test.com\nTo: me@me.com\nSubject: Empty\n\n",
+			expectedFrom:   "test@test.com",
+			expectedTo:     "me@me.com",
+			expectedSubject: "Empty",
+			expectedBody:   "",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			email := parseEmail(tc.raw)
+
+			if email.From != tc.expectedFrom {
+				t.Errorf("Expected From=%q, got %q", tc.expectedFrom, email.From)
+			}
+			if email.To != tc.expectedTo {
+				t.Errorf("Expected To=%q, got %q", tc.expectedTo, email.To)
+			}
+			if email.Subject != tc.expectedSubject {
+				t.Errorf("Expected Subject=%q, got %q", tc.expectedSubject, email.Subject)
+			}
+			if email.Body != tc.expectedBody {
+				t.Errorf("Expected Body=%q, got %q", tc.expectedBody, email.Body)
+			}
+		})
+	}
+}
