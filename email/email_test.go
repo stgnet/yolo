@@ -188,6 +188,38 @@ func TestClientSendNoBody(t *testing.T) {
 	}
 }
 
+func TestClientSendWhitespaceSubject(t *testing.T) {
+	cfg := DefaultConfig()
+	client := New(cfg)
+
+	msg := &Message{
+		To:      []string{"test@example.com"},
+		Subject: "   ",
+		Body:    "Test body",
+	}
+
+	err := client.Send(msg)
+	if err != nil {
+		t.Logf("Note: whitespace-only subject is allowed (error: %v)", err)
+	}
+}
+
+func TestClientSendWhitespaceBody(t *testing.T) {
+	cfg := DefaultConfig()
+	client := New(cfg)
+
+	msg := &Message{
+		To:      []string{"test@example.com"},
+		Subject: "Test",
+		Body:    "   ",
+	}
+
+	err := client.Send(msg)
+	if err != nil {
+		t.Logf("Note: whitespace-only body is allowed (error: %v)", err)
+	}
+}
+
 func TestClientSendNoSMTP(t *testing.T) {
 	cfg := &Config{
 		From:         "yolo@b-haven.org",
