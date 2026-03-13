@@ -14,6 +14,12 @@ import (
 // ─── Entry Point ──────────────────────────────────────────────────────
 
 func main() {
+	// Check for non-interactive mode (e.g., "go run . learn")
+	if len(os.Args) > 1 && os.Args[1] == "learn" {
+		runLearnTool()
+		return
+	}
+
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		fmt.Fprintln(os.Stderr, "Error: yolo requires an interactive terminal (stdin is not a TTY)")
 		os.Exit(1)
