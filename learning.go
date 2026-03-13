@@ -212,28 +212,13 @@ func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result 
 		content := strings.TrimSpace(sentence)
 
 		// Skip if too short or contains generic patterns
-		if len(content) < 100 || containsGenericPattern(content, genericPatterns) {
+		if len(content) < 50 || containsGenericPattern(content, genericPatterns) {
 			continue
 		}
 
 		// Must be relevant and contain actionable content
 		if !lm.isRelevant(content, area.Keywords) || !containsActionableContent(content) {
 			continue
-		}
-
-		// Check if this is a fragment (doesn't start with capital or end properly)
-		if len(content) > 0 {
-			firstChar := content[0]
-			if firstChar >= 'a' && firstChar <= 'z' {
-				// Starts with lowercase - likely a fragment
-				continue
-			}
-			if !strings.HasSuffix(strings.TrimSpace(content), ".") &&
-				!strings.HasSuffix(strings.TrimSpace(content), "!") &&
-				!strings.HasSuffix(strings.TrimSpace(content), "?") {
-				// Doesn't end with proper punctuation - likely incomplete
-				continue
-			}
 		}
 
 		imp := lm.createImprovement(area, content, "web", "", "abstract")
@@ -262,7 +247,7 @@ func (lm *LearningManager) extractCompleteSentences(text string) []string {
 		part = strings.TrimSpace(part)
 
 		// Skip very short fragments
-		if len(part) < 80 {
+		if len(part) < 50 {
 			continue
 		}
 
