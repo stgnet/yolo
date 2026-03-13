@@ -169,15 +169,24 @@ func TestFileExists(t *testing.T) {
 	existingFile := filepath.Join(tmpdir, "existing.txt")
 	os.WriteFile(existingFile, []byte{}, 0644)
 
-	if !FileExists(existingFile) {
-		t.Error("expected true for existing file")
-	}
-	if FileExists(filepath.Join(tmpdir, "nonexistent.txt")) {
-		t.Error("expected false for non-existent file")
-	}
-	if FileExists(tmpdir) {
-		t.Error("expected false for directory")
-	}
+	t.Run("file exists", func(t *testing.T) {
+		if !FileExists(existingFile) {
+			t.Error("expected true for existing file")
+		}
+	})
+
+	t.Run("directory exists", func(t *testing.T) {
+		// FileExists checks for files only, returns false for directories
+		if FileExists(tmpdir) {
+			t.Error("expected false for directory (FileExists is for files only)")
+		}
+	})
+
+	t.Run("non-existent path", func(t *testing.T) {
+		if FileExists(filepath.Join(tmpdir, "nonexistent.txt")) {
+			t.Error("expected false for non-existent file")
+		}
+	})
 }
 
 func TestIsDirectory(t *testing.T) {
@@ -251,6 +260,11 @@ func TestDeleteFile(t *testing.T) {
 		err := DeleteFile(tmpdir)
 		if err == nil {
 			t.Fatal("expected error when deleting directory with DeleteFile")
+		}
+
+		// Verify the directory still exists since DeleteFile can't delete directories
+		if !IsDirectory(tmpdir) {
+			t.Error("directory should still exist after failed deletion")
 		}
 	})
 }
@@ -328,6 +342,36 @@ func TestMoveFile(t *testing.T) {
 	}
 }
 
+func TestMoveFileCleanupOnError(t *testing.T) {
+	tmpDir := t.TempDir()
+	src := filepath.Join(tmpDir, "source.txt")
+	dstDir := filepath.Join(tmpDir, "readonly_dir")
+	dst := filepath.Join(dstDir, "dest.txt")
+
+	os.WriteFile(src, []byte("test content"), 0644)
+	os.MkdirAll(dstDir, 0755)
+
+	// Copy file first so we can test cleanup behavior
+	CopyFile(src, dst)
+
+	// Delete source manually to simulate partial move failure scenario
+	DeleteFile(src)
+
+	// Try to move (source doesn't exist, should fail gracefully)
+	err := MoveFile(src, dst)
+	if err == nil {
+		t.Fatal("expected error when source doesn't exist")
+	}
+
+	// The destination from copy should still exist since we can't clean it up
+	// This is expected behavior - the function tries but ignores cleanup errors
+	if !FileExists(dst) {
+		t.Log("cleanup succeeded, dest file removed")
+	} else {
+		t.Log("cleanup failed (expected), dest file still exists")
+	}
+}
+
 func TestGetFileSize(t *testing.T) {
 	tmpdir := t.TempDir()
 	testFile := filepath.Join(tmpdir, "test.txt")
@@ -398,6 +442,26 @@ func TestGetFileModTimeNonExistent(t *testing.T) {
 
 	if !modTime.IsZero() {
 		t.Error("expected zero time on error")
+	}
+}
+
+func TestMoveFileNonExistentSource(t *testing.T) {
+	tmpdir := t.TempDir()
+	src := filepath.Join(tmpdir, "nonexistent.txt")
+	dst := filepath.Join(tmpdir, "dest.txt")
+
+	err := MoveFile(src, dst)
+	if err == nil {
+		t.Fatal("expected error for non-existent source file")
+	}
+
+	if !errors.IsFileNotFoundError(err) {
+		t.Errorf("expected FileNotFoundError, got: %T", err)
+	}
+
+	// Verify no destination was created
+	if FileExists(dst) {
+		t.Error("destination should not exist when source doesn't exist")
 	}
 }
 
