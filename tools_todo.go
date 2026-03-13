@@ -17,10 +17,27 @@ import (
 const todoFile = ".todo.json"
 
 type TodoItem struct {
-	Title     string    `json:"title"`
-	CreatedAt time.Time `json:"created_at"`
-	Done      bool      `json:"done,omitempty"`
+	Title       string    `json:"title"`
+	CreatedAt   time.Time `json:"created_at"`
+	Done        bool      `json:"done,omitempty"`
 	CompletedAt time.Time `json:"completed_at,omitempty"`
+}
+
+// MarshalJSON custom marshaling to handle zero time values properly
+func (t TodoItem) MarshalJSON() ([]byte, error) {
+	type Alias TodoItem
+	aux := struct {
+		*Alias
+	}{
+		Alias: (*Alias)(&t),
+	}
+
+	// Only include CompletedAt if the item is done and has a valid timestamp
+	if !t.Done || t.CompletedAt.IsZero() {
+		aux.CompletedAt = time.Time{}
+	}
+
+	return json.Marshal(aux)
 }
 
 type TodoList struct {
@@ -92,9 +109,10 @@ func (t *TodoList) Add(title string) TodoItem {
 	defer t.mu.Unlock()
 
 	todo := TodoItem{
-		Title:     title,
-		CreatedAt: time.Now(),
-		Done:      false,
+		Title:       title,
+		CreatedAt:   time.Now(),
+		Done:        false,
+		CompletedAt: time.Time{}, // Explicitly zero value to ensure omitempty works
 	}
 
 	t.todos = append(t.todos, todo)
@@ -205,7 +223,7 @@ func (t *TodoList) Render() string {
 		if len(completed) < limit {
 			limit = len(completed)
 		}
-		
+
 		sb.WriteString(fmt.Sprintf("✅ COMPLETED (last %d of %d)\n", limit, len(completed)))
 		for i := 0; i < limit; i++ {
 			completedAtStr := completed[i].CompletedAt.Format("2006-01-02")
