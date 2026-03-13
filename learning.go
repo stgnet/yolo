@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
@@ -241,8 +242,26 @@ func (lm *LearningManager) extractCompleteSentences(text string) []string {
 	text = strings.ReplaceAll(text, "&lt;", "<")
 	text = strings.ReplaceAll(text, "&gt;", ">")
 
-	// Split on sentence boundaries
-	parts := strings.Split(text, ". ")
+	// Clean up markdown formatting (remove ** bold markers)
+	text = strings.ReplaceAll(text, "**", "")
+
+	// Remove numbered list markers like "1. ", "2. " at start of lines
+	lines := strings.Split(text, "\n")
+	cleanedLines := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimLeft(line, " \t")
+		// Remove patterns like "1. ", "2. ", etc.
+		line = regexp.MustCompile(`^\d+\.\s*`).ReplaceAllString(line, "")
+		if len(strings.TrimSpace(line)) > 0 && len(strings.TrimSpace(line)) < 30 {
+			continue // Skip very short lines
+		}
+		cleanedLines = append(cleanedLines, line)
+	}
+
+	text = strings.Join(cleanedLines, " ")
+
+	// Split on sentence boundaries (periods, exclamation, question marks followed by space or newline)
+	parts := regexp.MustCompile(`[.!?]+\s*`).Split(text, -1)
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
 
@@ -251,35 +270,10 @@ func (lm *LearningManager) extractCompleteSentences(text string) []string {
 			continue
 		}
 
-		// Skip if it looks like a fragment (starts with common non-sentence starters)
-		words := strings.Fields(part)
-		if len(words) > 0 {
-			firstWord := words[0]
-			firstChar := string(firstWord[0])
-
-			// Skip fragments that start with lowercase letters
-			if firstChar != strings.ToUpper(firstChar) {
-				continue
-			}
-
-			firstWordLower := strings.ToLower(firstWord)
-			// Skip common fragment starters and coordinating/conjunctions
-			fragmentStarters := []string{
-				"and", "or", "but", // coordinating conjunctions
-				"is", "are", "was", "were", "been", // verbs (fragments often start with these)
-				"for", "with", "from", "into", "onto", // prepositions
-				"of", "to", "in", "on", "at", "by", // more prepositions
-			}
-			isFragment := false
-			for _, starter := range fragmentStarters {
-				if firstWordLower == starter {
-					isFragment = true
-					break
-				}
-			}
-			if isFragment {
-				continue
-			}
+		// Skip if it starts with lowercase (indicates a fragment)
+		firstChar := part[0]
+		if firstChar >= 'a' && firstChar <= 'z' {
+			continue
 		}
 
 		// Add period back if missing and doesn't already end with punctuation
