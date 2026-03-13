@@ -1,0 +1,396 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>errors: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">yolo/errors/errors.go (97.5%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">no coverage</span>
+				<span class="cov1">low coverage</span>
+				<span class="cov2">*</span>
+				<span class="cov3">*</span>
+				<span class="cov4">*</span>
+				<span class="cov5">*</span>
+				<span class="cov6">*</span>
+				<span class="cov7">*</span>
+				<span class="cov8">*</span>
+				<span class="cov9">*</span>
+				<span class="cov10">high coverage</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">// Package errors provides custom error types and utilities for consistent error handling.
+package errors
+
+import (
+        "errors"
+        "fmt"
+        "os"
+        "strings"
+)
+
+// Error types for different categories of failures
+type (
+        // FileNotFoundError indicates a file or directory was not found
+        FileNotFoundError struct {
+                Path   string
+                Op     string
+                Cause  error
+        }
+
+        // ToolExecutionError indicates a tool command failed to execute
+        ToolExecutionError struct {
+                Tool    string
+                Command string
+                Output  string
+                ExitCode int
+                Cause   error
+        }
+
+        // ConfigurationError indicates a configuration issue
+        ConfigurationError struct {
+                Field string
+                Value any
+                Cause error
+        }
+
+        // NetworkError indicates a network-related failure
+        NetworkError struct {
+                URL     string
+                Method  string
+                Timeout bool
+                Cause   error
+        }
+
+        // JSONError indicates JSON marshaling/unmarshaling failure
+        JSONError struct {
+                Operation string
+                Data      any
+                Cause     error
+        }
+)
+
+// Error implements the error interface for FileNotFoundError
+func (e *FileNotFoundError) Error() string <span class="cov6" title="6">{
+        if e.Cause != nil </span><span class="cov5" title="5">{
+                return fmt.Sprintf("%s on %s: %v", e.Op, e.Path, e.Cause)
+        }</span>
+        <span class="cov1" title="1">return fmt.Sprintf("%s on %s: file not found", e.Op, e.Path)</span>
+}
+
+// Unwrap returns the wrapped error for errors.Is/As support
+func (e *FileNotFoundError) Unwrap() error <span class="cov1" title="1">{ return e.Cause }</span>
+
+// Error implements the error interface for ToolExecutionError
+func (e *ToolExecutionError) Error() string <span class="cov5" title="4">{
+        msg := fmt.Sprintf("tool %s failed: exit code %d", e.Tool, e.ExitCode)
+        if e.Command != "" </span><span class="cov5" title="4">{
+                msg += fmt.Sprintf(" (%s)", e.Command)
+        }</span>
+        <span class="cov5" title="4">if e.Output != "" </span><span class="cov4" title="3">{
+                lines := strings.Split(strings.TrimSpace(e.Output), "\n")
+                if len(lines) &gt; 0 </span><span class="cov4" title="3">{
+                        msg += ": " + lines[0]
+                }</span>
+        }
+        <span class="cov5" title="4">return msg</span>
+}
+
+// Unwrap returns the wrapped error
+func (e *ToolExecutionError) Unwrap() error <span class="cov5" title="4">{ return e.Cause }</span>
+
+// Error implements the error interface for ConfigurationError
+func (e *ConfigurationError) Error() string <span class="cov5" title="4">{
+        if e.Cause != nil </span><span class="cov4" title="3">{
+                return fmt.Sprintf("configuration error for %s=%v: %v", e.Field, e.Value, e.Cause)
+        }</span>
+        <span class="cov1" title="1">return fmt.Sprintf("configuration error for %s=%v", e.Field, e.Value)</span>
+}
+
+// Unwrap returns the wrapped error
+func (e *ConfigurationError) Unwrap() error <span class="cov3" title="2">{ return e.Cause }</span>
+
+// Error implements the error interface for NetworkError
+func (e *NetworkError) Error() string <span class="cov4" title="3">{
+        msg := fmt.Sprintf("network error")
+        if e.Method != "" &amp;&amp; e.URL != "" </span><span class="cov4" title="3">{
+                msg += fmt.Sprintf(" %s %s", e.Method, e.URL)
+        }</span>
+        <span class="cov4" title="3">if e.Timeout </span><span class="cov4" title="3">{
+                msg += " (timeout)"
+        }</span>
+        <span class="cov4" title="3">if e.Cause != nil </span><span class="cov3" title="2">{
+                msg += fmt.Sprintf(": %v", e.Cause)
+        }</span>
+        <span class="cov4" title="3">return msg</span>
+}
+
+// Unwrap returns the wrapped error
+func (e *NetworkError) Unwrap() error <span class="cov3" title="2">{ return e.Cause }</span>
+
+// Error implements the error interface for JSONError
+func (e *JSONError) Error() string <span class="cov4" title="3">{
+        if e.Cause != nil </span><span class="cov3" title="2">{
+                return fmt.Sprintf("JSON %s failed: %v", e.Operation, e.Cause)
+        }</span>
+        <span class="cov1" title="1">return fmt.Sprintf("JSON %s failed", e.Operation)</span>
+}
+
+// Unwrap returns the wrapped error
+func (e *JSONError) Unwrap() error <span class="cov3" title="2">{ return e.Cause }</span>
+
+// NewFileNotFoundError creates a new FileNotFoundError
+func NewFileNotFoundError(op, path string, cause error) *FileNotFoundError <span class="cov7" title="9">{
+        return &amp;FileNotFoundError{Op: op, Path: path, Cause: cause}
+}</span>
+
+// NewToolExecutionError creates a new ToolExecutionError
+func NewToolExecutionError(tool, command, output string, exitCode int, cause error) *ToolExecutionError <span class="cov6" title="6">{
+        return &amp;ToolExecutionError{Tool: tool, Command: command, Output: output, ExitCode: exitCode, Cause: cause}
+}</span>
+
+// NewConfigurationError creates a new ConfigurationError
+func NewConfigurationError(field string, value any, cause error) *ConfigurationError <span class="cov6" title="6">{
+        return &amp;ConfigurationError{Field: field, Value: value, Cause: cause}
+}</span>
+
+// NewNetworkError creates a new NetworkError
+func NewNetworkError(method, url string, timeout bool, cause error) *NetworkError <span class="cov6" title="6">{
+        return &amp;NetworkError{Method: method, URL: url, Timeout: timeout, Cause: cause}
+}</span>
+
+// NewJSONError creates a new JSONError
+func NewJSONError(operation string, data any, cause error) *JSONError <span class="cov6" title="6">{
+        return &amp;JSONError{Operation: operation, Data: data, Cause: cause}
+}</span>
+
+// Wrap wraps an error with additional context using custom error types
+func Wrap(err error, typ ErrorType, context map[string]any) error <span class="cov8" title="11">{
+        if err == nil </span><span class="cov1" title="1">{
+                return nil
+        }</span>
+
+        <span class="cov7" title="10">switch typ </span>{
+        case FileType:<span class="cov1" title="1">
+                return &amp;FileNotFoundError{
+                        Path:  getString(context, "path"),
+                        Op:    getString(context, "op"),
+                        Cause: err,
+                }</span>
+        case ToolType:<span class="cov5" title="4">
+                return &amp;ToolExecutionError{
+                        Tool:     getString(context, "tool"),
+                        Command:  getString(context, "command"),
+                        Output:   getString(context, "output"),
+                        ExitCode: getInt(context, "exitCode", -1),
+                        Cause:    err,
+                }</span>
+        case ConfigType:<span class="cov1" title="1">
+                return &amp;ConfigurationError{
+                        Field: getString(context, "field"),
+                        Value: context["value"],
+                        Cause: err,
+                }</span>
+        case NetworkType:<span class="cov3" title="2">
+                return &amp;NetworkError{
+                        URL:     getString(context, "url"),
+                        Method:  getString(context, "method"),
+                        Timeout: getBool(context, "timeout", false),
+                        Cause:   err,
+                }</span>
+        case JSONType:<span class="cov1" title="1">
+                return &amp;JSONError{
+                        Operation: getString(context, "operation"),
+                        Data:      context["data"],
+                        Cause:     err,
+                }</span>
+        default:<span class="cov1" title="1">
+                return err</span>
+        }
+}
+
+// ErrorType represents the category of error
+type ErrorType string
+
+const (
+        FileType    ErrorType = "file"
+        ToolType    ErrorType = "tool"
+        ConfigType  ErrorType = "config"
+        NetworkType ErrorType = "network"
+        JSONType    ErrorType = "json"
+)
+
+// Helper functions for context map extraction
+func getString(m map[string]any, key string) string <span class="cov10" title="20">{
+        if v, ok := m[key]; ok </span><span class="cov9" title="17">{
+                if s, ok := v.(string); ok </span><span class="cov9" title="17">{
+                        return s
+                }</span>
+        }
+        <span class="cov4" title="3">return ""</span>
+}
+
+func getInt(m map[string]any, key string, defaultVal int) int <span class="cov5" title="4">{
+        if v, ok := m[key]; ok </span><span class="cov3" title="2">{
+                switch n := v.(type) </span>{
+                case int:<span class="cov0" title="0">
+                        return n</span>
+                case int64:<span class="cov1" title="1">
+                        return int(n)</span>
+                case int32:<span class="cov1" title="1">
+                        return int(n)</span>
+                }
+        }
+        <span class="cov3" title="2">return defaultVal</span>
+}
+
+func getBool(m map[string]any, key string, defaultVal bool) bool <span class="cov3" title="2">{
+        if v, ok := m[key]; ok </span><span class="cov1" title="1">{
+                if b, ok := v.(bool); ok </span><span class="cov1" title="1">{
+                        return b
+                }</span>
+        }
+        <span class="cov1" title="1">return defaultVal</span>
+}
+
+// Is* functions for errors.Is compatibility
+func IsFileNotFoundError(err error) bool <span class="cov7" title="8">{
+        var fnfe *FileNotFoundError
+        return errors.As(err, &amp;fnfe)
+}</span>
+
+func IsToolExecutionError(err error) bool <span class="cov6" title="6">{
+        var tee *ToolExecutionError
+        return errors.As(err, &amp;tee)
+}</span>
+
+func IsConfigurationError(err error) bool <span class="cov5" title="4">{
+        var ce *ConfigurationError
+        return errors.As(err, &amp;ce)
+}</span>
+
+func IsNetworkError(err error) bool <span class="cov6" title="6">{
+        var ne *NetworkError
+        return errors.As(err, &amp;ne)
+}</span>
+
+func IsJSONError(err error) bool <span class="cov5" title="4">{
+        var je *JSONError
+        return errors.As(err, &amp;je)
+}</span>
+
+// As* functions for extracting typed errors
+func AsFileNotFoundError(err error) (*FileNotFoundError, bool) <span class="cov3" title="2">{
+        var fnfe *FileNotFoundError
+        if errors.As(err, &amp;fnfe) </span><span class="cov1" title="1">{
+                return fnfe, true
+        }</span>
+        <span class="cov1" title="1">return nil, false</span>
+}
+
+func AsToolExecutionError(err error) (*ToolExecutionError, bool) <span class="cov1" title="1">{
+        var tee *ToolExecutionError
+        if errors.As(err, &amp;tee) </span><span class="cov1" title="1">{
+                return tee, true
+        }</span>
+        <span class="cov0" title="0">return nil, false</span>
+}
+
+// WithContext wraps an os.PathError as a FileNotFoundError
+func WithContext(err error, op, path string) error <span class="cov3" title="2">{
+        if pe, ok := err.(*os.PathError); ok </span><span class="cov1" title="1">{
+                return NewFileNotFoundError(pe.Op, pe.Path, pe.Err)
+        }</span>
+        <span class="cov1" title="1">return fmt.Errorf("%s %s: %w", op, path, err)</span>
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

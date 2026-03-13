@@ -1,0 +1,459 @@
+package utils
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"yolo/errors"
+)
+
+func TestReadFile(t *testing.T) {
+	t.Run("existing file", func(t *testing.T) {
+		tmpfile := filepath.Join(t.TempDir(), "test.txt")
+		content := []byte("test content")
+		if err := os.WriteFile(tmpfile, content, 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		data, err := ReadFile(tmpfile)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if string(data) != string(content) {
+			t.Errorf("got %q, want %q", data, content)
+		}
+	})
+
+	t.Run("non-existent file", func(t *testing.T) {
+		data, err := ReadFile("/nonexistent/file.txt")
+		if err == nil {
+			t.Fatal("expected error for non-existent file")
+		}
+
+		if !errors.IsFileNotFoundError(err) {
+			t.Errorf("expected FileNotFoundError, got: %T", err)
+		}
+
+		fnfe, ok := errors.AsFileNotFoundError(err)
+		if !ok {
+			t.Error("expected to extract FileNotFoundError")
+		} else if fnfe.Op != "read" {
+			t.Errorf("got op %q, want %q", fnfe.Op, "read")
+		}
+
+		if len(data) > 0 {
+			t.Error("expected nil data on error")
+		}
+	})
+
+	t.Run("directory instead of file", func(t *testing.T) {
+		tmpdir := t.TempDir()
+		_, err := ReadFile(tmpdir)
+		if err == nil {
+			t.Fatal("expected error when reading directory")
+		}
+	})
+}
+
+func TestReadFileString(t *testing.T) {
+	t.Run("existing file", func(t *testing.T) {
+		tmpfile := filepath.Join(t.TempDir(), "test.txt")
+		content := "test content"
+		if err := os.WriteFile(tmpfile, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		result, err := ReadFileString(tmpfile)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result != content {
+			t.Errorf("got %q, want %q", result, content)
+		}
+	})
+
+	t.Run("non-existent file", func(t *testing.T) {
+		result, err := ReadFileString("/nonexistent/file.txt")
+		if err == nil {
+			t.Fatal("expected error for non-existent file")
+		}
+		if result != "" {
+			t.Error("expected empty string on error")
+		}
+	})
+}
+
+func TestWriteFile(t *testing.T) {
+	t.Run("write to new file", func(t *testing.T) {
+		tmpfile := filepath.Join(t.TempDir(), "test.txt")
+		content := []byte("test content")
+
+		err := WriteFile(tmpfile, content, 0644)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		data, err := os.ReadFile(tmpfile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(data) != string(content) {
+			t.Errorf("got %q, want %q", data, content)
+		}
+	})
+
+	t.Run("write to nested directory", func(t *testing.T) {
+		tmpdir := t.TempDir()
+		tmpfile := filepath.Join(tmpdir, "subdir1", "subdir2", "test.txt")
+		content := []byte("test content")
+
+		err := WriteFile(tmpfile, content, 0644)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		data, err := os.ReadFile(tmpfile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(data) != string(content) {
+			t.Errorf("got %q, want %q", data, content)
+		}
+	})
+
+	t.Run("overwrite existing file", func(t *testing.T) {
+		tmpfile := filepath.Join(t.TempDir(), "test.txt")
+		initial := []byte("initial content")
+		if err := os.WriteFile(tmpfile, initial, 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		newContent := []byte("new content")
+		err := WriteFile(tmpfile, newContent, 0644)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		data, err := os.ReadFile(tmpfile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(data) != string(newContent) {
+			t.Errorf("got %q, want %q", data, newContent)
+		}
+	})
+}
+
+func TestWriteFileString(t *testing.T) {
+	tmpfile := filepath.Join(t.TempDir(), "test.txt")
+	content := "test content"
+
+	err := WriteFileString(tmpfile, content, 0644)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(tmpfile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != content {
+		t.Errorf("got %q, want %q", data, content)
+	}
+}
+
+func TestFileExists(t *testing.T) {
+	tmpdir := t.TempDir()
+	existingFile := filepath.Join(tmpdir, "existing.txt")
+	os.WriteFile(existingFile, []byte{}, 0644)
+
+	if !FileExists(existingFile) {
+		t.Error("expected true for existing file")
+	}
+	if FileExists(filepath.Join(tmpdir, "nonexistent.txt")) {
+		t.Error("expected false for non-existent file")
+	}
+	if FileExists(tmpdir) {
+		t.Error("expected false for directory")
+	}
+}
+
+func TestIsDirectory(t *testing.T) {
+	tmpdir := t.TempDir()
+	existingFile := filepath.Join(tmpdir, "existing.txt")
+	os.WriteFile(existingFile, []byte{}, 0644)
+
+	if !IsDirectory(tmpdir) {
+		t.Error("expected true for directory")
+	}
+	if IsDirectory(existingFile) {
+		t.Error("expected false for file")
+	}
+	if IsDirectory(filepath.Join(tmpdir, "nonexistent")) {
+		t.Error("expected false for non-existent path")
+	}
+}
+
+func TestEnsureDir(t *testing.T) {
+	t.Run("create new directory", func(t *testing.T) {
+		tmpdir := t.TempDir()
+		newPath := filepath.Join(tmpdir, "new", "nested", "dir")
+
+		err := EnsureDir(newPath)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if !IsDirectory(newPath) {
+			t.Error("expected directory to exist after EnsureDir")
+		}
+	})
+
+	t.Run("existing directory", func(t *testing.T) {
+		tmpdir := t.TempDir()
+		err := EnsureDir(tmpdir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
+func TestDeleteFile(t *testing.T) {
+	t.Run("delete existing file", func(t *testing.T) {
+		tmpfile := filepath.Join(t.TempDir(), "test.txt")
+		os.WriteFile(tmpfile, []byte{}, 0644)
+
+		err := DeleteFile(tmpfile)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if FileExists(tmpfile) {
+			t.Error("expected file to be deleted")
+		}
+	})
+
+	t.Run("delete non-existent file", func(t *testing.T) {
+		err := DeleteFile(filepath.Join(t.TempDir(), "nonexistent.txt"))
+		if err == nil {
+			t.Fatal("expected error for non-existent file")
+		}
+
+		if !errors.IsFileNotFoundError(err) {
+			t.Errorf("expected FileNotFoundError, got: %T", err)
+		}
+	})
+
+	t.Run("delete directory", func(t *testing.T) {
+		tmpdir := t.TempDir()
+		err := DeleteFile(tmpdir)
+		if err == nil {
+			t.Fatal("expected error when deleting directory with DeleteFile")
+		}
+	})
+}
+
+func TestCopyFile(t *testing.T) {
+	tmpdir := t.TempDir()
+	src := filepath.Join(tmpdir, "source.txt")
+	dst := filepath.Join(tmpdir, "dest.txt")
+	content := []byte("test content for copy")
+
+	if err := os.WriteFile(src, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := CopyFile(src, dst)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	dstData, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(dstData) != string(content) {
+		t.Errorf("got %q, want %q", dstData, content)
+	}
+
+	if !FileExists(src) {
+		t.Error("source file should still exist after copy")
+	}
+}
+
+func TestCopyFileSourceNotFound(t *testing.T) {
+	tmpdir := t.TempDir()
+	src := filepath.Join(tmpdir, "nonexistent.txt")
+	dst := filepath.Join(tmpdir, "dest.txt")
+
+	err := CopyFile(src, dst)
+	if err == nil {
+		t.Fatal("expected error when source file doesn't exist")
+	}
+
+	if !errors.IsFileNotFoundError(err) {
+		t.Errorf("expected FileNotFoundError, got: %T", err)
+	}
+}
+
+func TestMoveFile(t *testing.T) {
+	tmpdir := t.TempDir()
+	src := filepath.Join(tmpdir, "source.txt")
+	dst := filepath.Join(tmpdir, "dest.txt")
+	content := []byte("test content for move")
+
+	if err := os.WriteFile(src, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := MoveFile(src, dst)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if FileExists(src) {
+		t.Error("source file should not exist after move")
+	}
+
+	dstData, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(dstData) != string(content) {
+		t.Errorf("got %q, want %q", dstData, content)
+	}
+}
+
+func TestGetFileSize(t *testing.T) {
+	tmpdir := t.TempDir()
+	testFile := filepath.Join(tmpdir, "test.txt")
+	content := []byte("test content for size")
+
+	if err := os.WriteFile(testFile, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	size, err := GetFileSize(testFile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if size != int64(len(content)) {
+		t.Errorf("got size %d, want %d", size, len(content))
+	}
+}
+
+func TestGetFileSizeNonExistent(t *testing.T) {
+	size, err := GetFileSize(filepath.Join(t.TempDir(), "nonexistent.txt"))
+	if err == nil {
+		t.Fatal("expected error for non-existent file")
+	}
+
+	if !errors.IsFileNotFoundError(err) {
+		t.Errorf("expected FileNotFoundError, got: %T", err)
+	}
+
+	if size != 0 {
+		t.Error("expected size 0 on error")
+	}
+}
+
+func TestGetFileModTime(t *testing.T) {
+	tmpdir := t.TempDir()
+	testFile := filepath.Join(tmpdir, "test.txt")
+
+	content := []byte("test content")
+	if err := os.WriteFile(testFile, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	time.Sleep(10 * time.Millisecond) // Ensure file is created before we check modtime
+
+	modTime, err := GetFileModTime(testFile)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	info, _ := os.Stat(testFile)
+	expectedTime := info.ModTime()
+
+	if modTime.Before(expectedTime.Add(-1*time.Second)) || modTime.After(expectedTime.Add(1*time.Second)) {
+		t.Errorf("got modtime %v, want ~%v", modTime, expectedTime)
+	}
+}
+
+func TestGetFileModTimeNonExistent(t *testing.T) {
+	modTime, err := GetFileModTime(filepath.Join(t.TempDir(), "nonexistent.txt"))
+	if err == nil {
+		t.Fatal("expected error for non-existent file")
+	}
+
+	if !errors.IsFileNotFoundError(err) {
+		t.Errorf("expected FileNotFoundError, got: %T", err)
+	}
+
+	if !modTime.IsZero() {
+		t.Error("expected zero time on error")
+	}
+}
+
+func TestIntegrationWorkflow(t *testing.T) {
+	tmpdir := t.TempDir()
+
+	// Create source file
+	srcFile := filepath.Join(tmpdir, "source.txt")
+	content := []byte("integration test content")
+	if err := WriteFile(srcFile, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Copy it
+	dstFile := filepath.Join(tmpdir, "copy.txt")
+	if err := CopyFile(srcFile, dstFile); err != nil {
+		t.Fatal(err)
+	}
+
+	// Move copy to another location
+	movedFile := filepath.Join(tmpdir, "moved.txt")
+	if err := MoveFile(dstFile, movedFile); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify workflow
+	if FileExists(dstFile) {
+		t.Error("copy should not exist after move")
+	}
+	if !FileExists(srcFile) {
+		t.Error("source should still exist")
+	}
+	if !FileExists(movedFile) {
+		t.Error("moved file should exist")
+	}
+
+	// Get size of moved file
+	size, err := GetFileSize(movedFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if size != int64(len(content)) {
+		t.Errorf("size mismatch: got %d, want %d", size, len(content))
+	}
+
+	// Read back content
+	readContent, err := ReadFileString(movedFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if readContent != string(content) {
+		t.Errorf("content mismatch")
+	}
+
+	// Cleanup
+	if err := DeleteFile(movedFile); err != nil {
+		t.Error(err)
+	}
+}
