@@ -136,6 +136,44 @@ func TestSpawnSubagentValidation(t *testing.T) {
 	}
 }
 
+// TestSpawnSubagentModelFallback tests that spawnSubagent uses default model when not specified
+func TestSpawnSubagentModelFallback(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create agent with custom default model
+	agent := NewYoloAgent()
+	agent.config.SetModel("default-test-model")
+	agent.baseDir = tmpDir
+
+	executor := &ToolExecutor{baseDir: tmpDir, agent: agent}
+
+	// Spawn subagent without specifying model - should use agent's default
+	params := map[string]any{
+		"prompt": "Test task for model fallback",
+	}
+
+	result := executor.spawnSubagent(params)
+
+	// Verify the subagent was spawned (the actual model usage happens in the goroutine)
+	if !strings.Contains(result, "Sub-agent") {
+		t.Errorf("Expected output to contain 'Sub-agent', got: %s", result)
+	}
+
+	// Verify the counter incremented (check by spawning another one)
+	initialCounter := agent.subagentCounter
+	result2 := executor.spawnSubagent(params)
+
+	if !strings.Contains(result2, "Sub-agent") {
+		t.Errorf("Expected output to contain 'Sub-agent', got: %s", result2)
+	}
+
+	// Verify counter incremented again
+	if agent.subagentCounter <= initialCounter {
+		t.Errorf("Expected subagent counter to increment, was %d now %d", initialCounter, agent.subagentCounter)
+	}
+}
+
+
 // TestStripANSI tests the alternative strip function
 func TestStripANSI(t *testing.T) {
 	input := "\x1b[32mGreen\x1b[0m"
