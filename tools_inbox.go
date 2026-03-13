@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
+
+	"yolo/utils"
 )
 
 // Email represents a parsed email message
@@ -81,7 +82,7 @@ func (t *ToolExecutor) checkInbox(args map[string]any) string {
 	markRead := getBoolArg(args, "mark_read", false)
 	inboxPath := "/var/mail/b-haven.org/yolo/new/"
 
-	files, err := os.ReadDir(inboxPath)
+	files, err := utils.ListFiles(inboxPath)
 	if err != nil {
 		return fmt.Sprintf("❌ Error reading inbox: %v", err)
 	}
@@ -93,15 +94,11 @@ func (t *ToolExecutor) checkInbox(args map[string]any) string {
 	var output strings.Builder
 	output.WriteString(fmt.Sprintf("📬 Found %d new email(s).\n\n", len(files)))
 
-	for _, file := range files {
-		if file.IsDir() {
-			continue
-		}
-
-		filePath := fmt.Sprintf("%s%s", inboxPath, file.Name())
-		emailContent, err := os.ReadFile(filePath)
+	for _, filename := range files {
+		filePath := fmt.Sprintf("%s%s", inboxPath, filename)
+		emailContent, err := utils.ReadFile(filePath)
 		if err != nil {
-			output.WriteString(fmt.Sprintf("Error reading email %s: %v\n", file.Name(), err))
+			output.WriteString(fmt.Sprintf("Error reading email %s: %v\n", filename, err))
 			continue
 		}
 
@@ -112,8 +109,8 @@ func (t *ToolExecutor) checkInbox(args map[string]any) string {
 		output.WriteString(fmt.Sprintf("Subject: %s\n", parsedEmail.Subject))
 
 		if markRead {
-			curPath := fmt.Sprintf("/var/mail/b-haven.org/yolo/cur/%s", file.Name())
-			err = os.Rename(filePath, curPath)
+			curPath := fmt.Sprintf("/var/mail/b-haven.org/yolo/cur/%s", filename)
+			err = utils.MoveFile(filePath, curPath)
 			if err != nil {
 				output.WriteString(fmt.Sprintf("Error marking email as read: %v\n", err))
 			}
@@ -128,7 +125,7 @@ func (t *ToolExecutor) checkInbox(args map[string]any) string {
 func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 	inboxPath := "/var/mail/b-haven.org/yolo/new/"
 
-	files, err := os.ReadDir(inboxPath)
+	files, err := utils.ListFiles(inboxPath)
 	if err != nil {
 		return fmt.Sprintf("❌ Error reading inbox: %v", err)
 	}
@@ -140,15 +137,11 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 	var output strings.Builder
 	output.WriteString(fmt.Sprintf("Processing %d email(s)...\n\n", len(files)))
 
-	for _, file := range files {
-		if file.IsDir() {
-			continue
-		}
-
-		filePath := fmt.Sprintf("%s%s", inboxPath, file.Name())
-		emailContent, err := os.ReadFile(filePath)
+	for _, filename := range files {
+		filePath := fmt.Sprintf("%s%s", inboxPath, filename)
+		emailContent, err := utils.ReadFile(filePath)
 		if err != nil {
-			output.WriteString(fmt.Sprintf("Error reading email %s: %v\n\n", file.Name(), err))
+			output.WriteString(fmt.Sprintf("Error reading email %s: %v\n\n", filename, err))
 			continue
 		}
 
@@ -183,7 +176,7 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 		}
 
 		// Delete original email from inbox (move to trash or remove)
-		err = os.Remove(filePath)
+		err = utils.DeleteFile(filePath)
 		if err != nil {
 			output.WriteString(fmt.Sprintf("Warning: Could not delete processed email: %v\n", err))
 		} else {

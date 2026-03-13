@@ -12,7 +12,8 @@ import (
 type ThreadPool struct {
 	numWorkers int
 	jobs       chan func()
-	wg         sync.WaitGroup
+	wg         sync.WaitGroup      // tracks worker goroutines
+	jobsWg     sync.WaitGroup      // tracks submitted jobs
 	mu         sync.Mutex
 	closed     bool
 }
@@ -43,6 +44,7 @@ func (tp *ThreadPool) worker() {
 	for job := range tp.jobs {
 		if job != nil {
 			job()
+			tp.jobsWg.Done()
 		}
 	}
 }
@@ -57,6 +59,7 @@ func (tp *ThreadPool) Submit(job func()) error {
 		return ErrPoolClosed
 	}
 
+	tp.jobsWg.Add(1)
 	tp.jobs <- job
 	return nil
 }
@@ -75,7 +78,7 @@ func (tp *ThreadPool) Close() {
 
 // Wait blocks until all submitted jobs are completed
 func (tp *ThreadPool) Wait() {
-	tp.wg.Wait()
+	tp.jobsWg.Wait()
 }
 
 // QueueSize returns the number of pending jobs in the queue

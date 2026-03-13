@@ -12,6 +12,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"yolo/errors"
+	"yolo/utils"
 )
 
 const todoFile = ".todo.json"
@@ -66,9 +69,9 @@ func (t *TodoList) Load() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	data, err := os.ReadFile(t.filePath)
+	data, err := utils.ReadFile(t.filePath)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.IsFileNotFoundError(err) {
 			return nil // File doesn't exist yet, that's fine
 		}
 		return err
@@ -93,7 +96,7 @@ func (t *TodoList) saveLocked() error {
 		return err
 	}
 
-	return os.WriteFile(t.filePath, data, 0644)
+	return utils.WriteFile(t.filePath, data, 0644)
 }
 
 func (t *TodoList) Save() error {
