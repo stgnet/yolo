@@ -173,7 +173,6 @@ func TestSpawnSubagentModelFallback(t *testing.T) {
 	}
 }
 
-
 // TestStripANSI tests the alternative strip function
 func TestStripANSI(t *testing.T) {
 	input := "\x1b[32mGreen\x1b[0m"

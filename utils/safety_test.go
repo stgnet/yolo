@@ -11,7 +11,7 @@ import (
 func TestDeleteFileWithConfig_NoBackup(t *testing.T) {
 	tmpdir := t.TempDir()
 	testFile := filepath.Join(tmpdir, "test.txt")
-	
+
 	// Create test file
 	content := []byte("content to delete without backup")
 	if err := os.WriteFile(testFile, content, 0644); err != nil {
@@ -43,7 +43,7 @@ func TestDeleteFileWithConfig_NoBackup(t *testing.T) {
 func TestDeleteFileWithConfig_WithBackup(t *testing.T) {
 	tmpdir := t.TempDir()
 	testFile := filepath.Join(tmpdir, "test.txt")
-	
+
 	// Create test file
 	content := []byte("content to delete with backup")
 	if err := os.WriteFile(testFile, content, 0644); err != nil {
@@ -85,7 +85,7 @@ func TestMoveFileWithConfig_NoBackup(t *testing.T) {
 	tmpdir := t.TempDir()
 	src := filepath.Join(tmpdir, "source.txt")
 	dst := filepath.Join(tmpdir, "dest.txt")
-	
+
 	if err := os.WriteFile(src, []byte("move content"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestMoveFileWithConfig_NoBackup(t *testing.T) {
 	if !FileExists(dst) {
 		t.Error("Destination should exist")
 	}
-	if FileExists(src+".bak") {
+	if FileExists(src + ".bak") {
 		t.Error("Backup should not exist when CreateBackup is false")
 	}
 }
@@ -112,7 +112,7 @@ func TestMoveFileWithConfig_WithBackup(t *testing.T) {
 	src := filepath.Join(tmpdir, "source.txt")
 	dst := filepath.Join(tmpdir, "dest.txt")
 	content := []byte("move content with backup")
-	
+
 	if err := os.WriteFile(src, content, 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -129,12 +129,12 @@ func TestMoveFileWithConfig_WithBackup(t *testing.T) {
 	if !FileExists(dst) {
 		t.Error("Destination should exist")
 	}
-	
+
 	// Backup is created for the source before deletion
-	if !FileExists(src+".bak") {
+	if !FileExists(src + ".bak") {
 		t.Error("Backup should exist when CreateBackup is true")
 	}
-	
+
 	backupContent, _ := os.ReadFile(src + ".bak")
 	if string(backupContent) != string(content) {
 		t.Errorf("Backup content mismatch")
@@ -144,7 +144,7 @@ func TestMoveFileWithConfig_WithBackup(t *testing.T) {
 func TestSafetyConfigSizeLimit(t *testing.T) {
 	tmpdir := t.TempDir()
 	testFile := filepath.Join(tmpdir, "large.txt")
-	
+
 	// Create a file larger than the limit
 	largeContent := make([]byte, 2048) // 2KB file
 	if err := os.WriteFile(testFile, largeContent, 0644); err != nil {
@@ -171,7 +171,7 @@ func TestSafetyConfigSizeLimit(t *testing.T) {
 func TestSafetyConfigSizeLimit_Allowed(t *testing.T) {
 	tmpdir := t.TempDir()
 	testFile := filepath.Join(tmpdir, "small.txt")
-	
+
 	// Create a small file
 	smallContent := []byte("small content")
 	if err := os.WriteFile(testFile, smallContent, 0644); err != nil {
@@ -197,7 +197,7 @@ func TestSafetyConfigSizeLimit_Allowed(t *testing.T) {
 func TestSafetyConfigDisabledSizeCheck(t *testing.T) {
 	tmpdir := t.TempDir()
 	testFile := filepath.Join(tmpdir, "any.txt")
-	
+
 	largeContent := make([]byte, 2048) // 2KB file
 	if err := os.WriteFile(testFile, largeContent, 0644); err != nil {
 		t.Fatal(err)
@@ -221,24 +221,24 @@ func TestSafetyConfigDisabledSizeCheck(t *testing.T) {
 
 func TestProtectedPathBlocking(t *testing.T) {
 	tmpdir := t.TempDir()
-	
+
 	// Create a file with a protected path prefix simulation
 	protectedSubdir := filepath.Join(tmpdir, "simulated_protected")
 	testFile := filepath.Join(protectedSubdir, "file.txt")
-	
+
 	if err := os.MkdirAll(protectedSubdir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	
+
 	if err := os.WriteFile(testFile, []byte("protected content"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
 	// Config with this path protected
 	config := &SafetyConfig{
-		ProtectedPaths:   []string{protectedSubdir},
-		CreateBackup:     false,
-		EnableSizeCheck:  false,
+		ProtectedPaths:  []string{protectedSubdir},
+		CreateBackup:    false,
+		EnableSizeCheck: false,
 	}
 
 	err := DeleteFileWithConfig(testFile, config)

@@ -113,7 +113,6 @@ func TestSwitchModelValid(t *testing.T) {
 	}
 }
 
-
 // TestRestart tests the restart tool implementation.
 // SKIPPED: executor.restart() runs "go build" to rebuild the yolo binary and
 // then exec's the new binary with syscall.Exec, replacing the current process.
