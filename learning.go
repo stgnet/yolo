@@ -238,7 +238,7 @@ func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result 
 		}
 
 		// Skip if too short or contains generic patterns
-		if len(content) < 50 || containsGenericPattern(content, genericPatterns) {
+		if len(content) < 70 || containsGenericPattern(content, genericPatterns) {
 			continue
 		}
 
@@ -263,9 +263,11 @@ func (lm *LearningManager) extractCompleteSentences(text string) []string {
 	// Decode common HTML entities that appear in search results
 	text = strings.ReplaceAll(text, "&quot;", "\"")
 	text = strings.ReplaceAll(text, "&#039;", "'")
+	text = strings.ReplaceAll(text, "&#39;", "'")
 	text = strings.ReplaceAll(text, "&amp;", "&")
 	text = strings.ReplaceAll(text, "&lt;", "<")
 	text = strings.ReplaceAll(text, "&gt;", ">")
+	text = strings.ReplaceAll(text, "&nbsp;", " ")
 
 	// Clean up markdown formatting (remove ** bold markers)
 	text = strings.ReplaceAll(text, "**", "")
@@ -291,13 +293,13 @@ func (lm *LearningManager) extractCompleteSentences(text string) []string {
 		part = strings.TrimSpace(part)
 
 		// Skip very short fragments or too long (likely multiple sentences)
-		if len(part) < 60 || len(part) > 250 {
+		if len(part) < 60 || len(part) > 280 {
 			continue
 		}
 
-		// Skip if it starts with lowercase (indicates a fragment)
+		// Skip if it starts with lowercase, quote, or non-alphabetic character (indicates a fragment)
 		firstChar := part[0]
-		if firstChar >= 'a' && firstChar <= 'z' {
+		if (firstChar >= 'a' && firstChar <= 'z') || firstChar == '"' || firstChar == '\'' || (firstChar < 'A' || (firstChar > 'Z' && firstChar < 'a')) {
 			continue
 		}
 
