@@ -13,6 +13,7 @@ YOLO is a self-evolving AI agent for autonomous software development. It operate
 - Automatic bug detection and fixes
 - Test coverage improvement
 - Code quality optimization
+- **See [Autonomous Operations Guide](DOCS/AUTONOMOUS_OPERATIONS.md) for detailed workflow documentation**
 
 ### 📧 Email Integration
 **Address**: `yolo@b-haven.org`
@@ -39,7 +40,7 @@ See `EMAIL_PROCESSING.md` for detailed documentation.
 - Model management (Ollama integration)
 - Sub-agent spawning for parallel tasks
 
-## Current Status
+### Current Status (Last Updated: 2026-03-12T21:59:00-04:00)
 
 ### ✅ Operational Health
 - **Tests**: All passing (63.3% overall coverage)
@@ -53,17 +54,64 @@ See `EMAIL_PROCESSING.md` for detailed documentation.
   - No security vulnerabilities detected
 - **Git Status**: Clean working directory, up-to-date with remote
 
+### 📚 Documentation
+Comprehensive documentation available:
+- [Autonomous Operations Guide](DOCS/AUTONOMOUS_OPERATIONS.md) - Complete guide to YOLO's autonomous mode
+- [Email Processing](EMAIL_PROCESSING.md) - Email system architecture and workflow
+- [Google Integration](GOOGLE_INTEGRATION.md) - Google Workspace integration guide
+- [Architecture](ARCHITECTURE.md) - System architecture overview
+- [Testing Summary](TESTING_SUMMARY.md) - Testing strategy and coverage analysis
+
 ### 📊 Recent Improvements
 1. **Fixed critical data race** in `handoffRemainingTools()` goroutine
 2. **Implemented comprehensive email processing** with auto-response workflow
 3. **Enhanced test coverage** for email package to 90%
 4. **Added mock-based unit tests** for email response generation (avoids LLM calls in CI)
 5. **Direct LLM email responses**: All emails now go through direct LLM generation instead of pattern matching
-6. **Added extensive documentation** including:
-   - `EMAIL_PROCESSING.md` - Email system documentation
-   - `GOOGLE_INTEGRATION.md` - Google Workspace integration guide
-   - `ARCHITECTURE.md` - System architecture overview
-   - `TESTING_SUMMARY.md` - Testing strategy and coverage
+6. **Added comprehensive autonomous operations documentation** including self-improvement cycle and best practices
+
+## Quick Start
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/your-username/yolo.git
+cd yolo
+
+# Build the binary
+go build -o yolo
+
+# Run
+./yolo
+```
+
+### Prerequisites
+- Go 1.21+
+- Ollama installed with a model (e.g., `qwen3.5:27b`)
+- Git configured
+
+### First Run
+On first run, YOLO will:
+1. Display welcome message and capabilities
+2. Set up the working directory
+3. Wait for your input or operate autonomously
+
+### Usage Modes
+
+**Interactive Mode**: Type commands directly
+```
+user@yolo$ read_file README.md
+user@yolo$ web_search "best practices go testing"
+user@yolo$ add_todo "Fix test coverage"
+```
+
+**Autonomous Mode**: YOLO works independently to improve itself
+- Checks for emails
+- Analyzes code quality
+- Runs tests and fixes failures
+- Updates documentation
+- Sends progress reports
 
 ## Quick Reference
 
