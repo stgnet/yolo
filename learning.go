@@ -265,8 +265,8 @@ func (lm *LearningManager) extractCompleteSentences(text string) []string {
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
 
-		// Skip very short fragments
-		if len(part) < 50 {
+		// Skip very short fragments or too long (likely multiple sentences)
+		if len(part) < 60 || len(part) > 250 {
 			continue
 		}
 
@@ -364,7 +364,26 @@ func (lm *LearningManager) createImprovement(area ResearchArea, content string, 
 		return nil
 	}
 
+	// Filter out error messages and other invalid content
+	contentLower := strings.ToLower(content)
+	errorPatterns := []string{
+		"no search results found", "error:", "failed to",
+		"couldn't find", "not found", "request failed",
+		"timeout", "connection refused", "server error",
+	}
+	for _, pattern := range errorPatterns {
+		if strings.Contains(contentLower, pattern) {
+			return nil
+		}
+	}
+
 	title := lm.generateTitle(content, area.Category)
+
+	// Validate title is not empty or too short after generation
+	if len(title) < 15 || strings.HasPrefix(strings.ToLower(title), "no ") ||
+		strings.Contains(strings.ToLower(title), "error") {
+		return nil
+	}
 
 	return &Improvement{
 		ID:          generateImprovementID(title),
