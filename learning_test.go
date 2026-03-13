@@ -98,7 +98,7 @@ func TestSimilarity(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := lm.similarity(tt.s1, tt.s2)
-			
+
 			// Use approximate comparison for floats
 			if result < 0 {
 				t.Errorf("Similarity should not be negative: %f", result)
@@ -106,14 +106,14 @@ func TestSimilarity(t *testing.T) {
 			if result > 1 {
 				t.Errorf("Similarity should not exceed 1: %f", result)
 			}
-			
+
 			// Check within reasonable tolerance (0.2 for fuzzy matching)
 			diff := result - tt.expected
 			if diff < 0 {
 				diff = -diff
 			}
 			if diff > 0.2 {
-				t.Logf("Note: Got %f, expected ~%f (may vary due to stop word filtering)", 
+				t.Logf("Note: Got %f, expected ~%f (may vary due to stop word filtering)",
 					result, tt.expected)
 			}
 		})
@@ -149,7 +149,7 @@ func TestFilterStopWords(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := lm.filterStopWords(tt.input)
 			if len(result) != tt.expected {
-				t.Errorf("Expected %d words after filtering, got %d: %v", 
+				t.Errorf("Expected %d words after filtering, got %d: %v",
 					tt.expected, len(result), result)
 			}
 		})
@@ -160,9 +160,9 @@ func TestAnalyzeTrends(t *testing.T) {
 	lm := &LearningManager{}
 
 	tests := []struct {
-		name     string
-		input    []Improvement
-		wantLen  int // minimum expected trends
+		name    string
+		input   []Improvement
+		wantLen int // minimum expected trends
 	}{
 		{
 			name: "identifies repeating keywords",
@@ -184,7 +184,7 @@ func TestAnalyzeTrends(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			trends := lm.analyzeTrends(tt.input)
 			if len(trends) < tt.wantLen {
-				t.Errorf("Expected at least %d trends, got %d: %v", 
+				t.Errorf("Expected at least %d trends, got %d: %v",
 					tt.wantLen, len(trends), trends)
 			}
 		})
@@ -193,7 +193,7 @@ func TestAnalyzeTrends(t *testing.T) {
 
 func TestGetPendingImprovements(t *testing.T) {
 	lm := &LearningManager{}
-	
+
 	sessions := []LearningSession{
 		{
 			Improvements: []Improvement{
@@ -223,7 +223,7 @@ func TestGenerateImprovementID(t *testing.T) {
 	if id == "" {
 		t.Error("Generated ID should not be empty")
 	}
-	
+
 	// Check format (should start with IMP-)
 	if len(id) < 4 || id[:4] != "IMP-" {
 		t.Errorf("ID should start with 'IMP-', got: %s", id)
@@ -233,7 +233,7 @@ func TestGenerateImprovementID(t *testing.T) {
 func TestExtractKeywords(t *testing.T) {
 	text := "Performance optimization is important for security"
 	suggested := []string{"performance", "security", "networking"}
-	
+
 	keywords := extractKeywords(text, suggested)
 	if len(keywords) != 2 {
 		t.Errorf("Expected 2 keywords, got %d: %v", len(keywords), keywords)
@@ -242,9 +242,9 @@ func TestExtractKeywords(t *testing.T) {
 
 func TestContainsActionableContent(t *testing.T) {
 	tests := []struct {
-		name  string
-		text  string
-		want  bool
+		name string
+		text string
+		want bool
 	}{
 		{
 			name: "contains actionable word",
@@ -270,9 +270,9 @@ func TestContainsActionableContent(t *testing.T) {
 
 func TestContainsGenericPattern(t *testing.T) {
 	tests := []struct {
-		name  string
-		text  string
-		want  bool
+		name string
+		text string
+		want bool
 	}{
 		{
 			name: "contains generic pattern",

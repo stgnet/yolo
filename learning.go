@@ -756,8 +756,12 @@ func (lm *LearningManager) removeDuplicateImprovements(improvements []Improvemen
 	for i, imp := range improvements {
 		isDuplicate := false
 		for j := 0; j < i; j++ {
-			// Simple duplicate detection: if titles are very similar (>70% overlap)
-			if lm.similarity(improvements[j].Title, imp.Title) > 0.7 {
+			// Check both title and description for similarity
+			titleSim := lm.similarity(improvements[j].Title, imp.Title)
+			descSim := lm.similarity(improvements[j].Description, imp.Description)
+
+			// Mark as duplicate if either title or description is similar enough
+			if titleSim > 0.5 || descSim > 0.6 {
 				isDuplicate = true
 				break
 			}
@@ -770,10 +774,10 @@ func (lm *LearningManager) removeDuplicateImprovements(improvements []Improvemen
 	return unique
 }
 
-// similarity calculates string similarity (simple Jaccard-like metric)
+// similarity calculates string similarity using Jaccard-like metric with stop word filtering
 func (lm *LearningManager) similarity(s1, s2 string) float64 {
-	words1 := strings.Fields(strings.ToLower(s1))
-	words2 := strings.Fields(strings.ToLower(s2))
+	words1 := lm.filterStopWords(strings.Fields(strings.ToLower(s1)))
+	words2 := lm.filterStopWords(strings.Fields(strings.ToLower(s2)))
 
 	if len(words1) == 0 || len(words2) == 0 {
 		return 0
@@ -792,4 +796,26 @@ func (lm *LearningManager) similarity(s1, s2 string) float64 {
 
 	total := len(words1) + len(words2)
 	return float64(common*2) / float64(total)
+}
+
+// filterStopWords removes common stop words that add noise to similarity comparisons
+func (lm *LearningManager) filterStopWords(words []string) []string {
+	stopWords := map[string]bool{
+		"the": true, "a": true, "an": true, "and": true, "or": true, "but": true,
+		"in": true, "on": true, "at": true, "to": true, "for": true, "of": true,
+		"with": true, "by": true, "from": true, "as": true, "is": true, "was": true,
+		"are": true, "were": true, "been": true, "be": true, "has": true, "have": true,
+		"had": true, "this": true, "that": true, "these": true, "those": true,
+		"its": true, "it's": true, "their": true, "there": true, "here": true,
+		"which": true, "what": true, "when": true, "where": true, "how": true,
+		"provides": true, "offers": true, "features": true, "designed": true,
+	}
+
+	var filtered []string
+	for _, w := range words {
+		if !stopWords[w] && len(w) > 2 { // Also filter very short words
+			filtered = append(filtered, w)
+		}
+	}
+	return filtered
 }
