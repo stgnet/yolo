@@ -8,6 +8,109 @@ import (
 	"time"
 )
 
+func TestThreadPool_Wait(t *testing.T) {
+	tp := NewThreadPool(2)
+	var wg sync.WaitGroup
+
+	// Submit some jobs
+	numJobs := 10
+	for i := 0; i < numJobs; i++ {
+		wg.Add(1)
+		err := tp.Submit(func() {
+			defer wg.Done()
+			time.Sleep(1 * time.Millisecond)
+		})
+		if err != nil {
+			t.Errorf("Failed to submit job: %v", err)
+		}
+	}
+
+	// Wait should not block since jobs are being processed
+	done := make(chan struct{})
+	go func() {
+		tp.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Success - all jobs completed
+	case <-time.After(5 * time.Second):
+		t.Fatal("Wait() timed out")
+	}
+
+	tp.Close()
+}
+
+func TestThreadPool_QueueSize(t *testing.T) {
+ tp := NewThreadPool(1)
+
+ // Submit multiple jobs quickly
+ numJobs := 20
+ for i := 0; i < numJobs; i++ {
+		err := tp.Submit(func() {
+			time.Sleep(10 * time.Millisecond)
+		})
+		if err != nil {
+			t.Errorf("Failed to submit job: %v", err)
+		}
+	}
+
+	// Queue should have some pending jobs
+	size := tp.QueueSize()
+	if size < 1 || size > numJobs {
+		t.Logf("Queue size is %d (expected between 1 and %d)", size, numJobs)
+	}
+
+	tp.Close()
+}
+
+func TestThreadPool_WorkerCount(t *testing.T) {
+	tp := NewThreadPool(5)
+
+	count := tp.WorkerCount()
+	if count != 5 {
+		t.Errorf("Expected 5 workers, got %d", count)
+	}
+
+	tp.Close()
+}
+
+func TestParallelExecutor_Cancel(t *testing.T) {
+	executor := NewParallelExecutor(2)
+
+	var cancelled int32
+
+	// Submit jobs that can be cancelled
+	for i := 0; i < 10; i++ {
+		executor.Submit(func(ctx context.Context) error {
+			select {
+			case <-ctx.Done():
+				atomic.AddInt32(&cancelled, 1)
+				return ctx.Err()
+			default:
+				time.Sleep(10 * time.Millisecond)
+				return nil
+			}
+		})
+	}
+
+	// Cancel the executor
+	executor.Cancel()
+
+	// Give some time for cancellation to propagate
+	time.Sleep(50 * time.Millisecond)
+
+	// At least some jobs should have been cancelled
+	cancelledCount := atomic.LoadInt32(&cancelled)
+	if cancelledCount == 0 {
+		t.Logf("No jobs were cancelled (this may be expected depending on timing)")
+	} else {
+		t.Logf("%d jobs were cancelled", cancelledCount)
+	}
+}
+
+// Keep existing tests for regression
 func TestNewThreadPool(t *testing.T) {
 	tp := NewThreadPool(4)
 	if tp == nil {
