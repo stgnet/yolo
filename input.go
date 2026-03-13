@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -347,6 +348,10 @@ func (im *InputManager) processLoop() {
 				sendTimer.Stop()
 				im.syncAndRedraw()
 
+			case ch == 26: // Ctrl-Z (suspend)
+				im.mu.Unlock()
+				im.suspend()
+
 			case ch == 27: // Escape sequence
 				im.mu.Unlock()
 				im.consumeEscapeSequence()
@@ -443,6 +448,41 @@ func (im *InputManager) processLoop() {
 			return
 		}
 	}
+}
+
+// suspend handles Ctrl-Z by restoring the terminal to its original state,
+// sending SIGSTOP to the process, and re-entering raw mode on resume.
+func (im *InputManager) suspend() {
+	if im.oldState == nil {
+		return // not in raw mode, nothing to do
+	}
+
+	// Tear down the terminal UI so the shell gets a clean terminal
+	if globalUI != nil {
+		globalUI.Teardown()
+	}
+
+	// Restore terminal from raw mode
+	term.Restore(im.fd, im.oldState)
+
+	// Send SIGSTOP to our own process (this is what the kernel does for ^Z
+	// in cooked mode). The process will be stopped until the user runs "fg".
+	syscall.Kill(syscall.Getpid(), syscall.SIGSTOP)
+
+	// ── Execution resumes here after "fg" ──
+
+	// Re-enter raw mode
+	newState, err := term.MakeRaw(im.fd)
+	if err == nil {
+		im.oldState = newState
+	}
+
+	// Re-setup the terminal UI
+	if globalUI != nil {
+		globalUI.Setup()
+	}
+
+	im.syncAndRedraw()
 }
 
 // utf8ByteLen returns the expected byte length of a UTF-8 sequence from its leading byte.
