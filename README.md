@@ -72,46 +72,162 @@ Comprehensive documentation available:
 
 ## Quick Start
 
-### Installation
+### Step-by-Step Setup Guide
+
+Follow these steps to get YOLO up and running:
+
+#### 1. Prerequisites
+
+Ensure you have the following installed:
+
+```bash
+# Check Go version (1.21+ required)
+go version
+
+# Install Ollama if not already installed
+# macOS: brew install ollama
+# Linux: curl -fsSL https://ollama.ai/install.sh | sh
+# Windows: Download from https://ollama.ai
+
+# Pull a model (qwen3.5:27b recommended)
+ollama pull qwen3.5:27b
+
+# Verify Ollama is running
+ollama list
+
+# Ensure Git is configured
+git config --global user.name "Your Name"
+git config --global user.email "your@email.com"
+```
+
+#### 2. Installation
 
 ```bash
 # Clone the repository
 git clone https://github.com/your-username/yolo.git
 cd yolo
 
+# Download dependencies
+go mod download
+
 # Build the binary
 go build -o yolo
 
-# Run
-./yolo
+# Verify build succeeded
+./yolo --version
 ```
 
-### Prerequisites
-- Go 1.21+
-- Ollama installed with a model (e.g., `qwen3.5:27b`)
-- Git configured
+#### 3. Configuration (Optional)
 
-### First Run
-On first run, YOLO will:
-1. Display welcome message and capabilities
-2. Set up the working directory
-3. Wait for your input or operate autonomously
+YOLO uses sensible defaults, but you can customize:
 
-### Usage Modes
+```bash
+# Set working directory (default: current directory)
+export YOLO_WORKDIR=/path/to/your/project
 
-**Interactive Mode**: Type commands directly
+# Set Ollama server (default: localhost:11434)
+export OLLAMA_HOST=http://localhost:11434
+
+# Choose a different model (default: qwen3.5:27b)
+export YOLO_MODEL=qwen3.5:27b
+```
+
+#### 4. First Run
+
+Run YOLO in one of these modes:
+
+**Interactive Mode:**
+```bash
+./yolo
+```
+You'll see a prompt where you can type commands like:
 ```
 user@yolo$ read_file README.md
 user@yolo$ web_search "best practices go testing"
 user@yolo$ add_todo "Fix test coverage"
 ```
 
-**Autonomous Mode**: YOLO works independently to improve itself
-- Checks for emails
-- Analyzes code quality
-- Runs tests and fixes failures
-- Updates documentation
-- Sends progress reports
+**Autonomous Mode:**
+```bash
+./yolo --autonomous
+```
+YOLO will work independently to:
+- Check for emails and respond to them
+- Analyze code quality and fix issues
+- Run tests and increase coverage
+- Update documentation
+- Send progress reports
+
+#### 5. Verify Setup
+
+Run these commands to verify everything works:
+
+```bash
+# Run all tests
+go test -v ./...
+
+# Check for race conditions
+go test -race ./...
+
+# Verify code formatting
+gofmt -l .
+
+# Check dependencies
+go mod tidy
+```
+
+### Troubleshooting
+
+**Issue**: Ollama connection failed
+```bash
+# Ensure Ollama is running
+ollama serve
+
+# Check the model is available
+ollama list
+
+# Test the connection directly
+curl http://localhost:11434/api/generate -d '{"model":"qwen3.5:27b","prompt":"test"}'
+```
+
+**Issue**: Build fails with missing dependencies
+```bash
+go mod download
+go mod tidy
+```
+
+**Issue**: Tests fail due to timeout
+- Increase test timeout: `go test -timeout 5m ./...`
+- Mock LLM calls in tests using function variable injection (see Testing section)
+
+### Usage Examples
+
+**File Operations:**
+```
+user@yolo$ read_file tools.go
+user@yolo$ write_file hello.txt "Hello, World!"
+user@yolo$ edit_file README.md "old text" "new text"
+```
+
+**Web & Research:**
+```
+user@yolo$ web_search "Go performance best practices"
+user@yolo$ reddit search "Golang testing tips"
+user@yolo$ learn  # Autonomous research and self-improvement
+```
+
+**Task Management:**
+```
+user@yolo$ add_todo "Implement feature X"
+user@yolo$ list_todos
+user@yolo$ complete_todo "Implement feature X"
+```
+
+**Email (if configured):**
+```
+user@yolo$ check_inbox
+user@yolo$ process_inbox_with_response  # Full automation: read → respond → delete
+```
 
 ## Quick Reference
 
