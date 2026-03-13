@@ -181,7 +181,7 @@ func TestIsJSONError(t *testing.T) {
 func TestWithContext_PathError(t *testing.T) {
 	pe := &os.PathError{Op: "open", Path: "/test/file.txt", Err: os.ErrNotExist}
 	wrapped := WithContext(pe, "ignored_context", "/ignored_path")
-	
+
 	assertTrue(t, IsFileNotFoundError(wrapped), "should wrap PathError as FileNotFoundError")
 	var fnfe *FileNotFoundError
 	if errors.As(wrapped, &fnfe) {
@@ -193,7 +193,7 @@ func TestWithContext_PathError(t *testing.T) {
 func TestWithContext_NonPathError(t *testing.T) {
 	err := fmt.Errorf("something went wrong")
 	wrapped := WithContext(err, "context", "path")
-	
+
 	assertFalse(t, IsFileNotFoundError(wrapped), "should not be FileNotFoundError")
 	assertContains(t, wrapped.Error(), "context", "should contain context")
 }
@@ -205,7 +205,7 @@ func TestWrap_FileType(t *testing.T) {
 		"path": "/test/file.txt",
 		"op":   "read",
 	})
-	
+
 	assertTrue(t, IsFileNotFoundError(wrapped), "should be FileNotFoundError")
 	var fnfe *FileNotFoundError
 	if errors.As(wrapped, &fnfe) {
@@ -222,7 +222,7 @@ func TestWrap_ToolType(t *testing.T) {
 		"output":   "permission denied",
 		"exitCode": int64(125), // Test with int64 to cover getInt type conversion
 	})
-	
+
 	assertTrue(t, IsToolExecutionError(wrapped), "should be ToolExecutionError")
 	var tee *ToolExecutionError
 	if errors.As(wrapped, &tee) {
@@ -237,7 +237,7 @@ func TestWrap_ToolType_MissingExitCode(t *testing.T) {
 		"tool":    "ls",
 		"command": "ls -la",
 	})
-	
+
 	assertTrue(t, IsToolExecutionError(wrapped), "should be ToolExecutionError")
 	var tee *ToolExecutionError
 	if errors.As(wrapped, &tee) {
@@ -252,7 +252,7 @@ func TestWrap_ToolType_Int32ExitCode(t *testing.T) {
 		"command":  "grep pattern file.txt",
 		"exitCode": int32(0), // Test int32 type conversion
 	})
-	
+
 	assertTrue(t, IsToolExecutionError(wrapped), "should be ToolExecutionError")
 	var tee *ToolExecutionError
 	if errors.As(wrapped, &tee) {
@@ -267,7 +267,7 @@ func TestWrap_NetworkType(t *testing.T) {
 		"method":  "POST",
 		"timeout": true, // Test getBool extraction
 	})
-	
+
 	assertTrue(t, IsNetworkError(wrapped), "should be NetworkError")
 	var ne *NetworkError
 	if errors.As(wrapped, &ne) {
@@ -283,7 +283,7 @@ func TestWrap_NetworkType_MissingTimeout(t *testing.T) {
 		"url":    "http://example.com",
 		"method": "GET",
 	})
-	
+
 	assertTrue(t, IsNetworkError(wrapped), "should be NetworkError")
 	var ne *NetworkError
 	if errors.As(wrapped, &ne) {
@@ -298,7 +298,7 @@ func TestWrap_JSONType(t *testing.T) {
 		"operation": "unmarshal",
 		"data":      data,
 	})
-	
+
 	assertTrue(t, IsJSONError(wrapped), "should be JSONError")
 	var je *JSONError
 	if errors.As(wrapped, &je) {
@@ -313,7 +313,7 @@ func TestWrap_ConfigType(t *testing.T) {
 		"field": "timeout",
 		"value": "30s",
 	})
-	
+
 	assertTrue(t, IsConfigurationError(wrapped), "should be ConfigurationError")
 	var ce *ConfigurationError
 	if errors.As(wrapped, &ce) {
@@ -325,7 +325,7 @@ func TestWrap_ConfigType(t *testing.T) {
 func TestWrap_UnknownType(t *testing.T) {
 	baseErr := fmt.Errorf("original error")
 	wrapped := Wrap(baseErr, ErrorType("unknown"), map[string]any{})
-	
+
 	assertFalse(t, wrapped == nil, "should not return nil for unknown type")
 	assertTrue(t, wrapped == baseErr, "should return original error for unknown type")
 }
@@ -335,7 +335,7 @@ func TestWrap_NilError(t *testing.T) {
 		"path": "/test/file.txt",
 		"op":   "read",
 	})
-	
+
 	assertTrue(t, wrapped == nil, "should return nil for nil error")
 }
 
@@ -343,7 +343,7 @@ func TestWrap_NilError(t *testing.T) {
 func TestErrorsIsCompatibility(t *testing.T) {
 	fileErr := NewFileNotFoundError("read", "test.txt", os.ErrNotExist)
 	wrapped := fmt.Errorf("operation failed: %w", fileErr)
-	
+
 	assertTrue(t, errors.Is(wrapped, fileErr), "errors.Is should work")
 	assertTrue(t, IsFileNotFoundError(wrapped), "IsFileNotFoundError should find wrapped error")
 }
@@ -351,7 +351,7 @@ func TestErrorsIsCompatibility(t *testing.T) {
 func TestErrorsAsCompatibility(t *testing.T) {
 	fileErr := NewFileNotFoundError("read", "test.txt", os.ErrNotExist)
 	wrapped := fmt.Errorf("operation failed: %w", fileErr)
-	
+
 	var target *FileNotFoundError
 	if !errors.As(wrapped, &target) {
 		t.Fatal("errors.As should find wrapped error")
@@ -377,7 +377,7 @@ func TestDeepWrapping(t *testing.T) {
 func TestUnwrapConfigurationError(t *testing.T) {
 	baseErr := fmt.Errorf("original config error")
 	configErr := NewConfigurationError("timeout", 30, baseErr)
-	
+
 	unwrapped := errors.Unwrap(configErr)
 	assertTrue(t, unwrapped == baseErr, "Unwrap should return original error")
 }
@@ -385,7 +385,7 @@ func TestUnwrapConfigurationError(t *testing.T) {
 func TestUnwrapNetworkError(t *testing.T) {
 	baseErr := fmt.Errorf("original network error")
 	networkErr := NewNetworkError("POST", "http://api.com", false, baseErr)
-	
+
 	unwrapped := errors.Unwrap(networkErr)
 	assertTrue(t, unwrapped == baseErr, "Unwrap should return original error")
 }
@@ -393,7 +393,7 @@ func TestUnwrapNetworkError(t *testing.T) {
 func TestUnwrapJSONError(t *testing.T) {
 	baseErr := fmt.Errorf("original json error")
 	jsonErr := NewJSONError("marshal", map[string]string{}, baseErr)
-	
+
 	unwrapped := errors.Unwrap(jsonErr)
 	assertTrue(t, unwrapped == baseErr, "Unwrap should return original error")
 }
@@ -402,7 +402,7 @@ func TestUnwrapNilCause(t *testing.T) {
 	configErr := NewConfigurationError("field", "value", nil)
 	networkErr := NewNetworkError("GET", "http://x.com", false, nil)
 	jsonErr := NewJSONError("parse", nil, nil)
-	
+
 	assertFalse(t, errors.Unwrap(configErr) != nil, "Unwrap with nil cause should return nil")
 	assertFalse(t, errors.Unwrap(networkErr) != nil, "Unwrap with nil cause should return nil")
 	assertFalse(t, errors.Unwrap(jsonErr) != nil, "Unwrap with nil cause should return nil")
@@ -411,7 +411,7 @@ func TestUnwrapNilCause(t *testing.T) {
 // Test As* functions
 func TestAsFileNotFoundError(t *testing.T) {
 	fileErr := NewFileNotFoundError("read", "test.txt", os.ErrNotExist)
-	
+
 	result, ok := AsFileNotFoundError(fileErr)
 	assertTrue(t, ok, "should find error")
 	assertNotNil(t, result, "result should not be nil")
@@ -420,7 +420,7 @@ func TestAsFileNotFoundError(t *testing.T) {
 
 func TestAsToolExecutionError(t *testing.T) {
 	toolErr := NewToolExecutionError("docker", "run", "output", 1, nil)
-	
+
 	result, ok := AsToolExecutionError(toolErr)
 	assertTrue(t, ok, "should find error")
 	assertNotNil(t, result, "result should not be nil")
@@ -429,7 +429,7 @@ func TestAsToolExecutionError(t *testing.T) {
 
 func TestAsFileNotFoundError_WrongType(t *testing.T) {
 	toolErr := NewToolExecutionError("docker", "run", "", 0, nil)
-	
+
 	result, ok := AsFileNotFoundError(toolErr)
 	assertFalse(t, ok, "should not find error")
 	assertNotNil(t, result == nil, "result should be nil")
@@ -440,7 +440,7 @@ func TestErrorTypeConstants(t *testing.T) {
 	expectedTypes := []ErrorType{
 		FileType, ToolType, ConfigType, NetworkType, JSONType,
 	}
-	
+
 	for _, typ := range expectedTypes {
 		assertContains(t, string(typ), "", "type should not be empty")
 	}
@@ -481,4 +481,73 @@ func TestErrorMessages_NoCause(t *testing.T) {
 			assertContains(t, tt.err.Error(), tt.expect, "error message should contain expected text")
 		})
 	}
+}
+
+// Test helper function edge cases for getInt
+func TestGetInt_Int32Conversion(t *testing.T) {
+	m := map[string]any{"code": int32(42)}
+	result := getInt(m, "code", -1)
+	assertEqual(t, result, 42, "should convert int32 correctly")
+}
+
+func TestGetInt_MissingKey_ReturnsDefault(t *testing.T) {
+	m := map[string]any{"other": 10}
+	result := getInt(m, "missing", -99)
+	assertEqual(t, result, -99, "should return default value when key missing")
+}
+
+func TestGetInt_WrongType_ReturnsDefault(t *testing.T) {
+	m := map[string]any{"code": "not a number"}
+	result := getInt(m, "code", 0)
+	assertEqual(t, result, 0, "should return default when type mismatch")
+}
+
+// Test AsToolExecutionError false case
+func TestAsToolExecutionError_FalseCase(t *testing.T) {
+	fileErr := NewFileNotFoundError("read", "test.txt", nil)
+	result, ok := AsToolExecutionError(fileErr)
+	assertFalse(t, ok, "should not find ToolExecutionError")
+	assertEqual(t, result == nil, true, "result should be nil")
+}
+
+// Test getInt with int type (direct, not through Wrap)
+func TestGetInt_IntType(t *testing.T) {
+	m := map[string]any{"count": 42}
+	result := getInt(m, "count", -1)
+	assertEqual(t, result, 42, "should handle int type directly")
+}
+
+// Test getBool with false value
+func TestGetBool_FalseValue(t *testing.T) {
+	m := map[string]any{"flag": false}
+	result := getBool(m, "flag", true)
+	assertEqual(t, result, false, "should return actual false value, not default")
+}
+
+// Test getBool missing key returns default
+func TestGetBool_MissingKey(t *testing.T) {
+	m := map[string]any{"other": "value"}
+	result := getBool(m, "flag", true)
+	assertEqual(t, result, true, "should return default when key missing")
+}
+
+// Test getString with value
+func TestGetString_WithValue(t *testing.T) {
+	m := map[string]any{"name": "test"}
+	result := getString(m, "name")
+	assertEqual(t, result, "test", "should return string value")
+}
+
+// Test getString missing key
+func TestGetString_MissingKey(t *testing.T) {
+	m := map[string]any{"other": 123}
+	result := getString(m, "missing")
+	assertEqual(t, result, "", "should return empty string when key missing")
+}
+
+// Test getString wrong type
+func TestGetString_WrongType(t *testing.T) {
+	m := map[string]any{"count": 42}
+	result := getString(m, "count")
+	assertEqual(t, result, "", "should return empty string when type mismatch")
 }

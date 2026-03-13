@@ -12,18 +12,18 @@ import (
 type (
 	// FileNotFoundError indicates a file or directory was not found
 	FileNotFoundError struct {
-		Path   string
-		Op     string
-		Cause  error
+		Path  string
+		Op    string
+		Cause error
 	}
 
 	// ToolExecutionError indicates a tool command failed to execute
 	ToolExecutionError struct {
-		Tool    string
-		Command string
-		Output  string
+		Tool     string
+		Command  string
+		Output   string
 		ExitCode int
-		Cause   error
+		Cause    error
 	}
 
 	// ConfigurationError indicates a configuration issue
