@@ -249,26 +249,42 @@ func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result 
 func (lm *LearningManager) extractCompleteSentences(text string) []string {
 	var sentences []string
 
+	// Decode common HTML entities that appear in search results
+	text = strings.ReplaceAll(text, "&quot;", "\"")
+	text = strings.ReplaceAll(text, "&#039;", "'")
+	text = strings.ReplaceAll(text, "&amp;", "&")
+	text = strings.ReplaceAll(text, "&lt;", "<")
+	text = strings.ReplaceAll(text, "&gt;", ">")
+
 	// Split on sentence boundaries
 	parts := strings.Split(text, ". ")
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
 
 		// Skip very short fragments
-		if len(part) < 50 {
+		if len(part) < 80 {
 			continue
 		}
 
-		// Skip if it looks like a fragment (starts mid-sentence)
-		firstWord := ""
+		// Must start with a capital letter (indicates complete sentence)
+		if len(part) == 0 {
+			continue
+		}
+		firstChar := part[0]
+		if !unicode.IsUpper(rune(firstChar)) {
+			continue // Starts with lowercase - fragment
+		}
+
+		// Skip if it looks like a fragment (starts with common non-sentence starters)
 		words := strings.Fields(part)
 		if len(words) > 0 {
-			firstWord = strings.ToLower(words[0])
-			// Skip common fragment starters
+			firstWord := strings.ToLower(words[0])
+			// Skip common fragment starters and articles
 			fragmentStarters := []string{
 				"and", "or", "but", "the", "a", "an",
 				"is", "are", "was", "were", "been",
 				"for", "with", "from", "into", "onto",
+				"of", "to", "in", "on", "at", "by",
 			}
 			isFragment := false
 			for _, starter := range fragmentStarters {
