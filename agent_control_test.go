@@ -74,6 +74,46 @@ func TestSwitchModel(t *testing.T) {
 	}
 }
 
+// TestSwitchModelValid tests switching to a valid model
+func TestSwitchModelValid(t *testing.T) {
+	agent := NewYoloAgent()
+
+	// First get available models
+	modelListResult := agent.tools.listModels()
+	t.Logf("Available models: %s", modelListResult)
+
+	// Extract first model name if available (remove ANSI codes and parse)
+	cleanModelList := stripAnsiCodes(modelListResult)
+	if strings.Contains(cleanModelList, "Error") {
+		t.Skip("Cannot list models, skipping switch model test")
+	}
+
+	// Try to find a model name in the output (models are listed with names)
+	models := agent.ollama.ListModels()
+	if len(models) == 0 {
+		t.Skip("No models available for testing")
+	}
+
+	// Test switching to first available model
+	targetModel := models[0]
+	args := map[string]any{"model": targetModel}
+	result := agent.tools.switchModel(args)
+
+	t.Logf("Switch model result: %s", result)
+
+	// Verify it mentions successful switch or the model name
+	if !strings.Contains(result, "Switched") && !strings.Contains(result, targetModel) {
+		t.Errorf("Expected success message containing 'Switched' or model name, got: %s", result)
+	}
+
+	// Verify the model was actually set in config
+	currentModel := agent.config.GetModel()
+	if currentModel != targetModel {
+		t.Errorf("Expected config to have model '%s', got '%s'", targetModel, currentModel)
+	}
+}
+
+
 // TestRestart tests the restart tool implementation.
 // SKIPPED: executor.restart() runs "go build" to rebuild the yolo binary and
 // then exec's the new binary with syscall.Exec, replacing the current process.
