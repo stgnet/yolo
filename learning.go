@@ -318,20 +318,11 @@ func (lm *LearningManager) extractCompleteSentences(text string) []string {
 		return "" // Remove simple URLs
 	})
 
-	// Remove numbered list markers like "1. ", "2. " at start of lines
-	lines := strings.Split(text, "\n")
-	cleanedLines := make([]string, 0, len(lines))
-	for _, line := range lines {
-		line = strings.TrimLeft(line, " \t")
-		// Remove patterns like "1. ", "2. ", etc.
-		line = regexp.MustCompile(`^\d+\.\s*`).ReplaceAllString(line, "")
-		if len(strings.TrimSpace(line)) > 0 && len(strings.TrimSpace(line)) < 30 {
-			continue // Skip very short lines
-		}
-		cleanedLines = append(cleanedLines, line)
-	}
+	// Normalize multiple newlines and whitespace to single space
+	text = regexp.MustCompile(`\s+`).ReplaceAllString(text, " ")
 
-	text = strings.Join(cleanedLines, " ")
+	// Remove numbered list markers like "1. ", "2. " anywhere in text
+	text = regexp.MustCompile(`\d+\.\s*`).ReplaceAllString(text, "")
 
 	// Split on sentence boundaries (periods, exclamation, question marks followed by space or newline)
 	parts := regexp.MustCompile(`[.!?]+\s*`).Split(text, -1)
@@ -359,6 +350,7 @@ func (lm *LearningManager) extractCompleteSentences(text string) []string {
 			"has a", "have a", "it is", "they are", "you can", "we have",
 			"for more", "see also", "read more", "click here", "visit",
 			"check out", "learn about", "find out", "discover",
+			"uses several methods", "provides features", "includes the following",
 		}
 
 		isFragment := false
@@ -369,6 +361,22 @@ func (lm *LearningManager) extractCompleteSentences(text string) []string {
 			}
 		}
 		if isFragment {
+			continue
+		}
+
+		// Skip if content contains embedded newlines (indicates malformed extraction)
+		if strings.Contains(part, "\n") || strings.Contains(part, "\r") {
+			continue
+		}
+
+		// Skip quoted titles/references without substance (mostly quotes and punctuation)
+		punctuationCount := 0
+		for _, c := range part {
+			if c == '"' || c == '\'' || c == '(' || c == ')' {
+				punctuationCount++
+			}
+		}
+		if punctuationCount > len(part)/3 && !containsActionableContent(part) {
 			continue
 		}
 
