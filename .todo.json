@@ -26,7 +26,8 @@
   {
     "title": "Improve learn tool quality - current improvements are text fragments, not actionable insights",
     "created_at": "2026-03-12T20:28:42.319552-04:00",
-    "completed_at": "0001-01-01T00:00:00Z"
+    "done": true,
+    "completed_at": "2026-03-12T21:43:41.581751-04:00"
   },
   {
     "title": "Add test for readWebpage error handling",
@@ -37,6 +38,7 @@
   {
     "title": "Review and improve learn tool output quality",
     "created_at": "2026-03-12T21:22:28.872243-04:00",
-    "completed_at": "0001-01-01T00:00:00Z"
+    "done": true,
+    "completed_at": "2026-03-12T21:43:47.882018-04:00"
   }
 ]
