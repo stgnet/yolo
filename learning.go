@@ -231,6 +231,26 @@ func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result 
 
 	// Extract complete sentences/paragraphs rather than fragments
 	sentences := lm.extractCompleteSentences(result)
+	
+	// Additional filter to remove obvious fragments that passed through
+	filteredSentences := make([]string, 0, len(sentences))
+	for _, sentence := range sentences {
+		sentence = strings.TrimSpace(sentence)
+		
+		// Skip sentences ending with numbers (list artifacts)
+		if regexp.MustCompile(`\d+$`).MatchString(sentence) {
+			continue
+		}
+		
+		// Skip sentences with embedded newlines followed by just numbers
+		if regexp.MustCompile(`\n\d+$`).MatchString(sentence) || 
+		   regexp.MustCompile(`,\s*including\s*\n+\d+`).MatchString(sentence) {
+			continue
+		}
+		
+		filteredSentences = append(filteredSentences, sentence)
+	}
+	sentences = filteredSentences
 
 	for _, sentence := range sentences {
 		content := strings.TrimSpace(sentence)
