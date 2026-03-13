@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode"
 )
 
 func TestNewLearningManager(t *testing.T) {
@@ -518,6 +519,112 @@ func TestContainsActionableContent(t *testing.T) {
 			result := containsActionableContent(tt.text)
 			if result != tt.expected {
 				t.Errorf("containsActionableContent(%q) = %v, expected %v", tt.text, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestExtractCompleteSentences(t *testing.T) {
+	executor := &ToolExecutor{}
+	lm := NewLearningManager(".", executor)
+
+	tests := []struct {
+		name       string
+		text       string
+		wantMinLen int // minimum expected number of sentences
+		wantMaxLen int // maximum expected number of sentences
+	}{
+		{
+			name:       "Fragment starting with lowercase",
+			text:       "autonomously in complex environments. Autonomous agents can work independently and make decisions without human intervention or oversight.",
+			wantMinLen: 1, // Only the second sentence should pass (starts with capital)
+			wantMaxLen: 1,
+		},
+		{
+			name:       "HTML entities decoded",
+			text:       "The system uses &quot;smart&quot; algorithms that can learn from experience and adapt to new situations over time automatically. Basic tools are simpler but may lack the flexibility needed for complex tasks requiring advanced processing.",
+			wantMinLen: 2,
+			wantMaxLen: 2,
+		},
+		{
+			name:       "Fragments filtered out",
+			text:       "of the many options available for consideration today. The best choice depends on context and specific requirements for each unique situation carefully analyzed. and other factors matter too in this analysis process. Consider all aspects carefully when making important decisions about implementation strategies going forward.",
+			wantMinLen: 2, // "The best choice..." and "Consider all aspects..."
+			wantMaxLen: 2,
+		},
+		{
+			name:       "Short sentences filtered",
+			text:       "OK. This is a much longer sentence that should pass the minimum length requirement of eighty characters or more when we count all the words together.",
+			wantMinLen: 1, // Only the long sentence
+			wantMaxLen: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sentences := lm.extractCompleteSentences(tt.text)
+
+			if len(sentences) < tt.wantMinLen || len(sentences) > tt.wantMaxLen {
+				t.Errorf("Expected %d-%d sentences, got %d: %v", tt.wantMinLen, tt.wantMaxLen, len(sentences), sentences)
+			}
+
+			// Verify each sentence starts with capital letter
+			for _, s := range sentences {
+				if len(s) > 0 && !unicode.IsUpper(rune(s[0])) {
+					t.Errorf("Sentence should start with capital: %q", s)
+				}
+			}
+		})
+	}
+}
+
+func TestGenerateTitleEdgeCases(t *testing.T) {
+	executor := &ToolExecutor{}
+	lm := NewLearningManager(".", executor)
+
+	tests := []struct {
+		name       string
+		content    string
+		category   string
+		wantMinLen int
+		wantMaxLen int
+	}{
+		{
+			name:       "Content with double periods",
+			content:    "The quick brown fox.. It jumps over the lazy dog.",
+			category:   "Test",
+			wantMinLen: 20, // Should extract first sentence without double period
+			wantMaxLen: 105,
+		},
+		{
+			name:       "Very short content (should be skipped)",
+			content:    "Short.",
+			category:   "Test",
+			wantMinLen: 0,
+			wantMaxLen: 0,
+		},
+		{
+			name:       "HTML entities in title",
+			content:    "AI &quot;tools&quot; are &#039;amazing&#039; for productivity.",
+			category:   "Test",
+			wantMinLen: 45, // After decoding
+			wantMaxLen: 105,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			title := lm.generateTitle(tt.content, tt.category)
+
+			if tt.wantMinLen == 0 && tt.wantMaxLen == 0 {
+				if title != "" {
+					t.Errorf("Expected empty title for very short content, got: %q", title)
+				}
+			} else {
+				if len(title) < tt.wantMinLen || len(title) > tt.wantMaxLen {
+					t.Errorf("Title length out of range [%d-%d]: got %d chars: %q",
+						tt.wantMinLen, tt.wantMaxLen, len(title), title)
+				}
 			}
 		})
 	}

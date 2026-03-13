@@ -279,12 +279,13 @@ func (lm *LearningManager) extractCompleteSentences(text string) []string {
 		words := strings.Fields(part)
 		if len(words) > 0 {
 			firstWord := strings.ToLower(words[0])
-			// Skip common fragment starters and articles
+			// Skip common fragment starters and coordinating/conjunctions
+			// But NOT articles (the, a, an) or common sentence starters like "systems", "agents", etc.
 			fragmentStarters := []string{
-				"and", "or", "but", "the", "a", "an",
-				"is", "are", "was", "were", "been",
-				"for", "with", "from", "into", "onto",
-				"of", "to", "in", "on", "at", "by",
+				"and", "or", "but", // coordinating conjunctions
+				"is", "are", "was", "were", "been", // verbs (fragments often start with these)
+				"for", "with", "from", "into", "onto", // prepositions
+				"of", "to", "in", "on", "at", "by", // more prepositions
 			}
 			isFragment := false
 			for _, starter := range fragmentStarters {
@@ -448,6 +449,11 @@ func (lm *LearningManager) generateTitle(content string, category string) string
 	// Last resort: truncate with ellipsis
 	if len(content) > 120 {
 		return lm.capitalizeTitle(content[:102] + "...")
+	}
+
+	// For very short content, return empty string (invalid title)
+	if len(content) < 10 {
+		return ""
 	}
 	return lm.capitalizeTitle(content)
 }

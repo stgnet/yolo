@@ -15,11 +15,11 @@ func (t *ToolExecutor) learn(args map[string]any) string {
 		return fmt.Sprintf("Error loading learning history: %v", err)
 	}
 
-	// Check if we have recent learning sessions (within last 24 hours)
+	// Check if we have recent learning sessions (within last 1 hour for testing)
 	now := time.Now()
 	for _, session := range lm.sessions {
-		if now.Sub(session.Timestamp).Hours() < 24 {
-			return fmt.Sprintf("Learning already performed today at %s. Found %d improvements.\n\n",
+		if now.Sub(session.Timestamp).Hours() < 1 {
+			return fmt.Sprintf("Learning already performed recently at %s. Found %d improvements.\n\n",
 				session.Timestamp.Format("Jan 2, 2006 15:04"), len(session.Improvements))
 		}
 	}
