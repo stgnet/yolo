@@ -160,3 +160,31 @@ func GetFileModTime(path string) (time.Time, error) {
 	}
 	return info.ModTime(), nil
 }
+
+// ReadDir reads a directory and returns its entries.
+func ReadDir(path string) ([]os.DirEntry, error) {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, errors.NewFileNotFoundError("readdir", path, nil)
+		}
+		return nil, errors.WithContext(err, "readdir", path)
+	}
+	return entries, nil
+}
+
+// ListFiles returns a list of files (not directories) in the given path.
+func ListFiles(path string) ([]string, error) {
+	entries, err := ReadDir(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var files []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			files = append(files, entry.Name())
+		}
+	}
+	return files, nil
+}
