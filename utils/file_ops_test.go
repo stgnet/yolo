@@ -465,6 +465,50 @@ func TestMoveFileNonExistentSource(t *testing.T) {
 	}
 }
 
+func TestListFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create some test files
+	testFiles := []string{"file1.txt", "file2.go", "readme.md"}
+	for _, f := range testFiles {
+		path := filepath.Join(tmpDir, f)
+		err := os.WriteFile(path, []byte("test"), 0644)
+		if err != nil {
+			t.Fatalf("Failed to create test file %s: %v", f, err)
+		}
+	}
+
+	// List files in the directory
+	files, err := ListFiles(tmpDir)
+	if err != nil {
+		t.Fatalf("ListFiles failed: %v", err)
+	}
+
+	if len(files) != 3 {
+		t.Errorf("Expected 3 files, got %d: %v", len(files), files)
+	}
+
+	for _, expected := range testFiles {
+		found := false
+		for _, f := range files {
+			if f == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Expected file %s not found in list", expected)
+		}
+	}
+}
+
+func TestListFilesNonExistent(t *testing.T) {
+	_, err := ListFiles("/nonexistent/path/that/does/not/exist")
+	if err == nil {
+		t.Error("Expected error for non-existent directory")
+	}
+}
+
 func TestIntegrationWorkflow(t *testing.T) {
 	tmpdir := t.TempDir()
 
