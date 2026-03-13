@@ -433,16 +433,25 @@ func TestComposeResponseToEmailPromptStructure(t *testing.T) {
 
 	composeResponseToEmail(body, subject, from)
 
-	// Verify prompt contains all required sections
+	// Verify prompt contains all required sections (updated for improved prompt structure)
 	expectedElements := []string{
-		"You are YOLO",
-		"INCOMING EMAIL:",
+		"You are YOLO, an autonomous AI assistant running on a Mac",
+		"INCOMING EMAIL CONTEXT:",
 		fmt.Sprintf("Sender: %s", from),
 		fmt.Sprintf("Subject: %s", subject),
-		"Message body:",
+		"THREAD/TOPIC BEING DISCUSSED:",
+		subject,
+		"EMAIL BODY CONTENT:",
 		body,
-		"REQUIREMENTS:",
-		"Reply DIRECTLY",
+		"RESPONSE GUIDELINES:",
+		"ACKNOWLEDGE THE SENDER",
+		"REFERENCE THE ORIGINAL SUBJECT",
+		"INCLUDE EMAIL METADATA",
+		"BE PROFESSIONAL YET CONVERSATIONAL",
+		"ANSWER SPECIFICALLY",
+		"PROVIDE CONTEXT AWARENESS",
+		"NO PLACEHOLDERS",
+		"RESPONSE FORMAT:",
 		"Write your email response now:",
 	}
 
