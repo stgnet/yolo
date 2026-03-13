@@ -46,10 +46,10 @@ func TestGetEnvDefaultWithVariousValues(t *testing.T) {
 		setupFunc func()
 	}{
 		{
-			name:     "unset variable returns fallback",
-			key:      "YOLO_CONFIG_NONEXISTENT_VAR_" + t.Name(),
-			fallback: "default_value",
-			expected: "default_value",
+			name:      "unset variable returns fallback",
+			key:       "YOLO_CONFIG_NONEXISTENT_VAR_" + t.Name(),
+			fallback:  "default_value",
+			expected:  "default_value",
 			setupFunc: func() {},
 		},
 		{
@@ -223,10 +223,10 @@ func TestTimeoutValues(t *testing.T) {
 // TestConfigConstants tests that important configuration constants are set.
 func TestConfigConstants(t *testing.T) {
 	tests := []struct {
-		name      string
-		value     int
-		minValid  int
-		maxValid  int
+		name         string
+		value        int
+		minValid     int
+		maxValid     int
 		cannotBeZero bool
 	}{
 		{"MaxContextMessages", MaxContextMessages, 10, 200, true},
@@ -271,16 +271,16 @@ func isPathAbsolute(path string) bool {
 	if len(path) == 0 {
 		return false
 	}
-	
+
 	// Unix-style absolute paths
 	if path[0] == '/' {
 		return true
 	}
-	
+
 	// Windows-style absolute paths (e.g., C:\ or C:/)
 	if len(path) >= 2 && path[1] == ':' {
 		return true
 	}
-	
+
 	return false
 }
