@@ -275,9 +275,9 @@ func (lm *LearningManager) extractCompleteSentences(text string) []string {
 		}
 
 		// Add period back if missing and doesn't already end with punctuation
-		if !strings.HasSuffix(part, ".") && 
-		   !strings.HasSuffix(part, "!") && 
-		   !strings.HasSuffix(part, "?") {
+		if !strings.HasSuffix(part, ".") &&
+			!strings.HasSuffix(part, "!") &&
+			!strings.HasSuffix(part, "?") {
 			part += "."
 		}
 
