@@ -11,20 +11,20 @@ import (
 // TestNewYoloConfig tests the constructor
 func TestNewYoloConfig(t *testing.T) {
 	config := NewYoloConfig("/test/dir")
-	
+
 	if config.yoloDir != "/test/dir" {
 		t.Errorf("Expected yoloDir to be '/test/dir', got '%s'", config.yoloDir)
 	}
-	
+
 	expectedPath := filepath.Join("/test/dir", "config.json")
 	if config.configFile != expectedPath {
 		t.Errorf("Expected configFile to be '%s', got '%s'", expectedPath, config.configFile)
 	}
-	
+
 	if config.Data.Version != 1 {
 		t.Errorf("Expected default version to be 1, got %d", config.Data.Version)
 	}
-	
+
 	if config.Data.Model != "" {
 		t.Errorf("Expected default model to be empty string, got '%s'", config.Data.Model)
 	}
@@ -35,7 +35,7 @@ func TestYoloConfigLoad_Success(t *testing.T) {
 	// Create a temporary directory for testing
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.json")
-	
+
 	// Write a valid config file
 	data := YoloConfigData{
 		Version:      2,
@@ -44,26 +44,26 @@ func TestYoloConfigLoad_Success(t *testing.T) {
 	}
 	jsonData, _ := json.MarshalIndent(data, "", "  ")
 	os.WriteFile(configFile, jsonData, 0o644)
-	
+
 	config := &YoloConfig{
 		yoloDir:    tmpDir,
 		configFile: configFile,
 		Data:       YoloConfigData{Version: 1}, // Start with different values
 	}
-	
+
 	success := config.Load()
 	if !success {
 		t.Error("Expected Load() to return true for valid config")
 	}
-	
+
 	if config.Data.Version != 2 {
 		t.Errorf("Expected version to be 2, got %d", config.Data.Version)
 	}
-	
+
 	if config.Data.Model != "llama3.2" {
 		t.Errorf("Expected model to be 'llama3.2', got '%s'", config.Data.Model)
 	}
-	
+
 	if !config.Data.TerminalMode {
 		t.Error("Expected terminal_mode to be true")
 	}
@@ -73,18 +73,18 @@ func TestYoloConfigLoad_Success(t *testing.T) {
 func TestYoloConfigLoad_FileNotFound(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "nonexistent.json")
-	
+
 	config := &YoloConfig{
 		yoloDir:    tmpDir,
 		configFile: configFile,
 		Data:       YoloConfigData{Version: 1},
 	}
-	
+
 	success := config.Load()
 	if success {
 		t.Error("Expected Load() to return false when file doesn't exist")
 	}
-	
+
 	// Verify config data was preserved (not reset to defaults)
 	if config.Data.Version != 1 {
 		t.Errorf("Expected version to remain 1, got %d", config.Data.Version)
@@ -95,10 +95,10 @@ func TestYoloConfigLoad_FileNotFound(t *testing.T) {
 func TestYoloConfigLoad_InvalidJSON(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.json")
-	
+
 	// Write invalid JSON
 	os.WriteFile(configFile, []byte("{invalid json}"), 0o644)
-	
+
 	config := &YoloConfig{
 		yoloDir:    tmpDir,
 		configFile: configFile,
@@ -108,17 +108,17 @@ func TestYoloConfigLoad_InvalidJSON(t *testing.T) {
 			TerminalMode: false,
 		},
 	}
-	
+
 	success := config.Load()
 	if success {
 		t.Error("Expected Load() to return false for invalid JSON")
 	}
-	
+
 	// Verify config was reset to defaults on error
 	if config.Data.Version != 1 {
 		t.Errorf("Expected version to be reset to 1, got %d", config.Data.Version)
 	}
-	
+
 	if config.Data.Model != "" {
 		t.Errorf("Expected model to be empty after invalid JSON, got '%s'", config.Data.Model)
 	}
@@ -128,17 +128,17 @@ func TestYoloConfigLoad_InvalidJSON(t *testing.T) {
 func TestYoloConfigLoad_ConcurrentSafety(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.json")
-	
+
 	data := YoloConfigData{Version: 1, Model: "test"}
 	jsonData, _ := json.MarshalIndent(data, "", "  ")
 	os.WriteFile(configFile, jsonData, 0o644)
-	
+
 	config := &YoloConfig{
 		yoloDir:    tmpDir,
 		configFile: configFile,
 		Data:       YoloConfigData{Version: 1},
 	}
-	
+
 	// Run multiple goroutines trying to load simultaneously
 	done := make(chan bool)
 	for i := 0; i < 10; i++ {
@@ -147,7 +147,7 @@ func TestYoloConfigLoad_ConcurrentSafety(t *testing.T) {
 			config.Load()
 		}()
 	}
-	
+
 	// Wait for all goroutines to complete
 	for i := 0; i < 10; i++ {
 		<-done
@@ -158,7 +158,7 @@ func TestYoloConfigLoad_ConcurrentSafety(t *testing.T) {
 func TestYoloConfigSave_Success(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.json")
-	
+
 	config := &YoloConfig{
 		yoloDir:    tmpDir,
 		configFile: configFile,
@@ -168,36 +168,36 @@ func TestYoloConfigSave_Success(t *testing.T) {
 			TerminalMode: true,
 		},
 	}
-	
+
 	err := config.Save()
 	if err != nil {
 		t.Fatalf("Expected Save() to succeed, got error: %v", err)
 	}
-	
+
 	// Verify file was created
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
 		t.Error("Expected config file to be created")
 	}
-	
+
 	// Read and verify contents
 	data, err := os.ReadFile(configFile)
 	if err != nil {
 		t.Fatalf("Failed to read saved config: %v", err)
 	}
-	
+
 	var loadedData YoloConfigData
 	if err := json.Unmarshal(data, &loadedData); err != nil {
 		t.Fatalf("Failed to parse saved JSON: %v", err)
 	}
-	
+
 	if loadedData.Version != 2 {
 		t.Errorf("Expected version to be 2 in file, got %d", loadedData.Version)
 	}
-	
+
 	if loadedData.Model != "gpt-4" {
 		t.Errorf("Expected model to be 'gpt-4' in file, got '%s'", loadedData.Model)
 	}
-	
+
 	if !loadedData.TerminalMode {
 		t.Error("Expected terminal_mode to be true in file")
 	}
@@ -207,18 +207,18 @@ func TestYoloConfigSave_Success(t *testing.T) {
 func TestYoloConfigSave_AtomicWrite(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.json")
-	
+
 	config := &YoloConfig{
 		yoloDir:    tmpDir,
 		configFile: configFile,
 		Data:       YoloConfigData{Version: 1},
 	}
-	
+
 	err := config.Save()
 	if err != nil {
 		t.Fatalf("Expected Save() to succeed, got error: %v", err)
 	}
-	
+
 	// Verify no temp file left behind
 	tempFile := configFile + ".tmp"
 	if _, err := os.Stat(tempFile); !os.IsNotExist(err) {
@@ -230,17 +230,17 @@ func TestYoloConfigSave_AtomicWrite(t *testing.T) {
 func TestYoloConfigSave_UnreadableDir(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.json")
-	
+
 	config := &YoloConfig{
 		yoloDir:    tmpDir,
 		configFile: configFile,
 		Data:       YoloConfigData{Version: 1},
 	}
-	
+
 	// Remove read permissions from directory
 	os.Chmod(tmpDir, 0o000)
 	defer os.Chmod(tmpDir, 0o755) // Restore for cleanup
-	
+
 	err := config.Save()
 	if err == nil {
 		t.Error("Expected Save() to fail when directory is unreadable")
@@ -251,13 +251,13 @@ func TestYoloConfigSave_UnreadableDir(t *testing.T) {
 func TestYoloConfigSave_ConcurrentSafety(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.json")
-	
+
 	config := &YoloConfig{
 		yoloDir:    tmpDir,
 		configFile: configFile,
 		Data:       YoloConfigData{Version: 1},
 	}
-	
+
 	done := make(chan bool)
 	for i := 0; i < 10; i++ {
 		go func(i int) {
@@ -266,7 +266,7 @@ func TestYoloConfigSave_ConcurrentSafety(t *testing.T) {
 			config.Save()
 		}(i)
 	}
-	
+
 	for i := 0; i < 10; i++ {
 		<-done
 	}
@@ -277,7 +277,7 @@ func TestYoloConfigGetModel(t *testing.T) {
 	config := &YoloConfig{
 		Data: YoloConfigData{Model: "test-model"},
 	}
-	
+
 	model := config.GetModel()
 	if model != "test-model" {
 		t.Errorf("Expected 'test-model', got '%s'", model)
@@ -288,29 +288,29 @@ func TestYoloConfigGetModel(t *testing.T) {
 func TestYoloConfigSetModel(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.json")
-	
+
 	data := YoloConfigData{Version: 1}
 	jsonData, _ := json.MarshalIndent(data, "", "  ")
 	os.WriteFile(configFile, jsonData, 0o644)
-	
+
 	config := &YoloConfig{
 		yoloDir:    tmpDir,
 		configFile: configFile,
 		Data:       YoloConfigData{Model: "old-model"},
 	}
-	
+
 	config.SetModel("new-model")
-	
+
 	// Verify model was updated
 	if config.Data.Model != "new-model" {
 		t.Errorf("Expected model to be 'new-model', got '%s'", config.Data.Model)
 	}
-	
+
 	// Verify save happened
 	data2 := YoloConfigData{}
 	jsonFile, _ := os.ReadFile(configFile)
 	json.Unmarshal(jsonFile, &data2)
-	
+
 	if data2.Model != "new-model" {
 		t.Errorf("Expected saved model to be 'new-model', got '%s'", data2.Model)
 	}
@@ -326,13 +326,13 @@ func TestYoloConfigGetTerminalMode(t *testing.T) {
 		{"enabled", true, true},
 		{"disabled", false, false},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := &YoloConfig{
 				Data: YoloConfigData{TerminalMode: tt.terminal},
 			}
-			
+
 			result := config.GetTerminalMode()
 			if result != tt.expected {
 				t.Errorf("Expected %v, got %v", tt.expected, result)
@@ -345,28 +345,28 @@ func TestYoloConfigGetTerminalMode(t *testing.T) {
 func TestYoloConfigSetTerminalMode(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.json")
-	
+
 	data := YoloConfigData{Version: 1, TerminalMode: false}
 	jsonData, _ := json.MarshalIndent(data, "", "  ")
 	os.WriteFile(configFile, jsonData, 0o644)
-	
+
 	config := &YoloConfig{
 		yoloDir:    tmpDir,
 		configFile: configFile,
 		Data:       YoloConfigData{TerminalMode: false},
 	}
-	
+
 	config.SetTerminalMode(true)
-	
+
 	if !config.Data.TerminalMode {
 		t.Error("Expected TerminalMode to be true after SetTerminalMode")
 	}
-	
+
 	// Verify save happened
 	data2 := YoloConfigData{}
 	jsonFile, _ := os.ReadFile(configFile)
 	json.Unmarshal(jsonFile, &data2)
-	
+
 	if !data2.TerminalMode {
 		t.Error("Expected saved TerminalMode to be true")
 	}

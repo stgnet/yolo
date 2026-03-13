@@ -23,57 +23,95 @@ func parseEmail(raw string) Email {
 	email := Email{Raw: raw}
 
 	lines := strings.Split(raw, "\n")
+	bodyStarted := false
 	inBody := false
 	var bodyLines []string
 
 	for _, line := range lines {
-		if inBody {
-			bodyLines = append(bodyLines, line)
+		// Check for header fields (but skip the raw email envelope from maildir)
+		if !bodyStarted && (strings.HasPrefix(line, "Date:") || strings.HasPrefix(line, "From:") || 
+			strings.HasPrefix(line, "To:") || strings.HasPrefix(line, "Subject:") || 
+			strings.HasPrefix(line, "Content-Type:") || strings.HasPrefix(line, "MIME-Version:")) {
+			if strings.HasPrefix(line, "From: ") || strings.HasPrefix(line, "From\t") {
+				parts := strings.SplitN(line, ":", 2)
+				if len(parts) == 2 {
+					email.From = strings.TrimSpace(parts[1])
+				} else {
+					parts = strings.SplitN(line, "\t", 2)
+					if len(parts) == 2 {
+						email.From = strings.TrimSpace(parts[1])
+					}
+				}
+			}
+
+			if strings.HasPrefix(line, "To: ") || strings.HasPrefix(line, "To\t") {
+				parts := strings.SplitN(line, ":", 2)
+				if len(parts) == 2 {
+					email.To = strings.TrimSpace(parts[1])
+				} else {
+					parts = strings.SplitN(line, "\t", 2)
+					if len(parts) == 2 {
+						email.To = strings.TrimSpace(parts[1])
+					}
+				}
+			}
+
+			if strings.HasPrefix(line, "Subject: ") || strings.HasPrefix(line, "Subject\t") {
+				parts := strings.SplitN(line, ":", 2)
+				if len(parts) == 2 {
+					email.Subject = strings.TrimSpace(parts[1])
+				} else {
+					parts = strings.SplitN(line, "\t", 2)
+					if len(parts) == 2 {
+						email.Subject = strings.TrimSpace(parts[1])
+					}
+				}
+			}
+
+			if strings.HasPrefix(line, "Content-Type:") && strings.Contains(line, "text/plain") {
+				// This is the first content-type indicating body starts after blank line
+				inBody = true
+			} else if strings.HasPrefix(line, "Content-Type: multipart") || 
+					  (strings.HasPrefix(line, "--=") && len(bodyLines) == 0) {
+				// Skip multipart headers and start collecting from first text/plain part
+				inBody = true
+			}
 			continue
 		}
 
-		if strings.HasPrefix(line, "From: ") || strings.HasPrefix(line, "From\t") {
-			parts := strings.SplitN(line, ":", 2)
-			if len(parts) == 2 {
-				email.From = strings.TrimSpace(parts[1])
-			} else {
-				parts = strings.SplitN(line, "\t", 2)
-				if len(parts) == 2 {
-					email.From = strings.TrimSpace(parts[1])
-				}
-			}
-		}
-
-		if strings.HasPrefix(line, "To: ") || strings.HasPrefix(line, "To\t") {
-			parts := strings.SplitN(line, ":", 2)
-			if len(parts) == 2 {
-				email.To = strings.TrimSpace(parts[1])
-			} else {
-				parts = strings.SplitN(line, "\t", 2)
-				if len(parts) == 2 {
-					email.To = strings.TrimSpace(parts[1])
-				}
-			}
-		}
-
-		if strings.HasPrefix(line, "Subject: ") || strings.HasPrefix(line, "Subject\t") {
-			parts := strings.SplitN(line, ":", 2)
-			if len(parts) == 2 {
-				email.Subject = strings.TrimSpace(parts[1])
-			} else {
-				parts = strings.SplitN(line, "\t", 2)
-				if len(parts) == 2 {
-					email.Subject = strings.TrimSpace(parts[1])
-				}
-			}
-		}
-
 		if line == "" || strings.HasPrefix(line, "--") {
-			inBody = true
+			bodyStarted = true
+			continue
+		}
+
+		if bodyStarted {
+			bodyLines = append(bodyLines, line)
 		}
 	}
 
 	email.Body = strings.Join(bodyLines, "\n")
+
+	// If no body was extracted, try alternative extraction from raw content
+	if email.Body == "" && len(bodyLines) == 0 {
+		// Try to extract after the first Content-Type line that contains text/plain
+		inContentType := false
+		for _, line := range lines {
+			if strings.Contains(line, "Content-Type:") && (strings.Contains(line, "text/plain") || 
+				strings.HasPrefix(line, "Content-Type: multipart")) {
+				inContentType = true
+			} else if inContentType && (line == "" || strings.HasPrefix(line, "--")) {
+				// Skip the blank line after Content-Type and find actual content
+				continue
+			} else if inContentType && len(bodyLines) == 0 && !strings.Contains(line, "Content-Type:") {
+				bodyStarted = true
+				bodyLines = append(bodyLines, line)
+			} else if bodyStarted {
+				bodyLines = append(bodyLines, line)
+			}
+		}
+		email.Body = strings.Join(bodyLines, "\n")
+	}
+
 	return email
 }
 
@@ -151,8 +189,29 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 		output.WriteString(fmt.Sprintf("--- Email %d/%d from: %s ---\n", i+1, len(files), parsedEmail.From))
 		output.WriteString(fmt.Sprintf("Subject: %s\n\n", parsedEmail.Subject))
 
-		// Generate response using LLM with per-email timeout
-		response := composeResponseToEmail(parsedEmail.Body, parsedEmail.Subject, parsedEmail.From)
+		// Generate response using LLM with per-email timeout (30 seconds)
+		type emailResponseResult struct {
+			response string
+			err      error
+		}
+		var response string
+		done := make(chan emailResponseResult, 1)
+		go func() {
+			resp := composeResponseToEmail(parsedEmail.Body, parsedEmail.Subject, parsedEmail.From)
+			done <- emailResponseResult{response: resp, err: nil}
+		}()
+
+		select {
+		case r := <-done:
+			response = r.response
+		case <-time.After(30 * time.Second):
+			output.WriteString(fmt.Sprintf("⚠️ Warning: Email response generation timed out after 30 seconds\n"))
+			// Mark as read but don't delete if we failed to respond
+			curPath := fmt.Sprintf("/var/mail/b-haven.org/yolo/cur/%s", filename)
+			utils.MoveFile(filePath, curPath)
+			output.WriteString("---\n\n")
+			continue
+		}
 
 		if strings.HasPrefix(response, "[Error generating response:") {
 			output.WriteString(fmt.Sprintf("⚠️ Warning: Failed to generate response for this email\n"))
@@ -247,9 +306,8 @@ RESPONSE FORMAT:
 
 IMPORTANT: Keep response concise (under 200 words). Write your email response now:`, from, subject, currentDateTime, subject, body)
 
-	response := llmResponseGenerator(prompt)
-
-	return strings.TrimSpace(response)
+	// Generate response using LLM directly without timeout
+	return strings.TrimSpace(llmResponseGenerator(prompt))
 }
 
 // limitString truncates string to maxLen chars, adding "..." if truncated
@@ -268,10 +326,7 @@ func generateLLMText(prompt string) string {
 		{Role: "user", Content: prompt},
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	result, err := client.Chat(ctx, "qwen3.5:27b", messages, nil, nil)
+	result, err := client.Chat(context.Background(), "qwen3.5:27b", messages, nil, nil)
 	if err != nil {
 		return fmt.Sprintf("[Error generating response: %v]", err)
 	}
