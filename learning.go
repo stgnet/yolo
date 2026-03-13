@@ -94,44 +94,44 @@ func (lm *LearningManager) ResearchAndLearn() (*LearningSession, error) {
 	researchAreas := []ResearchArea{
 		{
 			Category:        "AI Agent Architecture",
-			WebQuery:        "autonomous AI agent best practices 2025 implementation patterns tool use memory",
+			WebQuery:        "autonomous AI agent best practices 2025 implementation patterns tool use memory state management error handling",
 			RedditSubreddit: "LocalLLaMA",
-			RedditSearch:    "autonomous agent implementation tool use patterns",
-			Keywords:        []string{"autonomous", "planning", "memory", "tools", "multi-agent", "implementation", "pattern"},
+			RedditSearch:    "autonomous agent implementation tool use patterns state management",
+			Keywords:        []string{"autonomous", "planning", "memory", "tools", "multi-agent", "implementation", "pattern", "state"},
 		},
 		{
 			Category:        "LLM Tool Integration",
-			WebQuery:        "LLM function calling implementation patterns error handling context limits 2025",
+			WebQuery:        "LLM function calling implementation patterns error handling context limits timeout retry 2025",
 			RedditSubreddit: "LocalLLaMA",
-			RedditSearch:    "function calling implementation best practices error handling",
-			Keywords:        []string{"function calling", "tool use", "context management", "error handling", "implementation"},
+			RedditSearch:    "function calling implementation best practices error handling timeout",
+			Keywords:        []string{"function calling", "tool use", "context management", "error handling", "implementation", "retry"},
 		},
 		{
 			Category:        "Developer Experience",
-			WebQuery:        "AI coding assistant developer productivity automation features implementation 2025",
+			WebQuery:        "AI coding assistant developer productivity automation workflow features implementation 2025",
 			RedditSubreddit: "golang",
-			RedditSearch:    "Go AI tools productivity automation best practices",
+			RedditSearch:    "Go AI tools productivity automation best practices workflow",
 			Keywords:        []string{"developer experience", "productivity", "automation", "workflow", "implementation"},
 		},
 		{
 			Category:        "Testing & Evaluation",
-			WebQuery:        "AI agent testing evaluation frameworks benchmarking performance metrics 2025",
+			WebQuery:        "AI agent testing evaluation frameworks benchmarking performance metrics regression 2025",
 			RedditSubreddit: "MachineLearning",
-			RedditSearch:    "testing AI agents evaluation benchmarks implementation",
+			RedditSearch:    "testing AI agents evaluation benchmarks implementation regression",
 			Keywords:        []string{"testing", "evaluation", "benchmarking", "metrics", "regression"},
 		},
 		{
 			Category:        "Go Performance",
-			WebQuery:        "Go concurrent programming patterns performance optimization race conditions 2025",
+			WebQuery:        "Go concurrent programming patterns performance optimization race conditions deadlock 2025",
 			RedditSubreddit: "golang",
-			RedditSearch:    "Go concurrency patterns performance best practices race conditions",
+			RedditSearch:    "Go concurrency patterns performance best practices race condition deadlock",
 			Keywords:        []string{"performance", "concurrency", "optimization", "race condition", "goroutine"},
 		},
 		{
 			Category:        "Security & Reliability",
-			WebQuery:        "AI agent security sandboxing file system access safe path validation 2025",
+			WebQuery:        "AI agent security sandboxing file system access safe path validation injection prevention 2025",
 			RedditSubreddit: "security",
-			RedditSearch:    "AI security sandboxing file access best practices",
+			RedditSearch:    "AI security sandboxing file access best practices injection",
 			Keywords:        []string{"security", "sandboxing", "file access", "validation", "safe"},
 		},
 	}
@@ -148,6 +148,9 @@ func (lm *LearningManager) ResearchAndLearn() (*LearningSession, error) {
 
 	// Analyze trends across all findings
 	session.Trends = lm.analyzeTrends(session.Improvements)
+
+	// Remove duplicates based on title similarity
+	session.Improvements = lm.removeDuplicateImprovements(session.Improvements)
 
 	// Calculate duration
 	session.Duration = int(time.Since(startTime).Seconds())
@@ -198,13 +201,14 @@ func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result 
 	genericPatterns := []string{
 		" is a ", " refers to", "in other words", "etymology", "see also",
 		"wikipedia", "encyclopedia", "introduction to", "overview of",
+		"according to", "source:", "url:", "https://", "http://",
 	}
 
-	// Simple text-based extraction from the JSON-like result
-	// Look for key sections in the output
-
+	// Parse the structured JSON output from web_search
+	// Look for specific sections and extract meaningful content
+	
+	// Extract instant answers (usually high-quality summaries)
 	if strings.Contains(result, "Instant Answer") {
-		// Extract instant answer content
 		start := strings.Index(result, "Instant Answer:")
 		if start != -1 {
 			start += len("Instant Answer:")
@@ -213,8 +217,9 @@ func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result 
 				end = len(result) - start
 			}
 			content := strings.TrimSpace(result[start : start+end])
-			// Skip if too short or contains generic patterns
-			if len(content) > 80 && !containsGenericPattern(content, genericPatterns) && lm.isRelevant(content, area.Keywords) {
+			// Validate: must be substantial, relevant, and contain actionable insights
+			if len(content) > 100 && !containsGenericPattern(content, genericPatterns) && 
+			   lm.isRelevant(content, area.Keywords) && containsActionableContent(content) {
 				imp := lm.createImprovement(area, content, "web", "", "instant_answer")
 				if imp != nil {
 					improvements = append(improvements, *imp)
@@ -223,16 +228,66 @@ func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result 
 		}
 	}
 
-	// Extract related topics and results similarly
+	// Extract related topics (often contain specific recommendations)
+	if strings.Contains(result, "Related Topics:") {
+		start := strings.Index(result, "Related Topics:")
+		if start != -1 {
+			end := strings.Index(result[start:], "\n\n")
+			if end == -1 {
+				end = len(result) - start
+			}
+			topicSection := result[start : start+end]
+			// Split into individual topics and process each
+			topics := strings.Split(topicSection, "\n")
+			for _, topic := range topics {
+				topic = strings.TrimSpace(topic)
+				// Remove "Related Topics:" header and bullet points
+				topic = strings.TrimPrefix(topic, "Related Topics:")
+				topic = strings.TrimPrefix(topic, "• ")
+				topic = strings.TrimSpace(topic)
+				
+				if len(topic) > 50 && !containsGenericPattern(topic, genericPatterns) && 
+				   lm.isRelevant(topic, area.Keywords) {
+					description := fmt.Sprintf("%s. This is a related topic worth exploring for implementation.", topic)
+					imp := lm.createImprovement(area, description, "web", "", "related_topic")
+					if imp != nil {
+						improvements = append(improvements, *imp)
+					}
+				}
+			}
+		}
+	}
+
+	// Extract abstract snippets (usually contain actionable information)
 	lines := strings.Split(result, "\n")
+	inAbstracts := false
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		// Filter: must be substantial, relevant, and not generic
-		if len(line) > 150 && !containsGenericPattern(line, genericPatterns) && lm.isRelevant(line, area.Keywords) {
-			imp := lm.createImprovement(area, truncateText(line, 500), "web", "", "search_result")
-			if imp != nil {
-				improvements = append(improvements, *imp)
+		
+		if strings.Contains(line, "Abstract:") || strings.Contains(line, "abstract:") {
+			inAbstracts = true
+			continue
+		}
+		
+		if inAbstracts && strings.HasPrefix(line, "  •") {
+			// This is an abstract snippet - often contains specific recommendations
+			snippet := strings.TrimPrefix(line, "  • ")
+			snippet = strings.TrimSpace(snippet)
+			
+			// Filter: must be substantial, relevant, actionable, and not generic
+			if len(snippet) > 80 && !containsGenericPattern(snippet, genericPatterns) && 
+			   lm.isRelevant(snippet, area.Keywords) && containsActionableContent(snippet) {
+				imp := lm.createImprovement(area, truncateText(snippet, 500), "web", "", "abstract")
+				if imp != nil {
+					improvements = append(improvements, *imp)
+				}
 			}
+		}
+		
+		// Reset flag when we hit a new section
+		if line != "" && !strings.HasPrefix(line, "  ") && 
+		   (strings.Contains(line, ":") || strings.Contains(line, "##")) {
+			inAbstracts = false
 		}
 	}
 
@@ -246,17 +301,59 @@ func (lm *LearningManager) extractImprovementsFromReddit(area ResearchArea, resu
 	// Filter out low-quality or generic content
 	genericPatterns := []string{
 		"edit:", "thanks for sharing", "upvote if you agree",
+		"just wanted to say", "thought you might like",
+		"wikipedia", "according to",
 	}
 
-	// Parse the Reddit JSON response structure
+	// Reddit results are JSON-formatted - extract meaningful content
+	// Look for post titles and body content that contain actionable insights
+	
 	lines := strings.Split(result, "\n")
-
+	var currentTitle string
+	var currentBody strings.Builder
+	inPost := false
+	
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		// Filter: must be substantial, relevant, not generic, and contain actionable content
-		if len(line) > 200 && !containsGenericPattern(line, genericPatterns) && lm.isRelevant(line, area.Keywords) && containsActionableContent(line) {
-			url := fmt.Sprintf("https://reddit.com/r/%s", area.RedditSubreddit)
-			imp := lm.createImprovement(area, truncateText(line, 500), "reddit", url, "reddit_post")
+		
+		// Detect start of a new post title
+		if strings.HasPrefix(line, "• ") && len(line) > 20 && len(line) < 500 {
+			// Save previous post if it has substantial content
+			if inPost && currentBody.Len() > 150 {
+				bodyContent := currentBody.String()
+				fullContent := fmt.Sprintf("%s: %s", currentTitle, bodyContent)
+				
+				if !containsGenericPattern(fullContent, genericPatterns) && 
+				   lm.isRelevant(fullContent, area.Keywords) && containsActionableContent(fullContent) {
+					imp := lm.createImprovement(area, truncateText(fullContent, 500), "reddit", 
+						fmt.Sprintf("https://reddit.com/r/%s", area.RedditSubreddit), "reddit_post")
+					if imp != nil {
+						improvements = append(improvements, *imp)
+					}
+				}
+			}
+			
+			// Start new post
+			currentTitle = strings.TrimPrefix(line, "• ")
+			currentBody.Reset()
+			inPost = true
+		} else if inPost && !strings.HasPrefix(line, "•") {
+			// Add to current post body (if it's not a new title)
+			if len(line) > 10 {
+				currentBody.WriteString(" " + line)
+			}
+		}
+	}
+	
+	// Don't forget the last post
+	if inPost && currentBody.Len() > 150 {
+		bodyContent := currentBody.String()
+		fullContent := fmt.Sprintf("%s: %s", currentTitle, bodyContent)
+		
+		if !containsGenericPattern(fullContent, genericPatterns) && 
+		   lm.isRelevant(fullContent, area.Keywords) && containsActionableContent(fullContent) {
+			imp := lm.createImprovement(area, truncateText(fullContent, 500), "reddit", 
+				fmt.Sprintf("https://reddit.com/r/%s", area.RedditSubreddit), "reddit_post")
 			if imp != nil {
 				improvements = append(improvements, *imp)
 			}
@@ -430,6 +527,10 @@ func containsActionableContent(text string) bool {
 		"should", "recommend", "best practice", "improve", "optimize",
 		"implement", "use case", "pattern", "solution", "approach",
 		"tip", "trick", "hack", "feature", "enhancement",
+		"consider", "important", "critical", "essential", "necessary",
+		"method", "technique", "strategy", "framework", "architecture",
+		"handle", "manage", "process", "validate", "verify",
+		"performance", "scalability", "reliability", "efficiency",
 	}
 	textLower := strings.ToLower(text)
 	for _, kw := range actionableKeywords {
@@ -438,4 +539,52 @@ func containsActionableContent(text string) bool {
 		}
 	}
 	return false
+}
+
+// removeDuplicateImprovements removes duplicate or near-duplicate improvements
+func (lm *LearningManager) removeDuplicateImprovements(improvements []Improvement) []Improvement {
+	if len(improvements) <= 1 {
+		return improvements
+	}
+
+	var unique []Improvement
+	for i, imp := range improvements {
+		isDuplicate := false
+		for j := 0; j < i; j++ {
+			// Simple duplicate detection: if titles are very similar (>70% overlap)
+			if lm.similarity(improvements[j].Title, imp.Title) > 0.7 {
+				isDuplicate = true
+				break
+			}
+		}
+		if !isDuplicate {
+			unique = append(unique, imp)
+		}
+	}
+
+	return unique
+}
+
+// similarity calculates string similarity (simple Jaccard-like metric)
+func (lm *LearningManager) similarity(s1, s2 string) float64 {
+	words1 := strings.Fields(strings.ToLower(s1))
+	words2 := strings.Fields(strings.ToLower(s2))
+
+	if len(words1) == 0 || len(words2) == 0 {
+		return 0
+	}
+
+	// Count common words
+	common := 0
+	for _, w1 := range words1 {
+		for _, w2 := range words2 {
+			if w1 == w2 {
+				common++
+				break
+			}
+		}
+	}
+
+	total := len(words1) + len(words2)
+	return float64(common*2) / float64(total)
 }
