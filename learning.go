@@ -224,6 +224,11 @@ func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result 
 		"according to", "source:", "url:", "https://", "http://",
 	}
 
+	// Pre-filter result to remove noise like "(PDF)", "(HTML)", and multi-line fragments
+	result = strings.ReplaceAll(result, "\n\n2.", "")  // Remove numbered list artifacts
+	result = regexp.MustCompile(`\s*\(PDF\)\s*`).ReplaceAllString(result, "")
+	result = regexp.MustCompile(`\s*\(HTML\)\s*`).ReplaceAllString(result, "")
+
 	// Extract complete sentences/paragraphs rather than fragments
 	sentences := lm.extractCompleteSentences(result)
 
@@ -271,6 +276,22 @@ func (lm *LearningManager) extractCompleteSentences(text string) []string {
 
 	// Clean up markdown formatting (remove ** bold markers)
 	text = strings.ReplaceAll(text, "**", "")
+
+	// Remove numbered list artifacts and standalone numbers
+	text = regexp.MustCompile(`\s*\n\s*\d+\.\s*`).ReplaceAllString(text, " ")
+
+	// Remove file type indicators in parentheses
+	text = regexp.MustCompile(`\s*\(PDF\)\s*`).ReplaceAllString(text, "")
+	text = regexp.MustCompile(`\s*\(HTML\)\s*`).ReplaceAllString(text, "")
+	text = regexp.MustCompile(`\s*\(DOC\)\s*`).ReplaceAllString(text, "")
+
+	// Remove URLs that appear inline
+	text = regexp.MustCompile(`\bhttps?://\S+`).ReplaceAllStringFunc(text, func(match string) string {
+		if strings.ContainsAny(match, "[]()\"'") {
+			return match // Leave it if it has brackets/quotes (might be important)
+		}
+		return "" // Remove simple URLs
+	})
 
 	// Remove numbered list markers like "1. ", "2. " at start of lines
 	lines := strings.Split(text, "\n")
@@ -397,9 +418,22 @@ func (lm *LearningManager) createImprovement(area ResearchArea, content string, 
 		"no search results found", "error:", "failed to",
 		"couldn't find", "not found", "request failed",
 		"timeout", "connection refused", "server error",
+		"unable to", "something went wrong", "issue detected",
 	}
 	for _, pattern := range errorPatterns {
 		if strings.Contains(contentLower, pattern) {
+			return nil
+		}
+	}
+
+	// Additional validation: reject content that starts with problematic patterns
+	trimmedContent := strings.TrimSpace(content)
+	badStarts := []string{
+		"no ", "error", "failed", "could not", "unable to",
+		"something went", "issue:", "warning:",
+	}
+	for _, bad := range badStarts {
+		if strings.HasPrefix(strings.ToLower(trimmedContent), bad) {
 			return nil
 		}
 	}
