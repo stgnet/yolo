@@ -157,6 +157,11 @@ func TestLearningModel_ExtractCompleteSentences(t *testing.T) {
 			text:     `Software engineering best practices include writing tests first before implementing production code to ensure quality standards and maintain long-term code health. in the development cycle. Automated testing ensures code quality and prevents regressions from breaking changes during refactoring operations while maintaining backward compatibility requirements. of features added later.`,
 			expected: 2,
 		},
+		{
+			name:     "lowercase fragments filtered out",
+			text:     `Important development principles should be followed consistently across all projects and teams to ensure code quality and maintainability standards. this is a lowercase fragment that should be skipped entirely from the results because it starts with a lowercase letter. Use comprehensive error handling strategies in production systems to ensure reliability and maintainability of critical services.`,
+			expected: 2, // Only the two sentences starting with capitals (both are 50+ chars)
+		},
 	}
 
 	for _, tt := range tests {

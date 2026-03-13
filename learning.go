@@ -254,7 +254,15 @@ func (lm *LearningManager) extractCompleteSentences(text string) []string {
 		// Skip if it looks like a fragment (starts with common non-sentence starters)
 		words := strings.Fields(part)
 		if len(words) > 0 {
-			firstWord := strings.ToLower(words[0])
+			firstWord := words[0]
+			firstChar := string(firstWord[0])
+
+			// Skip fragments that start with lowercase letters
+			if firstChar != strings.ToUpper(firstChar) {
+				continue
+			}
+
+			firstWordLower := strings.ToLower(firstWord)
 			// Skip common fragment starters and coordinating/conjunctions
 			fragmentStarters := []string{
 				"and", "or", "but", // coordinating conjunctions
@@ -264,7 +272,7 @@ func (lm *LearningManager) extractCompleteSentences(text string) []string {
 			}
 			isFragment := false
 			for _, starter := range fragmentStarters {
-				if firstWord == starter {
+				if firstWordLower == starter {
 					isFragment = true
 					break
 				}
