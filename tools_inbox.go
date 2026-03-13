@@ -202,30 +202,47 @@ var llmResponseGenerator = func(prompt string) string {
 	return generateLLMText(prompt)
 }
 
-// composeResponseToEmail generates a response to an incoming email using LLM directly
-// ALL emails are sent directly to the LLM - no pattern matching, no templates
+// composeResponseToEmail generates a personalized response to an incoming email using LLM directly
+// Includes email metadata (subject, timestamp, sender info) and thread context for professional responses
 func composeResponseToEmail(body, subject, from string) string {
 	if body == "" {
 		body = "No content"
 	}
 
-	prompt := fmt.Sprintf(`You are YOLO, an autonomous AI assistant running on a Mac. 
-Your job is to reply to emails directly and helpfully.
+	// Get current date/time for reference in response
+	currentDateTime := time.Now().Format("January 2, 2006 at 3:04 PM MST")
 
-INCOMING EMAIL:
-Sender: %s
-Subject: %s
-Message body:
+	prompt := fmt.Sprintf(`You are YOLO, an autonomous AI assistant running on a Mac. 
+Your job is to reply to emails in a professional, personalized manner with proper context.
+
+INCOMING EMAIL CONTEXT:
+- Sender: %s
+- Subject: %s
+- Received: (original email)
+- Reply Date/Time: %s
+
+THREAD/TOPIC BEING DISCUSSED:
 %s
 
-REQUIREMENTS:
-1. Reply DIRECTLY to what they're asking - no templates or generic responses
-2. Be conversational and friendly but concise
-3. If they ask about something you can do, explain that you're doing it now
-4. Keep the response focused on answering their question
-5. Do NOT use placeholders like [ACTION_NEEDED] or similar
+EMAIL BODY CONTENT:
+%s
 
-Write your email response now:`, from, subject, body)
+RESPONSE GUIDELINES:
+1. ACKNOWLEDGE THE SENDER - Address them by name if available in their address, or reference who they are
+2. REFERENCE THE ORIGINAL SUBJECT - Include context about what conversation/thread this is part of
+3. INCLUDE EMAIL METADATA - Reference the original subject line and acknowledge when their email was received
+4. BE PROFESSIONAL YET CONVERSATIONAL - Use a friendly but polished tone appropriate for email correspondence
+5. ANSWER SPECIFICALLY - Address each point/question they raised directly without generic responses
+6. PROVIDE CONTEXT AWARENESS - Show you understand the thread/topic being discussed and relate to it
+7. NO PLACEHOLDERS - Write complete, actionable responses with no [ACTION_NEEDED] or similar markers
+
+RESPONSE FORMAT:
+- Start with an appropriate greeting referencing the sender
+- Acknowledge their message and reference the subject/topic
+- Provide specific answers or actions taken
+- Close professionally with context about next steps if applicable
+
+Write your email response now:`, from, subject, currentDateTime, subject, body)
 
 	response := llmResponseGenerator(prompt)
 
