@@ -44,11 +44,11 @@ func TestThreadPool_Wait(t *testing.T) {
 }
 
 func TestThreadPool_QueueSize(t *testing.T) {
- tp := NewThreadPool(1)
+	tp := NewThreadPool(1)
 
- // Submit multiple jobs quickly
- numJobs := 20
- for i := 0; i < numJobs; i++ {
+	// Submit multiple jobs quickly
+	numJobs := 20
+	for i := 0; i < numJobs; i++ {
 		err := tp.Submit(func() {
 			time.Sleep(10 * time.Millisecond)
 		})

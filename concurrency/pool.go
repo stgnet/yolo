@@ -12,8 +12,8 @@ import (
 type ThreadPool struct {
 	numWorkers int
 	jobs       chan func()
-	wg         sync.WaitGroup      // tracks worker goroutines
-	jobsWg     sync.WaitGroup      // tracks submitted jobs
+	wg         sync.WaitGroup // tracks worker goroutines
+	jobsWg     sync.WaitGroup // tracks submitted jobs
 	mu         sync.Mutex
 	closed     bool
 }
