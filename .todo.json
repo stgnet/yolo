@@ -2,7 +2,8 @@
   {
     "title": "Keep a todo list of feature requests and ideas",
     "created_at": "2026-03-12T14:50:00-04:00",
-    "done": false
+    "done": true,
+    "completed_at": "2026-03-12T21:15:11.60121-04:00"
   },
   {
     "title": "Show todo list in progress reports with git log and executable age",
@@ -15,5 +16,27 @@
     "created_at": "2026-03-12T14:50:00-04:00",
     "done": true,
     "completed_at": "2026-03-12T14:52:00-04:00"
+  },
+  {
+    "title": "Implement learn function for autonomous research and self-improvement",
+    "created_at": "2026-03-12T20:24:12.523464-04:00",
+    "done": true,
+    "completed_at": "2026-03-12T20:27:27.642756-04:00"
+  },
+  {
+    "title": "Improve learn tool quality - current improvements are text fragments, not actionable insights",
+    "created_at": "2026-03-12T20:28:42.319552-04:00",
+    "completed_at": "0001-01-01T00:00:00Z"
+  },
+  {
+    "title": "Add test for readWebpage error handling",
+    "created_at": "2026-03-12T21:15:23.612689-04:00",
+    "done": true,
+    "completed_at": "2026-03-12T21:22:20.757757-04:00"
+  },
+  {
+    "title": "Review and improve learn tool output quality",
+    "created_at": "2026-03-12T21:22:28.872243-04:00",
+    "completed_at": "0001-01-01T00:00:00Z"
   }
 ]

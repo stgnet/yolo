@@ -126,28 +126,28 @@ func TestProcessInboxWorkflow(t *testing.T) {
 // Test parseEmail function
 func TestParseEmail(t *testing.T) {
 	testCases := []struct {
-		name           string
-		raw            string
-		expectedFrom   string
-		expectedTo     string
+		name            string
+		raw             string
+		expectedFrom    string
+		expectedTo      string
 		expectedSubject string
-		expectedBody   string
+		expectedBody    string
 	}{
 		{
-			name: "standard email",
-			raw:  "From: sender@example.com\nTo: recipient@example.com\nSubject: Hello\n\nThis is the body.",
-			expectedFrom:   "sender@example.com",
-			expectedTo:     "recipient@example.com",
+			name:            "standard email",
+			raw:             "From: sender@example.com\nTo: recipient@example.com\nSubject: Hello\n\nThis is the body.",
+			expectedFrom:    "sender@example.com",
+			expectedTo:      "recipient@example.com",
 			expectedSubject: "Hello",
-			expectedBody:   "This is the body.",
+			expectedBody:    "This is the body.",
 		},
 		{
-			name: "email with empty body",
-			raw:  "From: test@test.com\nTo: me@me.com\nSubject: Empty\n\n",
-			expectedFrom:   "test@test.com",
-			expectedTo:     "me@me.com",
+			name:            "email with empty body",
+			raw:             "From: test@test.com\nTo: me@me.com\nSubject: Empty\n\n",
+			expectedFrom:    "test@test.com",
+			expectedTo:      "me@me.com",
 			expectedSubject: "Empty",
-			expectedBody:   "",
+			expectedBody:    "",
 		},
 	}
 
