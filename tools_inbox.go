@@ -137,7 +137,8 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 	var output strings.Builder
 	output.WriteString(fmt.Sprintf("Processing %d email(s)...\n\n", len(files)))
 
-	for _, filename := range files {
+	// Process each email with individual timeout handling
+	for i, filename := range files {
 		filePath := fmt.Sprintf("%s%s", inboxPath, filename)
 		emailContent, err := utils.ReadFile(filePath)
 		if err != nil {
@@ -147,18 +148,27 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 
 		parsedEmail := parseEmail(string(emailContent))
 
-		output.WriteString(fmt.Sprintf("--- Processing email from: %s ---\n", parsedEmail.From))
+		output.WriteString(fmt.Sprintf("--- Email %d/%d from: %s ---\n", i+1, len(files), parsedEmail.From))
 		output.WriteString(fmt.Sprintf("Subject: %s\n\n", parsedEmail.Subject))
 
-		// Generate response using LLM directly (no pattern matching)
+		// Generate response using LLM with per-email timeout
 		response := composeResponseToEmail(parsedEmail.Body, parsedEmail.Subject, parsedEmail.From)
+
+		if strings.HasPrefix(response, "[Error generating response:") {
+			output.WriteString(fmt.Sprintf("⚠️ Warning: Failed to generate response for this email\n"))
+			// Mark as read but don't delete if we failed to respond
+			curPath := fmt.Sprintf("/var/mail/b-haven.org/yolo/cur/%s", filename)
+			utils.MoveFile(filePath, curPath)
+			output.WriteString("---\n\n")
+			continue
+		}
 
 		if response == "" {
 			output.WriteString("Warning: Empty response generated, skipping send.\n\n")
 			continue
 		}
 
-		output.WriteString(fmt.Sprintf("Generated response:\n%s\n", response))
+		output.WriteString(fmt.Sprintf("Generated response preview:\n%s\n", limitString(response, 200)))
 
 		// Prepare send_email args
 		emailArgs := map[string]any{
