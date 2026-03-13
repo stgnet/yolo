@@ -50,6 +50,7 @@
   {
     "title": "Consolidate todo tools (add_todo, complete_todo, list_todos) into a proper todo package",
     "created_at": "2026-03-12T21:52:13.872303-04:00",
-    "completed_at": "0001-01-01T00:00:00Z"
+    "done": true,
+    "completed_at": "2026-03-12T22:07:47.433929-04:00"
   }
 ]
