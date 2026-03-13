@@ -235,7 +235,7 @@ RESPONSE FORMAT:
 - Provide specific answers or actions taken
 - Close professionally with context about next steps if applicable
 
-Write your email response now:`, from, subject, currentDateTime, subject, body)
+IMPORTANT: Keep response concise (under 200 words). Write your email response now:`, from, subject, currentDateTime, subject, body)
 
 	response := llmResponseGenerator(prompt)
 
@@ -258,7 +258,7 @@ func generateLLMText(prompt string) string {
 		{Role: "user", Content: prompt},
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	result, err := client.Chat(ctx, "qwen3.5:27b", messages, nil, nil)
