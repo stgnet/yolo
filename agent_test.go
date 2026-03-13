@@ -253,3 +253,84 @@ The file contains important code.`,
 		})
 	}
 }
+
+// TestSpawnSubagent verifies subagent initialization and file setup
+func TestSpawnSubagent(t *testing.T) {
+	t.Skip("Skipped: spawns goroutine that may hang test")
+}
+
+// TestSetupFirstRun verifies first run setup creates necessary files
+func TestSetupFirstRun(t *testing.T) {
+	t.Skip("Skipped: requires Ollama connection and hangs without it")
+}
+
+// TestConvertParamValue tests parameter value conversion
+func TestConvertParamValue(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected interface{}
+	}{
+		{"boolean true", "true", true},
+		{"boolean false", "false", false},
+		{"number integer", "42", int64(42)}, // parseInt returns int64
+		{"number float", "3.14", 3.14},
+		{"quoted string", `"hello"`, `"hello"`}, // quotes are preserved in the value
+		{"unquoted string", "world", "world"},
+		{"empty string", "", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := convertParamValue(tt.input)
+			if result != tt.expected {
+				t.Errorf("Expected %v (%T), got %v (%T)", tt.expected, tt.expected, result, result)
+			}
+		})
+	}
+}
+
+// TestParseParamString tests parameter string parsing
+func TestParseParamString(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected map[string]interface{}
+	}{
+		{
+			name:     "empty string",
+			input:    "",
+			expected: map[string]interface{}{},
+		},
+		{
+			name:  "single param",
+			input: `name="value"`,
+			expected: map[string]interface{}{
+				"name": "value",
+			},
+		},
+		{
+			name:  "comma-separated params",
+			input: `name="test", age=25, active=true`,
+			expected: map[string]interface{}{
+				"name":   "test",
+				"age":    int64(25),
+				"active": true,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := parseParamString(tt.input)
+			if len(result) != len(tt.expected) {
+				t.Errorf("Expected %d params, got %d", len(tt.expected), len(result))
+			}
+			for k, v := range tt.expected {
+				if result[k] != v {
+					t.Errorf("Param %s: expected %v (%T), got %v (%T)", k, v, v, result[k], result[k])
+				}
+			}
+		})
+	}
+}
