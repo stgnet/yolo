@@ -225,7 +225,7 @@ func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result 
 	}
 
 	// Pre-filter result to remove noise like "(PDF)", "(HTML)", and multi-line fragments
-	result = strings.ReplaceAll(result, "\n\n2.", "")  // Remove numbered list artifacts
+	result = strings.ReplaceAll(result, "\n\n2.", "") // Remove numbered list artifacts
 	result = regexp.MustCompile(`\s*\(PDF\)\s*`).ReplaceAllString(result, "")
 	result = regexp.MustCompile(`\s*\(HTML\)\s*`).ReplaceAllString(result, "")
 
