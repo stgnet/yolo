@@ -251,21 +251,11 @@ func (lm *LearningManager) extractCompleteSentences(text string) []string {
 			continue
 		}
 
-		// Must start with a capital letter (indicates complete sentence)
-		if len(part) == 0 {
-			continue
-		}
-		firstChar := part[0]
-		if !unicode.IsUpper(rune(firstChar)) {
-			continue // Starts with lowercase - fragment
-		}
-
 		// Skip if it looks like a fragment (starts with common non-sentence starters)
 		words := strings.Fields(part)
 		if len(words) > 0 {
 			firstWord := strings.ToLower(words[0])
 			// Skip common fragment starters and coordinating/conjunctions
-			// But NOT articles (the, a, an) or common sentence starters like "systems", "agents", etc.
 			fragmentStarters := []string{
 				"and", "or", "but", // coordinating conjunctions
 				"is", "are", "was", "were", "been", // verbs (fragments often start with these)
@@ -284,9 +274,10 @@ func (lm *LearningManager) extractCompleteSentences(text string) []string {
 			}
 		}
 
-		// Add period back if missing
-		if part != "" && !strings.HasSuffix(part, ".") &&
-			!strings.HasSuffix(part, "!") && !strings.HasSuffix(part, "?") {
+		// Add period back if missing and doesn't already end with punctuation
+		if !strings.HasSuffix(part, ".") && 
+		   !strings.HasSuffix(part, "!") && 
+		   !strings.HasSuffix(part, "?") {
 			part += "."
 		}
 
