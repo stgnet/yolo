@@ -216,6 +216,11 @@ func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result 
 			return improvements
 		}
 	}
+	
+	// Check for "No search results found" specifically (common DuckDuckGo response)
+	if strings.Contains(resultLower, "no search results") || strings.Contains(resultLower, "could not find any pages") {
+		return improvements
+	}
 
 	// Filter out generic encyclopedia/intro content
 	genericPatterns := []string{
@@ -341,6 +346,11 @@ func (lm *LearningManager) extractCompleteSentences(text string) []string {
 		// Skip if it starts with lowercase, quote, or non-alphabetic character (indicates a fragment)
 		firstChar := part[0]
 		if (firstChar >= 'a' && firstChar <= 'z') || firstChar == '"' || firstChar == '\'' || (firstChar < 'A' || (firstChar > 'Z' && firstChar < 'a')) {
+			continue
+		}
+
+		// Skip fragments ending with numbers (list artifacts like "including 2")
+		if regexp.MustCompile(`\d+$`).MatchString(part) {
 			continue
 		}
 
