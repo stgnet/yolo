@@ -30,7 +30,7 @@ func TestContainsActionableContent(t *testing.T) {
 		want bool
 	}{
 		{"Use dependency injection for better testability and improve code maintainability", true}, // contains "improve"
-		{"Implement error handling with custom types following best practice guidelines", true},   // contains "implement" and "best practice"
+		{"Implement error handling with custom types following best practice guidelines", true},    // contains "implement" and "best practice"
 		{"This is just informational text without any actionable content", false},                  // no keywords
 	}
 
@@ -44,19 +44,19 @@ func TestContainsActionableContent(t *testing.T) {
 
 func TestExtractKeywords(t *testing.T) {
 	tests := []struct {
-		text            string
-		suggestedKeys   []string
-		wantMinCount    int
+		text          string
+		suggestedKeys []string
+		wantMinCount  int
 	}{
 		{
-			text:            "Go routines and channels for concurrency in parallel processing",
-			suggestedKeys:   []string{"go", "routines", "channels", "concurrency"},
-			wantMinCount:    3,
+			text:          "Go routines and channels for concurrency in parallel processing",
+			suggestedKeys: []string{"go", "routines", "channels", "concurrency"},
+			wantMinCount:  3,
 		},
 		{
-			text:            "Simple test case",
-			suggestedKeys:   []string{"simple", "test"},
-			wantMinCount:    2,
+			text:          "Simple test case",
+			suggestedKeys: []string{"simple", "test"},
+			wantMinCount:  2,
 		},
 	}
 
@@ -70,11 +70,11 @@ func TestExtractKeywords(t *testing.T) {
 
 func TestTruncateText(t *testing.T) {
 	tests := []struct {
-		name     string
-		text     string
-		maxLen   int
-		wantMax  int
-		wantEnd  string
+		name    string
+		text    string
+		maxLen  int
+		wantMax int
+		wantEnd string
 	}{
 		{
 			name:    "text shorter than max",
@@ -108,16 +108,16 @@ func TestTruncateText(t *testing.T) {
 func TestGenerateImprovementID(t *testing.T) {
 	// Note: This tests the improvement ID generation which doesn't need a LearningModel
 	id := generateImprovementID("test improvement for code quality")
-	
+
 	if id == "" {
 		t.Error("generateImprovementID() returned empty string")
 	}
-	
+
 	// ID should be IMP- followed by 5 digits, so length is between 8 and 10
 	if len(id) < 8 || len(id) > 10 {
 		t.Errorf("generateImprovementID() = %q (len=%d), want between 8 and 10", id, len(id))
 	}
-	
+
 	// Should start with "IMP-"
 	if !strings.HasPrefix(id, "IMP-") {
 		t.Errorf("generateImprovementID() doesn't start with 'IMP-', got: %q", id)
@@ -133,8 +133,8 @@ func TestLearningModel_ExtractCompleteSentences(t *testing.T) {
 		expected int
 	}{
 		{
-			name: "multiple long sentences",
-			text: `Go routines are lightweight threads managed by the Go runtime that enable concurrent execution with minimal overhead and memory usage for high-performance applications. Channel communication provides type-safe data passing between goroutines which ensures thread-safe access to shared resources without explicit locking mechanisms. The context package enables cancellation and timeouts for operations that need graceful termination signals during application shutdown or timeout scenarios.`,
+			name:     "multiple long sentences",
+			text:     `Go routines are lightweight threads managed by the Go runtime that enable concurrent execution with minimal overhead and memory usage for high-performance applications. Channel communication provides type-safe data passing between goroutines which ensures thread-safe access to shared resources without explicit locking mechanisms. The context package enables cancellation and timeouts for operations that need graceful termination signals during application shutdown or timeout scenarios.`,
 			expected: 3,
 		},
 		{
@@ -153,8 +153,8 @@ func TestLearningModel_ExtractCompleteSentences(t *testing.T) {
 			expected: 0,
 		},
 		{
-			name: "mixed content with fragments",
-			text: `Software engineering best practices include writing tests first before implementing production code to ensure quality standards and maintain long-term code health. in the development cycle. Automated testing ensures code quality and prevents regressions from breaking changes during refactoring operations while maintaining backward compatibility requirements. of features added later.`,
+			name:     "mixed content with fragments",
+			text:     `Software engineering best practices include writing tests first before implementing production code to ensure quality standards and maintain long-term code health. in the development cycle. Automated testing ensures code quality and prevents regressions from breaking changes during refactoring operations while maintaining backward compatibility requirements. of features added later.`,
 			expected: 2,
 		},
 	}
@@ -199,7 +199,7 @@ func TestLearningModel_GenerateTitle(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			title := lm.generateTitle(tt.content, "web")
 			if len(title) < tt.wantLenMin || len(title) > tt.wantLenMax {
-				t.Errorf("generateTitle() length = %d (title=%q), want between %d and %d", 
+				t.Errorf("generateTitle() length = %d (title=%q), want between %d and %d",
 					len(title), title, tt.wantLenMin, tt.wantLenMax)
 			}
 		})
