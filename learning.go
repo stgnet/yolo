@@ -216,7 +216,7 @@ func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result 
 			return improvements
 		}
 	}
-	
+
 	// Check for "No search results found" specifically (common DuckDuckGo response)
 	if strings.Contains(resultLower, "no search results") || strings.Contains(resultLower, "could not find any pages") {
 		return improvements
@@ -236,23 +236,23 @@ func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result 
 
 	// Extract complete sentences/paragraphs rather than fragments
 	sentences := lm.extractCompleteSentences(result)
-	
+
 	// Additional filter to remove obvious fragments that passed through
 	filteredSentences := make([]string, 0, len(sentences))
 	for _, sentence := range sentences {
 		sentence = strings.TrimSpace(sentence)
-		
+
 		// Skip sentences ending with numbers (list artifacts)
 		if regexp.MustCompile(`\d+$`).MatchString(sentence) {
 			continue
 		}
-		
+
 		// Skip sentences with embedded newlines followed by just numbers
-		if regexp.MustCompile(`\n\d+$`).MatchString(sentence) || 
-		   regexp.MustCompile(`,\s*including\s*\n+\d+`).MatchString(sentence) {
+		if regexp.MustCompile(`\n\d+$`).MatchString(sentence) ||
+			regexp.MustCompile(`,\s*including\s*\n+\d+`).MatchString(sentence) {
 			continue
 		}
-		
+
 		filteredSentences = append(filteredSentences, sentence)
 	}
 	sentences = filteredSentences
