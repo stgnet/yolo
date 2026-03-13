@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode"
 )
 
 const learningHistoryFile = ".yolo_learning.json"
@@ -204,94 +205,93 @@ func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result 
 		"according to", "source:", "url:", "https://", "http://",
 	}
 
-	// Parse the structured JSON output from web_search
-	// Look for specific sections and extract meaningful content
+	// Extract complete sentences/paragraphs rather than fragments
+	sentences := lm.extractCompleteSentences(result)
 
-	// Extract instant answers (usually high-quality summaries)
-	if strings.Contains(result, "Instant Answer") {
-		start := strings.Index(result, "Instant Answer:")
-		if start != -1 {
-			start += len("Instant Answer:")
-			end := strings.Index(result[start:], "\n\n")
-			if end == -1 {
-				end = len(result) - start
-			}
-			content := strings.TrimSpace(result[start : start+end])
-			// Validate: must be substantial, relevant, and contain actionable insights
-			if len(content) > 100 && !containsGenericPattern(content, genericPatterns) &&
-				lm.isRelevant(content, area.Keywords) && containsActionableContent(content) {
-				imp := lm.createImprovement(area, content, "web", "", "instant_answer")
-				if imp != nil {
-					improvements = append(improvements, *imp)
-				}
-			}
-		}
-	}
+	for _, sentence := range sentences {
+		content := strings.TrimSpace(sentence)
 
-	// Extract related topics (often contain specific recommendations)
-	if strings.Contains(result, "Related Topics:") {
-		start := strings.Index(result, "Related Topics:")
-		if start != -1 {
-			end := strings.Index(result[start:], "\n\n")
-			if end == -1 {
-				end = len(result) - start
-			}
-			topicSection := result[start : start+end]
-			// Split into individual topics and process each
-			topics := strings.Split(topicSection, "\n")
-			for _, topic := range topics {
-				topic = strings.TrimSpace(topic)
-				// Remove "Related Topics:" header and bullet points
-				topic = strings.TrimPrefix(topic, "Related Topics:")
-				topic = strings.TrimPrefix(topic, "• ")
-				topic = strings.TrimSpace(topic)
-
-				if len(topic) > 50 && !containsGenericPattern(topic, genericPatterns) &&
-					lm.isRelevant(topic, area.Keywords) {
-					description := fmt.Sprintf("%s. This is a related topic worth exploring for implementation.", topic)
-					imp := lm.createImprovement(area, description, "web", "", "related_topic")
-					if imp != nil {
-						improvements = append(improvements, *imp)
-					}
-				}
-			}
-		}
-	}
-
-	// Extract abstract snippets (usually contain actionable information)
-	lines := strings.Split(result, "\n")
-	inAbstracts := false
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-
-		if strings.Contains(line, "Abstract:") || strings.Contains(line, "abstract:") {
-			inAbstracts = true
+		// Skip if too short or contains generic patterns
+		if len(content) < 100 || containsGenericPattern(content, genericPatterns) {
 			continue
 		}
 
-		if inAbstracts && strings.HasPrefix(line, "  •") {
-			// This is an abstract snippet - often contains specific recommendations
-			snippet := strings.TrimPrefix(line, "  • ")
-			snippet = strings.TrimSpace(snippet)
+		// Must be relevant and contain actionable content
+		if !lm.isRelevant(content, area.Keywords) || !containsActionableContent(content) {
+			continue
+		}
 
-			// Filter: must be substantial, relevant, actionable, and not generic
-			if len(snippet) > 80 && !containsGenericPattern(snippet, genericPatterns) &&
-				lm.isRelevant(snippet, area.Keywords) && containsActionableContent(snippet) {
-				imp := lm.createImprovement(area, truncateText(snippet, 500), "web", "", "abstract")
-				if imp != nil {
-					improvements = append(improvements, *imp)
-				}
+		// Check if this is a fragment (doesn't start with capital or end properly)
+		if len(content) > 0 {
+			firstChar := content[0]
+			if firstChar >= 'a' && firstChar <= 'z' {
+				// Starts with lowercase - likely a fragment
+				continue
+			}
+			if !strings.HasSuffix(strings.TrimSpace(content), ".") &&
+				!strings.HasSuffix(strings.TrimSpace(content), "!") &&
+				!strings.HasSuffix(strings.TrimSpace(content), "?") {
+				// Doesn't end with proper punctuation - likely incomplete
+				continue
 			}
 		}
 
-		// Reset flag when we hit a new section
-		if line != "" && !strings.HasPrefix(line, "  ") &&
-			(strings.Contains(line, ":") || strings.Contains(line, "##")) {
-			inAbstracts = false
+		imp := lm.createImprovement(area, content, "web", "", "abstract")
+		if imp != nil {
+			improvements = append(improvements, *imp)
 		}
 	}
 
 	return improvements
+}
+
+// extractCompleteSentences extracts complete sentences from text
+func (lm *LearningManager) extractCompleteSentences(text string) []string {
+	var sentences []string
+
+	// Split on sentence boundaries
+	parts := strings.Split(text, ". ")
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+
+		// Skip very short fragments
+		if len(part) < 50 {
+			continue
+		}
+
+		// Skip if it looks like a fragment (starts mid-sentence)
+		firstWord := ""
+		words := strings.Fields(part)
+		if len(words) > 0 {
+			firstWord = strings.ToLower(words[0])
+			// Skip common fragment starters
+			fragmentStarters := []string{
+				"and", "or", "but", "the", "a", "an",
+				"is", "are", "was", "were", "been",
+				"for", "with", "from", "into", "onto",
+			}
+			isFragment := false
+			for _, starter := range fragmentStarters {
+				if firstWord == starter {
+					isFragment = true
+					break
+				}
+			}
+			if isFragment {
+				continue
+			}
+		}
+
+		// Add period back if missing
+		if part != "" && !strings.HasSuffix(part, ".") &&
+			!strings.HasSuffix(part, "!") && !strings.HasSuffix(part, "?") {
+			part += "."
+		}
+
+		sentences = append(sentences, part)
+	}
+
+	return sentences
 }
 
 // extractImprovementsFromReddit parses Reddit results into improvements
@@ -385,22 +385,86 @@ func (lm *LearningManager) createImprovement(area ResearchArea, content string, 
 	}
 }
 
-// generateTitle creates a concise title from content
+// generateTitle creates a concise, actionable title from content
 func (lm *LearningManager) generateTitle(content string, category string) string {
-	// Take first sentence or first 100 chars
-	sentences := strings.Split(content, ". ")
-	if len(sentences) > 0 && len(sentences[0]) < 150 {
-		title := sentences[0]
-		if !strings.HasSuffix(title, ".") {
-			title += "."
+	// Try to extract the most important part - look for key recommendation patterns
+	contentLower := strings.ToLower(content)
+
+	// Look for "should" recommendations
+	if idx := strings.Index(contentLower, " should "); idx != -1 {
+		start := 0
+		for i := idx; i > 0 && content[i-1] != '.'; i-- {
+			start = i
+			if content[i-1] == ' ' || i-start > 60 {
+				break
+			}
 		}
-		return title
+		end := strings.Index(content[idx:], ".")
+		if end != -1 {
+			title := content[start : idx+end]
+			if len(title) <= 120 && len(title) >= 30 {
+				return lm.capitalizeTitle(title)
+			}
+		}
 	}
 
-	if len(content) > 100 {
-		return content[:97] + "..*"
+	// Look for "recommend" patterns
+	if idx := strings.Index(contentLower, "recommend"); idx != -1 {
+		start := strings.LastIndex(content[:idx], ".") + 1
+		end := strings.Index(content[idx:], ".") + idx
+		if end > idx && end-start <= 150 {
+			title := content[start : end+1]
+			return lm.capitalizeTitle(title)
+		}
 	}
-	return content
+
+	// Fall back to first complete sentence
+	sentences := strings.Split(content, ". ")
+	for _, s := range sentences {
+		s = strings.TrimSpace(s)
+		// Remove any trailing period that might already exist
+		s = strings.TrimRight(s, ".")
+		if len(s) >= 10 && len(s) <= 150 && lm.isValidTitleStart(s) {
+			return lm.capitalizeTitle(s + ".")
+		}
+	}
+
+	// Last resort: truncate with ellipsis
+	if len(content) > 120 {
+		return lm.capitalizeTitle(content[:102] + "...")
+	}
+	return lm.capitalizeTitle(content)
+}
+
+// capitalizeTitle capitalizes the first letter of a title
+func (lm *LearningManager) capitalizeTitle(title string) string {
+	if len(title) == 0 {
+		return title
+	}
+	runes := []rune(title)
+	runes[0] = unicode.ToUpper(runes[0])
+	return string(runes)
+}
+
+// isValidTitleStart checks if text starts in a way that suggests a complete thought
+func (lm *LearningManager) isValidTitleStart(text string) bool {
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		return false
+	}
+	firstWord := strings.ToLower(words[0])
+
+	// Valid starts: pronouns, action words, tech terms
+	validStarters := map[string]bool{
+		"implement": true, "use": true, "consider": true, "add": true,
+		"improve": true, "optimize": true, "enhance": true, "build": true,
+		"agents": true, "systems": true, "tools": true, "ai": true,
+		"the": true, "this": true, "these": true, "our": true,
+		"error": true, "performance": true, "security": true,
+	}
+
+	return validStarters[firstWord] ||
+		(len(firstWord) > 2 && firstWord[0] >= 'a' && firstWord[0] <= 'z')
 }
 
 // calculatePriority determines the priority based on source and content
