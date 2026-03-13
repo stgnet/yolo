@@ -40,5 +40,16 @@
     "created_at": "2026-03-12T21:22:28.872243-04:00",
     "done": true,
     "completed_at": "2026-03-12T21:43:47.882018-04:00"
+  },
+  {
+    "title": "Add Quick Start section to README with step-by-step setup guide",
+    "created_at": "2026-03-12T21:52:01.230546-04:00",
+    "done": true,
+    "completed_at": "2026-03-12T21:55:05.003734-04:00"
+  },
+  {
+    "title": "Consolidate todo tools (add_todo, complete_todo, list_todos) into a proper todo package",
+    "created_at": "2026-03-12T21:52:13.872303-04:00",
+    "completed_at": "0001-01-01T00:00:00Z"
   }
 ]
