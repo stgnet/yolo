@@ -199,6 +199,24 @@ func (lm *LearningManager) researchArea(area ResearchArea, session *LearningSess
 func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result string) []Improvement {
 	var improvements []Improvement
 
+	// Early return for empty or error content
+	resultLower := strings.ToLower(strings.TrimSpace(result))
+	if len(resultLower) < 20 || resultLower == "" {
+		return improvements
+	}
+
+	// Filter out error messages early to avoid processing garbage
+	errorPatterns := []string{
+		"no search results found", "error:", "failed to fetch",
+		"couldn't find", "not found", "request failed",
+		"timeout", "connection refused", "server error",
+	}
+	for _, pattern := range errorPatterns {
+		if strings.Contains(resultLower, pattern) {
+			return improvements
+		}
+	}
+
 	// Filter out generic encyclopedia/intro content
 	genericPatterns := []string{
 		" is a ", " refers to", "in other words", "etymology", "see also",
@@ -211,6 +229,13 @@ func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result 
 
 	for _, sentence := range sentences {
 		content := strings.TrimSpace(sentence)
+
+		// Re-filter to catch any error messages that made it through sentence extraction
+		for _, pattern := range errorPatterns {
+			if strings.Contains(strings.ToLower(content), pattern) {
+				continue
+			}
+		}
 
 		// Skip if too short or contains generic patterns
 		if len(content) < 50 || containsGenericPattern(content, genericPatterns) {
