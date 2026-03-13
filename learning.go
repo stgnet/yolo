@@ -339,13 +339,36 @@ func (lm *LearningManager) extractCompleteSentences(text string) []string {
 		part = strings.TrimSpace(part)
 
 		// Skip very short fragments or too long (likely multiple sentences)
-		if len(part) < 60 || len(part) > 280 {
+		if len(part) < 75 || len(part) > 280 {
 			continue
 		}
+
+		contentLower := strings.ToLower(part)
 
 		// Skip if it starts with lowercase, quote, or non-alphabetic character (indicates a fragment)
 		firstChar := part[0]
 		if (firstChar >= 'a' && firstChar <= 'z') || firstChar == '"' || firstChar == '\'' || (firstChar < 'A' || (firstChar > 'Z' && firstChar < 'a')) {
+			continue
+		}
+
+		// Extended list of fragment starters to filter out incomplete sentences
+		fragmentStarters := []string{
+			"including", "such as", "for example", "like", "with", "in the",
+			"on the", "at the", "to the", "by the", "of the", "and the",
+			"but the", "or the", "is a", "are the", "was a", "were the",
+			"has a", "have a", "it is", "they are", "you can", "we have",
+			"for more", "see also", "read more", "click here", "visit",
+			"check out", "learn about", "find out", "discover",
+		}
+
+		isFragment := false
+		for _, starter := range fragmentStarters {
+			if strings.HasPrefix(contentLower, starter) {
+				isFragment = true
+				break
+			}
+		}
+		if isFragment {
 			continue
 		}
 
