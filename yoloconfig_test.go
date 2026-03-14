@@ -228,6 +228,9 @@ func TestYoloConfigSave_AtomicWrite(t *testing.T) {
 
 // TestYoloConfigSave_UnreadableDir tests saving to unreadable directory
 func TestYoloConfigSave_UnreadableDir(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("test requires non-root: chmod has no effect as root")
+	}
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.json")
 
