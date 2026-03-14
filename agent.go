@@ -60,6 +60,15 @@ func NewYoloAgent() *YoloAgent {
 	baseDir, _ := os.Getwd()
 	execPath, _ := os.Executable()
 
+	// Clear stale subagent results from any prior run so that
+	// listSubagents/readSubagentResult don't return leftover data and the
+	// monotonic ID counter (starting at 0) doesn't collide with old files.
+	if files, err := filepath.Glob(filepath.Join(SubagentDir, "agent_*.json")); err == nil {
+		for _, f := range files {
+			os.Remove(f)
+		}
+	}
+
 	a := &YoloAgent{
 		baseDir:    baseDir,
 		scriptPath: execPath,
