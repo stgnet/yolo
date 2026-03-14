@@ -61,6 +61,23 @@ func TestComposeResponseToEmailWithMockLLM(t *testing.T) {
 	}
 }
 
+// Test composeEmailWithAgent uses mock when llmResponseGenerator is set
+func TestComposeEmailWithAgentMockPath(t *testing.T) {
+	origGen := llmResponseGenerator
+	defer func() { llmResponseGenerator = origGen }()
+
+	llmResponseGenerator = func(prompt string) string {
+		return "AGENT_MOCK: Response via agent path"
+	}
+
+	te := &ToolExecutor{baseDir: t.TempDir(), agent: nil}
+	response := te.composeEmailWithAgent("What's on the todo list?", "Todo question", "user@example.com")
+
+	if !strings.Contains(response, "AGENT_MOCK") {
+		t.Errorf("Expected agent mock response, got: %s", response)
+	}
+}
+
 // Test limitString function
 func TestLimitString(t *testing.T) {
 	testCases := []struct {

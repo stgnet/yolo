@@ -191,11 +191,35 @@ var subagentToolNames = map[string]bool{
 	"gog": true, "web_search": true, "read_webpage": true,
 }
 
+// emailToolNames extends subagentToolNames with todo and knowledge tools
+// so email responses can access the same information as the console agent.
+var emailToolNames = map[string]bool{
+	"read_file": true, "write_file": true, "edit_file": true,
+	"list_files": true, "search_files": true, "run_command": true,
+	"think": true, "make_dir": true, "remove_dir": true,
+	"copy_file": true, "move_file": true, "reddit": true,
+	"gog": true, "web_search": true, "read_webpage": true,
+	"add_todo": true, "complete_todo": true, "delete_todo": true, "list_todos": true,
+}
+
 // SubagentTools returns the ToolDef slice for sub-agents.
 func SubagentTools() []ToolDef {
 	var tools []ToolDef
 	for _, td := range ollamaTools {
 		if subagentToolNames[td.Function.Name] {
+			tools = append(tools, td)
+		}
+	}
+	return tools
+}
+
+// EmailTools returns the ToolDef slice for email response generation.
+// Includes subagent tools plus todo tools so the email responder has
+// the same knowledge and capabilities as the console agent.
+func EmailTools() []ToolDef {
+	var tools []ToolDef
+	for _, td := range ollamaTools {
+		if emailToolNames[td.Function.Name] {
 			tools = append(tools, td)
 		}
 	}
