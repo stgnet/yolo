@@ -461,7 +461,7 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 }
 
 // parseTextToolCalls extracts tool calls from plain-text LLM output when the
-// model does not use native tool_calls. It tries five formats in order and
+// model does not use native tool_calls. It tries seven formats in order and
 // returns on the first that produces results:
 //
 //  1. <tool_call>{"name":"...", "args":{...}}</tool_call>      (JSON)
@@ -469,6 +469,8 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 //  3. [tool_name] {"key":"value"}                              (Bracket)
 //  4. <tool_name>{"key":"value"}</tool_name>                   (Tag)
 //  5. [tool activity]\n[tool_name] => params\n[/tool activity] (Activity block)
+//  6. [tool activity] tool_name(key="value")                   (Inline activity)
+//  7. [tool_name](key="value", ...)                            (Markdown link)
 func (a *YoloAgent) parseTextToolCalls(text string) []ParsedToolCall {
 	var calls []ParsedToolCall
 
@@ -649,6 +651,25 @@ func (a *YoloAgent) parseTextToolCalls(text string) []ParsedToolCall {
 		}
 	}
 
+	// Format 7: [tool_name](key="value", ...) — markdown-link-style tool calls
+	// Some models emit tool calls that look like markdown links, e.g.:
+	//   [run_command](command="git status --porcelain")
+	//   [read_file](path="main.go")
+	if len(calls) == 0 {
+		reFormat7 := regexp.MustCompile(`\[(\w+)\]\(([^)]*)\)`)
+		validToolSet := map[string]bool{}
+		for _, t := range validTools {
+			validToolSet[t] = true
+		}
+		for _, match := range reFormat7.FindAllStringSubmatch(text, -1) {
+			toolName := match[1]
+			if validToolSet[toolName] {
+				args := parseFuncCallArgs(match[2])
+				calls = append(calls, ParsedToolCall{Name: toolName, Args: args})
+			}
+		}
+	}
+
 	return calls
 }
 
@@ -790,6 +811,10 @@ func stripTextToolCalls(text string) string {
 	// Remove bare <function=name>...</function> blocks (without <tool_call> wrapper)
 	reBareFunc := regexp.MustCompile(`(?s)<function=\w+>.*?</function>`)
 	text = reBareFunc.ReplaceAllString(text, "")
+
+	// Remove [tool_name](args) markdown-link-style tool calls (Format 7)
+	reMarkdownLink := regexp.MustCompile(`\[\w+\]\([^)]*\)`)
+	text = reMarkdownLink.ReplaceAllString(text, "")
 
 	// Remove unclosed <tool_call> or <function=name> blocks (no closing tags)
 	reUnclosedToolCall := regexp.MustCompile(`(?s)<tool_call>\s*<function=\w+>.*?\z`)
