@@ -95,18 +95,18 @@ func TestParseTextToolCalls(t *testing.T) {
 			expected: 2,
 		},
 		{
-			name: "format 6 inline run_command",
-			input: `[tool activity] run_command(command="ls -la")`,
+			name:     "format 6 inline run_command",
+			input:    `[tool activity] run_command(command="ls -la")`,
 			expected: 1,
 		},
 		{
-			name: "format 6 inline read_file with multiple args",
-			input: `[tool activity] read_file(path="main.go", limit=100)`,
+			name:     "format 6 inline read_file with multiple args",
+			input:    `[tool activity] read_file(path="main.go", limit=100)`,
 			expected: 1,
 		},
 		{
-			name: "format 6 command with complex value",
-			input: `[tool activity] run_command(command="cd /Users/user/src && ls -la *.go 2>/dev/null")`,
+			name:     "format 6 command with complex value",
+			input:    `[tool activity] run_command(command="cd /Users/user/src && ls -la *.go 2>/dev/null")`,
 			expected: 1,
 		},
 		{
