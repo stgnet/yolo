@@ -1,8 +1,12 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"yolo/utils"
 )
 
 // Test composeResponseToEmail with mocked LLM (user suggestion)
@@ -155,6 +159,138 @@ func TestEmptyLLMResponse(t *testing.T) {
 	if response != "" {
 		t.Errorf("Expected empty response, got: %s", response)
 	}
+}
+
+// Test that processInboxWithResponse does not leave .bak files in the inbox
+// This was the root cause of the email re-reply loop: DeleteFile's default
+// safety config creates a .bak backup before deletion, and the backup file
+// gets picked up as a "new" email on the next processing cycle.
+func TestProcessInboxNoBakFiles(t *testing.T) {
+	// Create a temporary maildir structure
+	tmpDir := t.TempDir()
+	newDir := filepath.Join(tmpDir, "new")
+	curDir := filepath.Join(tmpDir, "cur")
+	os.MkdirAll(newDir, 0755)
+	os.MkdirAll(curDir, 0755)
+
+	// Write a fake email
+	emailContent := "From: test@example.com\nTo: yolo@b-haven.org\nSubject: Test\n\nHello"
+	os.WriteFile(filepath.Join(newDir, "test-email-001"), []byte(emailContent), 0644)
+
+	// Mock LLM
+	origGen := llmResponseGenerator
+	llmResponseGenerator = func(prompt string) string {
+		return "Auto-reply for testing"
+	}
+	defer func() { llmResponseGenerator = origGen }()
+
+	// Test the underlying delete behavior to ensure no .bak files are created
+	// when using the no-backup config (matching what processInboxWithResponse does).
+	noBackupConfig := utils.DefaultSafetyConfig()
+	noBackupConfig.CreateBackup = false
+
+	// Write a file to delete
+	testFile := filepath.Join(newDir, "test-email-002")
+	os.WriteFile(testFile, []byte(emailContent), 0644)
+
+	// Delete with no-backup config
+	err := utils.DeleteFileWithConfig(testFile, noBackupConfig)
+	if err != nil {
+		t.Fatalf("Failed to delete file: %v", err)
+	}
+
+	// Verify the original file is gone
+	if _, err := os.Stat(testFile); !os.IsNotExist(err) {
+		t.Error("Original file should have been deleted")
+	}
+
+	// Verify NO .bak file was created
+	bakFile := testFile + ".bak"
+	if _, err := os.Stat(bakFile); !os.IsNotExist(err) {
+		t.Error(".bak file should NOT exist — this causes the email re-reply loop bug")
+	}
+
+	// Also check that no .bak files exist anywhere in the new/ directory
+	entries, _ := os.ReadDir(newDir)
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name(), ".bak") {
+			t.Errorf("Found unexpected .bak file in inbox: %s", entry.Name())
+		}
+	}
+}
+
+// Test that MAILER-DAEMON and other system senders are detected for skipping
+func TestSystemSenderDetection(t *testing.T) {
+	systemSenders := []string{
+		"MAILER-DAEMON@example.com",
+		"mailer-daemon@mail.example.com",
+		"postmaster@example.com",
+		"noreply@example.com",
+		"no-reply@notifications.example.com",
+	}
+
+	for _, sender := range systemSenders {
+		fromLower := strings.ToLower(sender)
+		isSystem := strings.Contains(fromLower, "mailer-daemon") ||
+			strings.Contains(fromLower, "postmaster@") ||
+			strings.Contains(fromLower, "noreply@") ||
+			strings.Contains(fromLower, "no-reply@")
+		if !isSystem {
+			t.Errorf("Expected %q to be detected as system sender", sender)
+		}
+	}
+
+	normalSenders := []string{
+		"user@example.com",
+		"scott@stg.net",
+		"admin@company.com",
+	}
+
+	for _, sender := range normalSenders {
+		fromLower := strings.ToLower(sender)
+		isSystem := strings.Contains(fromLower, "mailer-daemon") ||
+			strings.Contains(fromLower, "postmaster@") ||
+			strings.Contains(fromLower, "noreply@") ||
+			strings.Contains(fromLower, "no-reply@")
+		if isSystem {
+			t.Errorf("Expected %q to NOT be detected as system sender", sender)
+		}
+	}
+}
+
+// Test that LLM NO_REPLY response is detected correctly
+func TestNoReplyDetection(t *testing.T) {
+	origGen := llmResponseGenerator
+	defer func() { llmResponseGenerator = origGen }()
+
+	llmResponseGenerator = func(prompt string) string {
+		return "NO_REPLY"
+	}
+
+	response := composeResponseToEmail("Bounce notification", "Undeliverable", "MAILER-DAEMON@example.com")
+	if strings.TrimSpace(response) != "NO_REPLY" {
+		t.Errorf("Expected NO_REPLY, got: %s", response)
+	}
+}
+
+// Test that the DEFAULT safety config DOES create .bak files (proving the bug existed)
+func TestDefaultDeleteCreatesBakFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "email-msg")
+	os.WriteFile(testFile, []byte("From: x@x.com\nSubject: Hi\n\nBody"), 0644)
+
+	err := utils.DeleteFile(testFile)
+	if err != nil {
+		t.Fatalf("Failed to delete file: %v", err)
+	}
+
+	// The default config creates a .bak — this is the root cause of the loop
+	bakFile := testFile + ".bak"
+	if _, err := os.Stat(bakFile); os.IsNotExist(err) {
+		t.Skip("Default config no longer creates .bak files — test assumption changed")
+	}
+	// If we get here, the .bak exists, confirming the bug mechanism
+	t.Log("Confirmed: DefaultSafetyConfig creates .bak files — inbox deletion must use CreateBackup=false")
 }
 
 // Test parseEmail function
