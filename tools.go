@@ -154,6 +154,10 @@ var ollamaTools = []ToolDef{
 		map[string]ToolParam{
 			"title": {Type: "string", Description: "Title of the todo item to complete (required)"},
 		}, []string{"title"}),
+	toolDef("delete_todo", "Delete a todo item by title (removes it entirely)",
+		map[string]ToolParam{
+			"title": {Type: "string", Description: "Title of the todo item to delete (required)"},
+		}, []string{"title"}),
 	toolDef("list_todos", "List all todos (pending and completed) from .todo.json file",
 		map[string]ToolParam{},
 		nil),
@@ -297,6 +301,8 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 		return t.addTodo(args)
 	case "complete_todo":
 		return t.completeTodo(args)
+	case "delete_todo":
+		return t.deleteTodo(args)
 	case "list_todos":
 		return t.listTodosTool(args)
 	default:
