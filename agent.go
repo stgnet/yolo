@@ -103,6 +103,10 @@ func (a *YoloAgent) getSystemPrompt() string {
 	prompt = strings.ReplaceAll(prompt, "{timestamp}", time.Now().Format(time.RFC3339))
 	prompt = strings.ReplaceAll(prompt, "{knowledgeBase}", kbSection)
 
+	// Inject pending todos so the agent is aware of outstanding work
+	todoContext := todoList.RenderPendingContext()
+	prompt += todoContext
+
 	return prompt
 }
 
