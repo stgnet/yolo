@@ -941,10 +941,11 @@ func (t *ToolExecutor) runCommand(args map[string]any) string {
 	if result == "" {
 		return "(no output)"
 	}
-	// Strip standalone \r to prevent line overwrites in terminal output.
-	// \r\n → \n (preserving real newlines), then remove remaining \r.
-	result = strings.ReplaceAll(result, "\r\n", "\n")
-	result = strings.ReplaceAll(result, "\r", "")
+	// Sanitize command output to prevent terminal escape sequences from
+	// corrupting the display. This strips cursor movement, screen clearing,
+	// OSC sequences, binary data, and other harmful escapes while preserving
+	// printable text and safe color codes.
+	result = sanitizeOutput(result)
 	return result
 }
 

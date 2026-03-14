@@ -301,13 +301,12 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 		content := msg.Content
 		tcList := msg.ToolCalls
 
-		// Strip carriage returns from LLM output to prevent line overwrites.
-		// \r\n becomes \n (rawWrite will re-add \r\n for raw mode);
-		// standalone \r is simply removed.
-		// Tab expansion is handled by OutputPrintInline (for the UI path)
-		// so the cursor tracker and terminal agree on column positions.
-		thinking = strings.ReplaceAll(thinking, "\r", "")
-		content = strings.ReplaceAll(content, "\r", "")
+		// Sanitize LLM output to prevent terminal escape sequences from
+		// corrupting the display. This strips cursor movement, screen
+		// clearing, OSC sequences, and other harmful escapes while
+		// preserving color/style codes and printable text.
+		thinking = sanitizeOutput(thinking)
+		content = sanitizeOutput(content)
 
 		// Handle thinking tokens
 		if thinking != "" {
