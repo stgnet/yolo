@@ -24,13 +24,12 @@ func parseEmail(raw string) Email {
 
 	lines := strings.Split(raw, "\n")
 	bodyStarted := false
-	inBody := false
 	var bodyLines []string
 
 	for _, line := range lines {
 		// Check for header fields (but skip the raw email envelope from maildir)
-		if !bodyStarted && (strings.HasPrefix(line, "Date:") || strings.HasPrefix(line, "From:") || 
-			strings.HasPrefix(line, "To:") || strings.HasPrefix(line, "Subject:") || 
+		if !bodyStarted && (strings.HasPrefix(line, "Date:") || strings.HasPrefix(line, "From:") ||
+			strings.HasPrefix(line, "To:") || strings.HasPrefix(line, "Subject:") ||
 			strings.HasPrefix(line, "Content-Type:") || strings.HasPrefix(line, "MIME-Version:")) {
 			if strings.HasPrefix(line, "From: ") || strings.HasPrefix(line, "From\t") {
 				parts := strings.SplitN(line, ":", 2)
@@ -70,11 +69,6 @@ func parseEmail(raw string) Email {
 
 			if strings.HasPrefix(line, "Content-Type:") && strings.Contains(line, "text/plain") {
 				// This is the first content-type indicating body starts after blank line
-				inBody = true
-			} else if strings.HasPrefix(line, "Content-Type: multipart") || 
-					  (strings.HasPrefix(line, "--=") && len(bodyLines) == 0) {
-				// Skip multipart headers and start collecting from first text/plain part
-				inBody = true
 			}
 			continue
 		}
@@ -90,27 +84,6 @@ func parseEmail(raw string) Email {
 	}
 
 	email.Body = strings.Join(bodyLines, "\n")
-
-	// If no body was extracted, try alternative extraction from raw content
-	if email.Body == "" && len(bodyLines) == 0 {
-		// Try to extract after the first Content-Type line that contains text/plain
-		inContentType := false
-		for _, line := range lines {
-			if strings.Contains(line, "Content-Type:") && (strings.Contains(line, "text/plain") || 
-				strings.HasPrefix(line, "Content-Type: multipart")) {
-				inContentType = true
-			} else if inContentType && (line == "" || strings.HasPrefix(line, "--")) {
-				// Skip the blank line after Content-Type and find actual content
-				continue
-			} else if inContentType && len(bodyLines) == 0 && !strings.Contains(line, "Content-Type:") {
-				bodyStarted = true
-				bodyLines = append(bodyLines, line)
-			} else if bodyStarted {
-				bodyLines = append(bodyLines, line)
-			}
-		}
-		email.Body = strings.Join(bodyLines, "\n")
-	}
 
 	return email
 }
