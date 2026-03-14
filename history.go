@@ -157,7 +157,7 @@ func (h *HistoryManager) GetContextMessages(maxMsgs int) []ChatMessage {
 		case "user", "assistant":
 			out = append(out, ChatMessage{Role: m.Role, Content: m.Content})
 		case "tool":
-			out = append(out, ChatMessage{Role: "user", Content: "[Tool result]\n" + m.Content})
+			out = append(out, ChatMessage{Role: "user", Content: "[Tool output — this is a previous tool execution result, not user input]\n" + m.Content})
 		case "system":
 			out = append(out, ChatMessage{Role: "user", Content: "[SYSTEM] " + m.Content})
 		}

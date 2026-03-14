@@ -50,9 +50,9 @@ var ollamaTools = []ToolDef{
 			"old_text": {Type: "string", Description: "Text to find"},
 			"new_text": {Type: "string", Description: "Replacement text"},
 		}, []string{"path", "old_text", "new_text"}),
-	toolDef("list_files", "List files matching a glob pattern in the working directory",
+	toolDef("list_files", "List files matching a glob pattern. Use **/*.ext to search recursively; plain *.ext only matches the top-level directory.",
 		map[string]ToolParam{
-			"pattern": {Type: "string", Description: "Glob pattern (default: *)"},
+			"pattern": {Type: "string", Description: "Glob pattern (default: *). Use **/*.ext for recursive matching."},
 		}, nil),
 	toolDef("search_files", "Search file contents using regex",
 		map[string]ToolParam{
@@ -561,13 +561,21 @@ func (t *ToolExecutor) listFiles(args map[string]any) string {
 
 	items := append(dirs, files...)
 	if len(items) == 0 {
+		if !strings.Contains(pattern, "**") && strings.Contains(pattern, ".") {
+			return fmt.Sprintf("(no matching files or directories — note: '%s' only matches the top-level directory; use '**/%s' to search recursively)", pattern, pattern)
+		}
 		return "(no matching files or directories)"
 	}
 
+	totalItems := len(items)
 	header := fmt.Sprintf("(%d file(s), %d dir(s))", len(files), len(dirs))
 	limit := 200
-	if len(items) > limit {
+	if totalItems > limit {
 		items = items[:limit]
+		header += fmt.Sprintf(" [showing first %d of %d — results truncated]", limit, totalItems)
+	}
+	if !strings.Contains(pattern, "**") && !strings.Contains(pattern, string(filepath.Separator)) {
+		header += fmt.Sprintf(" [top-level only — use '**/%s' for recursive]", pattern)
 	}
 	return header + "\n" + strings.Join(items, "\n")
 }
@@ -883,6 +891,7 @@ func (t *ToolExecutor) searchFiles(args map[string]any) string {
 		return nil
 	})
 
+	truncated := err == io.EOF
 	if err != nil && err != io.EOF {
 		// Walk errors are mostly ignored
 	}
@@ -890,7 +899,11 @@ func (t *ToolExecutor) searchFiles(args map[string]any) string {
 	if len(hits) == 0 {
 		return "No matches found"
 	}
-	return strings.Join(hits, "\n")
+	result := strings.Join(hits, "\n")
+	if truncated {
+		result += fmt.Sprintf("\n[results truncated at %d matches — narrow your query or pattern for more specific results]", len(hits))
+	}
+	return result
 }
 
 func (t *ToolExecutor) runCommand(args map[string]any) string {
