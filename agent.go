@@ -60,6 +60,15 @@ func NewYoloAgent() *YoloAgent {
 	baseDir, _ := os.Getwd()
 	execPath, _ := os.Executable()
 
+	// Clear stale subagent results from any prior run so that
+	// listSubagents/readSubagentResult don't return leftover data and the
+	// monotonic ID counter (starting at 0) doesn't collide with old files.
+	if files, err := filepath.Glob(filepath.Join(SubagentDir, "agent_*.json")); err == nil {
+		for _, f := range files {
+			os.Remove(f)
+		}
+	}
+
 	a := &YoloAgent{
 		baseDir:    baseDir,
 		scriptPath: execPath,
@@ -837,6 +846,18 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 	}
 	os.MkdirAll(SubagentDir, 0o755)
 	resultFile := filepath.Join(SubagentDir, fmt.Sprintf("agent_%d.json", aid))
+
+	// Write an initial "in-progress" result file so the parent agent can
+	// see that this subagent exists and is still working.
+	initialData, _ := json.MarshalIndent(map[string]any{
+		"id":     aid,
+		"task":   task,
+		"model":  useModel,
+		"status": "in-progress",
+		"result": "",
+		"ts":     time.Now().Format(time.RFC3339),
+	}, "", "  ")
+	os.WriteFile(resultFile, initialData, 0o644)
 
 	go func() {
 		// Create a dedicated window for this subagent
