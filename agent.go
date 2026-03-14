@@ -344,6 +344,29 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		toolCalls = deduplicateToolCalls(toolCalls)
 
 		if len(toolCalls) == 0 {
+			// Detect hallucinated tool activity: the model emitted
+			// [tool activity] markers but none matched a valid tool
+			// call format.  Feed an error back so it can self-correct
+			// instead of silently treating the output as final text.
+			if strings.Contains(result.DisplayText, "[tool activity]") {
+				cprint(Yellow, "\n  [agent produced unrecognized tool call format — sending correction]\n")
+				roundMsgs = append(roundMsgs, ChatMessage{
+					Role:    "assistant",
+					Content: result.ContentText,
+				})
+				roundMsgs = append(roundMsgs, ChatMessage{
+					Role: "user",
+					Content: "Error: Your tool calls were not recognized. You used '[tool activity]' markers " +
+						"followed by natural language descriptions instead of actual tool call syntax. " +
+						"To call tools, use the proper format, for example:\n" +
+						"  [tool activity] read_file(path=\"tools.go\", offset=100, limit=100)\n" +
+						"  [tool activity] search_files(pattern=\"check_inbox\", path=\".\")\n" +
+						"Do NOT write descriptions like '[tool activity] Reading lines 100-200'. " +
+						"Use the actual tool function name with parameters. " +
+						"Available tools: " + strings.Join(validTools, ", "),
+				})
+				continue
+			}
 			finalText = result.DisplayText
 			break
 		}
