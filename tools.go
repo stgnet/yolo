@@ -1038,7 +1038,7 @@ func (t *ToolExecutor) summarizeSubagents(args map[string]any) string {
 	}
 
 	if len(files) == 0 {
-		return "No subagents found"
+		return "Subagent Summary (0 total):\n  Completed: 0\n  Errors: 0\n\nRecent subagents:\n(no subagents running)"
 	}
 
 	completed := 0
