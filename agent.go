@@ -838,6 +838,18 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 	os.MkdirAll(SubagentDir, 0o755)
 	resultFile := filepath.Join(SubagentDir, fmt.Sprintf("agent_%d.json", aid))
 
+	// Write an initial "in-progress" result file so the parent agent can
+	// see that this subagent exists and is still working.
+	initialData, _ := json.MarshalIndent(map[string]any{
+		"id":     aid,
+		"task":   task,
+		"model":  useModel,
+		"status": "in-progress",
+		"result": "",
+		"ts":     time.Now().Format(time.RFC3339),
+	}, "", "  ")
+	os.WriteFile(resultFile, initialData, 0o644)
+
 	go func() {
 		// Create a dedicated window for this subagent
 		if globalUI != nil {
