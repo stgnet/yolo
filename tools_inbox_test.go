@@ -5,8 +5,6 @@ import (
 	"testing"
 )
 
-var llmResponseGenerator = func(prompt string) string { return "default response" }
-
 // Test composeResponseToEmail with mocked LLM (user suggestion)
 func TestComposeResponseToEmailWithMockLLM(t *testing.T) {
 	// Save original generator function
