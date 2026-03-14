@@ -102,6 +102,30 @@ func TestReadSubagentResult(t *testing.T) {
 	if !strings.Contains(result, "Sub-agent #77777 Result:") {
 		t.Errorf("Expected to find ID 77777 in output, got: %s", result)
 	}
+
+	// Test with in-progress subagent
+	inProgressData := map[string]any{
+		"id":     88888,
+		"task":   "still running task",
+		"model":  "test-model",
+		"status": "in-progress",
+		"result": "",
+		"ts":     "2024-01-01T00:00:00Z",
+	}
+	ipData, _ := json.MarshalIndent(inProgressData, "", "  ")
+	ipFile := filepath.Join(subagentDir, "agent_88888.json")
+	if err := os.WriteFile(ipFile, ipData, 0644); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(ipFile)
+
+	result = executor.readSubagentResult(map[string]any{"id": 88888})
+	if !strings.Contains(result, "in-progress") {
+		t.Errorf("Expected 'in-progress' status in output, got: %s", result)
+	}
+	if !strings.Contains(result, "still running, check back later") {
+		t.Errorf("Expected 'still running' message for in-progress subagent, got: %s", result)
+	}
 }
 
 // TestSummarizeSubagents tests the summarize_subagents tool
