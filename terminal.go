@@ -12,6 +12,122 @@ import (
 	"golang.org/x/term"
 )
 
+// ─── Output Sanitization ────────────────────────────────────────────
+
+// sanitizeOutput strips terminal escape sequences and control characters from
+// external text (LLM output, tool results) that could corrupt terminal state.
+// It preserves printable text, newlines, tabs, and carriage returns.
+// ANSI CSI SGR sequences (colors/styles, ending in 'm') are allowed through
+// since we use them for our own display, but all other CSI sequences (cursor
+// movement, screen clearing, scroll region changes) are stripped.
+func sanitizeOutput(s string) string {
+	var buf strings.Builder
+	buf.Grow(len(s))
+	i := 0
+	for i < len(s) {
+		b := s[i]
+
+		// Check for ESC (0x1B) - start of escape sequence
+		if b == 0x1B && i+1 < len(s) {
+			next := s[i+1]
+			switch {
+			case next == '[': // CSI sequence: \033[ ... <final byte>
+				// Find the end of the CSI sequence
+				j := i + 2
+				for j < len(s) && s[j] >= 0x20 && s[j] <= 0x3F {
+					j++ // parameter bytes and intermediate bytes
+				}
+				if j < len(s) && s[j] >= 0x40 && s[j] <= 0x7E {
+					finalByte := s[j]
+					if finalByte == 'm' {
+						// SGR (Select Graphic Rendition) - allow colors/styles
+						buf.WriteString(s[i : j+1])
+					}
+					// All other CSI sequences (cursor movement, clear screen,
+					// scroll regions, etc.) are silently dropped
+					i = j + 1
+					continue
+				}
+				// Malformed CSI - drop the ESC and [
+				i += 2
+				continue
+
+			case next == ']': // OSC sequence: \033] ... (ST or BEL)
+				// Skip until String Terminator (\033\\) or BEL (0x07)
+				j := i + 2
+				for j < len(s) {
+					if s[j] == 0x07 { // BEL terminates OSC
+						j++
+						break
+					}
+					if s[j] == 0x1B && j+1 < len(s) && s[j+1] == '\\' { // ST
+						j += 2
+						break
+					}
+					j++
+				}
+				i = j
+				continue
+
+			case next == 'P' || next == 'X' || next == '^' || next == '_':
+				// DCS, SOS, PM, APC sequences - skip until ST
+				j := i + 2
+				for j < len(s) {
+					if s[j] == 0x1B && j+1 < len(s) && s[j+1] == '\\' {
+						j += 2
+						break
+					}
+					j++
+				}
+				i = j
+				continue
+
+			default:
+				// Other ESC + single char sequences (SS2, SS3, etc.) - drop them
+				i += 2
+				continue
+			}
+		}
+
+		// Allow printable ASCII, newline, tab, carriage return
+		if b == '\n' || b == '\t' || b == '\r' || (b >= 0x20 && b < 0x7F) {
+			buf.WriteByte(b)
+			i++
+			continue
+		}
+
+		// Allow valid UTF-8 multibyte sequences
+		if b >= 0xC0 && b < 0xFE {
+			size := 2
+			if b >= 0xE0 {
+				size = 3
+			}
+			if b >= 0xF0 {
+				size = 4
+			}
+			if i+size <= len(s) {
+				valid := true
+				for k := 1; k < size; k++ {
+					if s[i+k]&0xC0 != 0x80 {
+						valid = false
+						break
+					}
+				}
+				if valid {
+					buf.WriteString(s[i : i+size])
+					i += size
+					continue
+				}
+			}
+		}
+
+		// Drop all other control characters and invalid bytes
+		// (including BEL 0x07, BS 0x08, SO 0x0E, SI 0x0F, etc.)
+		i++
+	}
+	return buf.String()
+}
+
 // ─── Agent Window Constants ─────────────────────────────────────────
 
 const (
