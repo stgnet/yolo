@@ -179,18 +179,16 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 			response = r.response
 		case <-time.After(30 * time.Second):
 			output.WriteString(fmt.Sprintf("⚠️ Warning: Email response generation timed out after 30 seconds\n"))
-			// Mark as read but don't delete if we failed to respond
-			curPath := fmt.Sprintf("/var/mail/b-haven.org/yolo/cur/%s", filename)
-			utils.MoveFile(filePath, curPath)
+			// Leave email in inbox for retry on next processing run
+			output.WriteString("⚠️ Email left in inbox for retry.\n")
 			output.WriteString("---\n\n")
 			continue
 		}
 
 		if strings.HasPrefix(response, "[Error generating response:") {
 			output.WriteString(fmt.Sprintf("⚠️ Warning: Failed to generate response for this email\n"))
-			// Mark as read but don't delete if we failed to respond
-			curPath := fmt.Sprintf("/var/mail/b-haven.org/yolo/cur/%s", filename)
-			utils.MoveFile(filePath, curPath)
+			// Leave email in inbox for retry on next processing run
+			output.WriteString("⚠️ Email left in inbox for retry.\n")
 			output.WriteString("---\n\n")
 			continue
 		}
@@ -213,16 +211,19 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 		result := t.sendEmail(emailArgs)
 		if strings.HasPrefix(result, "Error:") {
 			output.WriteString(fmt.Sprintf("❌ Error sending response: %s\n", result))
+			// Do not delete the original email if we failed to send a response;
+			// leave it in the inbox so it can be retried on the next run.
+			output.WriteString("⚠️ Original email preserved in inbox for retry.\n")
 		} else {
 			output.WriteString("✓ Response sent successfully\n")
-		}
 
-		// Delete original email from inbox (move to trash or remove)
-		err = utils.DeleteFile(filePath)
-		if err != nil {
-			output.WriteString(fmt.Sprintf("Warning: Could not delete processed email: %v\n", err))
-		} else {
-			output.WriteString("✓ Original email removed\n")
+			// Only delete original email after response was sent successfully
+			err = utils.DeleteFile(filePath)
+			if err != nil {
+				output.WriteString(fmt.Sprintf("Warning: Could not delete processed email: %v\n", err))
+			} else {
+				output.WriteString("✓ Original email removed\n")
+			}
 		}
 
 		output.WriteString("---\n\n")
