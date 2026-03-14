@@ -3,13 +3,11 @@
 package terminalui
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"regexp"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"golang.org/x/term"
@@ -153,14 +151,32 @@ var colorPrefixes = map[string]string{
 	"gray":    Gray,
 }
 
+// truncateString truncates a string to maxChars length, adding "..." if truncated.
+func truncateString(s string, maxChars int) string {
+	if len(s) <= maxChars {
+		return s
+	}
+	// Count runes to handle multi-byte characters properly
+	runes := []rune(s)
+	if len(runes) <= maxChars {
+		return s
+	}
+	return string(runes[:maxChars-3]) + "..."
+}
+
+// Window represents a terminal output window for buffering and rendering.
+type Window struct {
+	Text strings.Builder
+}
+
 // ─── Subagent Window Constants ──────────────────
 
 const (
-	SubagentContentRows = 4
-	SubagentWindowRows  = SubagentContentRows + 1
-	MaxVisibleSubWindows = 3
+	SubagentContentRows   = 4
+	SubagentWindowRows    = SubagentContentRows + 1
+	MaxVisibleSubWindows  = 3
 	SubagentWindowTimeout = 300 * time.Second
-	MinScrollRows       = 4
+	MinScrollRows         = 4
 )
 
 // AgentWindow represents a subagent's output window displayed at the top.
@@ -184,8 +200,8 @@ type TerminalUI struct {
 	scrollEnd     int
 	agentRows     int
 	lastRows      int
-	outWin        *term.Window
-	termWin       *term.Window
+	outWin        *Window
+	termWin       *Window
 	mu            sync.Mutex
 	cond          *sync.Cond
 	subagents     map[int]*AgentWindow
@@ -196,18 +212,18 @@ type TerminalUI struct {
 // NewTerminalUI creates a new TerminalUI instance.
 func NewTerminalUI() *TerminalUI {
 	return &TerminalUI{
-		rows:        24,
-		cols:        80,
-		outRow:      1,
-		outCol:      1,
-		promptRow:   24,
-		inputRow:    23,
+		rows:         24,
+		cols:         80,
+		outRow:       1,
+		outCol:       1,
+		promptRow:    24,
+		inputRow:     23,
 		subagentRows: 0,
-		scrollEnd:   20,
-		agentRows:   2,
-		outWin:      &term.Window{},
-		termWin:     &term.Window{},
-		subagents:   make(map[int]*AgentWindow),
+		scrollEnd:    20,
+		agentRows:    2,
+		outWin:       &Window{},
+		termWin:      &Window{},
+		subagents:    make(map[int]*AgentWindow),
 	}
 }
 
@@ -260,8 +276,8 @@ func (ui *TerminalUI) AddSubagentWindow(id int, label string) {
 	defer ui.mu.Unlock()
 
 	ui.subagents[id] = &AgentWindow{
-		ID:        id,
-		Label:     label,
+		ID:         id,
+		Label:      label,
 		TextBuffer: strings.Builder{},
 	}
 	ui.subagentOrder = append(ui.subagentOrder, id)
@@ -368,7 +384,7 @@ func (ui *TerminalUI) redrawSubagentWindows() {
 		subagentText := truncateString(win.TextBuffer.String(), SubagentContentRows*ui.cols)
 		lines := strings.Split(subagentText, "\n")
 		for _, line := range lines {
-			if len(textBuf.Bytes()) >= SubagentContentRows*ui.cols {
+			if len(textBuf.String()) >= SubagentContentRows*ui.cols {
 				break
 			}
 			textBuf.WriteString(Bold + Gray + truncateString(line, ui.cols-2) + Reset)

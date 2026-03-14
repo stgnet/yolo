@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"golang.org/x/term"
@@ -120,8 +119,8 @@ func (im *InputManager) SyncToUI(ui interface{}) {
 // syncAndRedraw updates the UI's copy and redraws the input area.
 func (im *InputManager) syncAndRedraw() {
 	im.mu.Lock()
-	buf := make([]byte, len(im.buf))
-	copy(buf, im.buf)
+	copyBuf := make([]byte, len(im.buf))
+	copy(copyBuf, im.buf)
 	im.mu.Unlock()
 
 	// In this split architecture, UI update is handled by the UI layer
@@ -131,7 +130,7 @@ func (im *InputManager) syncAndRedraw() {
 // bufferModeRedraw redraws the current input line in buffer mode.
 func (im *InputManager) bufferModeRedraw() {
 	im.mu.Lock()
-	buf := string(im.buf)
+	_ = string(im.buf) // Convert to string but don't store
 	im.mu.Unlock()
 	// UI update handled separately
 }
@@ -224,7 +223,7 @@ func (im *InputManager) processLoop() {
 				}
 				sendTimer.Reset(im.sendDelay)
 			}
-			lastKeystokeTime = now
+			lastKeystrokeTime = now
 
 			im.mu.Lock()
 
@@ -244,14 +243,7 @@ func (im *InputManager) processLoop() {
 				im.sendLine()
 				continue
 
-			case 0x7F: // Backspace (same as DEL)
-				fallthrough
-			case '\x7f':
-				im.handleBackspace()
-				im.mu.Unlock()
-				continue
-
-			case '\x08': // Backspace key
+			case '\x08': // Backspace/DEL keys
 				im.handleBackspace()
 				im.mu.Unlock()
 				continue
@@ -264,8 +256,6 @@ func (im *InputManager) processLoop() {
 			case 0x1C: // Ctrl-\ (same as \r for our purposes)
 				fallthrough
 			case 0x1D: // Ctrl-]
-				fallthrough
-			case '\x1d':
 				im.handleEnter('\r')
 				im.mu.Unlock()
 				continue
@@ -288,7 +278,7 @@ func (im *InputManager) processLoop() {
 
 			im.mu.Unlock()
 
-		case err := <-im.rawErr:
+		case <-im.rawErr:
 			im.Lines <- InputLine{OK: false}
 			return
 

@@ -18,14 +18,14 @@ import (
 type OllamaClient struct {
 	baseURL  string
 	client   *http.Client
-	ctxCache map[string]int      // cached context lengths per model
-	cacheMu  sync.RWMutex        // protects ctxCache from concurrent access
-	timeout  time.Duration       // HTTP request timeout
+	ctxCache map[string]int // cached context lengths per model
+	cacheMu  sync.RWMutex   // protects ctxCache from concurrent access
+	timeout  time.Duration  // HTTP request timeout
 }
 
 // ClientConfig holds configuration for OllamaClient.
 type ClientConfig struct {
-	BaseURL    string
+	BaseURL     string
 	HTTPTimeout time.Duration
 }
 
@@ -179,32 +179,12 @@ func (c *OllamaClient) ListModelsWithContext() ([]ModelInfo, error) {
 	result := make([]ModelInfo, len(models))
 	for i, name := range models {
 		result[i] = ModelInfo{
-			Name:            name,
-			ContextLength:   c.GetModelContextLength(name),
+			Name:          name,
+			ContextLength: c.GetModelContextLength(name),
 		}
 	}
 
 	return result, nil
-}
-
-// ChatOptions holds options for chat requests.
-type ChatOptions struct {
-	Model        string
-	Stream       bool
-	SystemPrompt string
-	Messages     []ChatMessage
-	Tools        []ToolDef
-	CtxLen       int
-	Timeout      time.Duration
-}
-
-// ChatResponse is the complete response from a streaming chat.
-type ChatResponse struct {
-	Message   ChatMessage
-	UsedCtx   int
-	Done      bool
-	Error     error
-	RawStream *bufio.Reader // For reading raw stream if needed
 }
 
 // Chat streams messages to Ollama and returns a channel of responses.
@@ -221,7 +201,7 @@ func (c *OllamaClient) Chat(ctx context.Context, opts ChatOptions) (<-chan ChatR
 			"num_ctx": opts.CtxLen,
 		},
 	}
-	
+
 	if len(opts.Tools) > 0 {
 		payload.Tools = opts.Tools
 	}
@@ -249,11 +229,11 @@ func (c *OllamaClient) Chat(ctx context.Context, opts ChatOptions) (<-chan ChatR
 	}
 
 	ch := make(chan ChatResponse, 100)
-	
+
 	go func() {
 		defer resp.Body.Close()
 		scanner := bufio.NewScanner(resp.Body)
-		
+
 		for scanner.Scan() {
 			select {
 			case <-ctx.Done():
@@ -269,7 +249,7 @@ func (c *OllamaClient) Chat(ctx context.Context, opts ChatOptions) (<-chan ChatR
 				}
 
 				ch <- ChatResponse{
-					Message:  line.Message,
+					Message:   line.Message,
 					UsedCtx:   line.UsedContext,
 					Done:      line.Done,
 					Error:     nil,
@@ -342,10 +322,4 @@ func (c *OllamaClient) ChatNonStreaming(ctx context.Context, opts ChatOptions) (
 	}
 
 	return &result.Message, result.UsedContext, nil
-}
-
-// ModelInfo contains information about an Ollama model.
-type ModelInfo struct {
-	Name          string `json:"name"`
-	ContextLength int    `json:"context_length"`
 }

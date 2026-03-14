@@ -12,39 +12,39 @@ import (
 
 // HistoryMessage represents a single message in the conversation.
 type HistoryMessage struct {
-	Role       string `json:"role"`
-	Content    string `json:"content"`
-	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
-	Timestamp  string `json:"timestamp"`
+	Role      string     `json:"role"`
+	Content   string     `json:"content"`
+	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
+	Timestamp string     `json:"timestamp"`
 }
 
 // ToolCall represents a tool call in the history.
 type ToolCall struct {
-	ID       string                 `json:"id"`
-	Function map[string]interface{} `json:"function"`
+	ID        string                 `json:"id"`
+	Function  map[string]interface{} `json:"function"`
 	Arguments map[string]interface{} `json:"arguments,omitempty"`
 }
 
 // HistoryLog represents an entry in the evolution log.
 type HistoryLogEntry struct {
-	Time      string   `json:"time"`
-	Type      string   `json:"type"`
-	Message   string   `json:"message"`
-	Duration  float64  `json:"duration,omitempty"`
+	Time     string  `json:"time"`
+	Type     string  `json:"type"`
+	Message  string  `json:"message"`
+	Duration float64 `json:"duration,omitempty"`
 }
 
 // HistoryData is the complete history structure.
 type HistoryData struct {
-	Messages    []HistoryMessage `json:"messages"`
+	Messages    []HistoryMessage  `json:"messages"`
 	Evolution   []HistoryLogEntry `json:"evolution"`
-	LastUpdated string `json:"last_updated"`
-	Model       string `json:"model,omitempty"`
+	LastUpdated string            `json:"last_updated"`
+	Model       string            `json:"model,omitempty"`
 }
 
 // HistoryManager manages persistent conversation history.
 type HistoryManager struct {
-	mu     sync.RWMutex
-	data   HistoryData
+	mu       sync.RWMutex
+	data     HistoryData
 	filePath string
 }
 
@@ -205,9 +205,9 @@ func (h *HistoryManager) Stats() map[string]interface{} {
 	defer h.mu.RUnlock()
 
 	return map[string]interface{}{
-		"total_messages":  len(h.data.Messages),
-		"total_logs":      len(h.data.Evolution),
-		"last_updated":    h.data.LastUpdated,
-		"model":           h.data.Model,
+		"total_messages": len(h.data.Messages),
+		"total_logs":     len(h.data.Evolution),
+		"last_updated":   h.data.LastUpdated,
+		"model":          h.data.Model,
 	}
 }

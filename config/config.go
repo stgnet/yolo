@@ -104,7 +104,7 @@ const (
 
 // YoloConfigData is the top-level JSON structure for config.json.
 type YoloConfigData struct {
-	Version      int  `json:"version"`
+	Version      int    `json:"version"`
 	Model        string `json:"model,omitempty"`         // currently selected Ollama model
 	TerminalMode bool   `json:"terminal_mode,omitempty"` // true = classic split-screen UI; false (default) = buffer mode
 }
