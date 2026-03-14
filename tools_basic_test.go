@@ -252,20 +252,6 @@ func TestExecuteListFiles(t *testing.T) {
 	}
 }
 
-func containsString(s, substr string) bool {
-	return len(s) > 0 && len(substr) > 0 && (s == substr || (len(s) > len(substr) && (s[:len(substr)] == substr || containsInJSON(s, substr))))
-}
-
-func containsInJSON(jsonStr, substr string) bool {
-	// Simple check for substring in JSON output
-	for i := 0; i <= len(jsonStr)-len(substr); i++ {
-		if jsonStr[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
-
 // TestExecuteSearchFiles tests the search_files action in Execute
 func TestExecuteSearchFiles(t *testing.T) {
 	dir := t.TempDir()
