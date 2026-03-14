@@ -123,6 +123,40 @@ func TestProcessInboxWorkflow(t *testing.T) {
 	}
 }
 
+// Test that LLM error responses are detected correctly
+func TestLLMErrorResponseDetection(t *testing.T) {
+	// Save original generator
+	origGen := llmResponseGenerator
+	defer func() { llmResponseGenerator = origGen }()
+
+	// Simulate LLM returning an error string
+	llmResponseGenerator = func(prompt string) string {
+		return "[Error generating response: connection refused]"
+	}
+
+	response := composeResponseToEmail("Test body", "Test Subject", "test@example.com")
+
+	if !strings.HasPrefix(response, "[Error generating response:") {
+		t.Errorf("Expected error prefix in response, got: %s", response)
+	}
+}
+
+// Test that empty LLM responses are handled
+func TestEmptyLLMResponse(t *testing.T) {
+	origGen := llmResponseGenerator
+	defer func() { llmResponseGenerator = origGen }()
+
+	llmResponseGenerator = func(prompt string) string {
+		return ""
+	}
+
+	response := composeResponseToEmail("Test body", "Test Subject", "test@example.com")
+
+	if response != "" {
+		t.Errorf("Expected empty response, got: %s", response)
+	}
+}
+
 // Test parseEmail function
 func TestParseEmail(t *testing.T) {
 	testCases := []struct {
