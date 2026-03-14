@@ -1017,11 +1017,16 @@ func (t *ToolExecutor) readSubagentResult(args map[string]any) string {
 		return errorMessage("error parsing result: %v", err)
 	}
 
+	status := getStringArg(result, "status", "")
 	output := fmt.Sprintf("Sub-agent #%d Result:\n", agentID)
 	output += fmt.Sprintf("  Task: %s\n", getStringArg(result, "task", ""))
 	output += fmt.Sprintf("  Model: %s\n", getStringArg(result, "model", ""))
-	output += fmt.Sprintf("  Status: %s\n", getStringArg(result, "status", ""))
-	output += fmt.Sprintf("  Result: %s\n", getStringArg(result, "result", ""))
+	output += fmt.Sprintf("  Status: %s\n", status)
+	if status == "in-progress" {
+		output += "  Result: (still running, check back later)\n"
+	} else {
+		output += fmt.Sprintf("  Result: %s\n", getStringArg(result, "result", ""))
+	}
 
 	return output
 }
