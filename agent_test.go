@@ -94,6 +94,29 @@ func TestParseTextToolCalls(t *testing.T) {
 [list_files]`,
 			expected: 2,
 		},
+		{
+			name: "format 6 inline run_command",
+			input: `[tool activity] run_command(command="ls -la")`,
+			expected: 1,
+		},
+		{
+			name: "format 6 inline read_file with multiple args",
+			input: `[tool activity] read_file(path="main.go", limit=100)`,
+			expected: 1,
+		},
+		{
+			name: "format 6 command with complex value",
+			input: `[tool activity] run_command(command="cd /Users/user/src && ls -la *.go 2>/dev/null")`,
+			expected: 1,
+		},
+		{
+			name: "format 6 multiple inline calls",
+			input: `[thinking] Let me check.
+[tool activity] run_command(command="pwd")
+[thinking] And also list files.
+[tool activity] list_files(pattern="*.go")`,
+			expected: 2,
+		},
 	}
 
 	for _, tt := range tests {
@@ -102,6 +125,89 @@ func TestParseTextToolCalls(t *testing.T) {
 			results := agent.parseTextToolCalls(tt.input)
 			if len(results) != tt.expected {
 				t.Errorf("Expected %d tool calls, got %d", tt.expected, len(results))
+			}
+		})
+	}
+}
+
+func TestParseTextToolCallsFormat6Args(t *testing.T) {
+	agent := &YoloAgent{}
+
+	// Test that Format 6 correctly parses arguments
+	calls := agent.parseTextToolCalls(`[tool activity] run_command(command="cd /src && ls -la")`)
+	if len(calls) != 1 {
+		t.Fatalf("Expected 1 call, got %d", len(calls))
+	}
+	if calls[0].Name != "run_command" {
+		t.Errorf("Expected tool name 'run_command', got %q", calls[0].Name)
+	}
+	if cmd, ok := calls[0].Args["command"].(string); !ok || cmd != "cd /src && ls -la" {
+		t.Errorf("Expected command='cd /src && ls -la', got %v", calls[0].Args["command"])
+	}
+
+	// Test read_file with multiple args
+	calls = agent.parseTextToolCalls(`[tool activity] read_file(path="main.go", limit=50)`)
+	if len(calls) != 1 {
+		t.Fatalf("Expected 1 call, got %d", len(calls))
+	}
+	if calls[0].Name != "read_file" {
+		t.Errorf("Expected tool name 'read_file', got %q", calls[0].Name)
+	}
+	if p, ok := calls[0].Args["path"].(string); !ok || p != "main.go" {
+		t.Errorf("Expected path='main.go', got %v", calls[0].Args["path"])
+	}
+	if lim, ok := calls[0].Args["limit"].(int64); !ok || lim != 50 {
+		t.Errorf("Expected limit=50, got %v", calls[0].Args["limit"])
+	}
+}
+
+func TestParseFuncCallArgs(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected map[string]any
+	}{
+		{
+			name:     "single quoted arg",
+			input:    `command="ls -la"`,
+			expected: map[string]any{"command": "ls -la"},
+		},
+		{
+			name:     "multiple args mixed",
+			input:    `path="main.go", limit=100`,
+			expected: map[string]any{"path": "main.go", "limit": int64(100)},
+		},
+		{
+			name:     "empty string",
+			input:    "",
+			expected: map[string]any{},
+		},
+		{
+			name:     "value with special chars",
+			input:    `command="cd /src && ls -la | head -5"`,
+			expected: map[string]any{"command": "cd /src && ls -la | head -5"},
+		},
+		{
+			name:     "boolean arg",
+			input:    `pattern="*.go", recursive=true`,
+			expected: map[string]any{"pattern": "*.go", "recursive": true},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := parseFuncCallArgs(tt.input)
+			if len(result) != len(tt.expected) {
+				t.Errorf("Expected %d args, got %d: %v", len(tt.expected), len(result), result)
+				return
+			}
+			for k, v := range tt.expected {
+				got, ok := result[k]
+				if !ok {
+					t.Errorf("Missing key %q", k)
+				} else if got != v {
+					t.Errorf("Key %q: expected %v (%T), got %v (%T)", k, v, v, got, got)
+				}
 			}
 		})
 	}
@@ -241,6 +347,15 @@ The file contains important code.`,
 			expected: `Here's the result of my analysis:
 
 The file contains important code.`,
+		},
+		{
+			name: "with inline tool activity (format 6)",
+			input: `Let me check.
+[tool activity] run_command(command="ls -la")
+The result shows files.`,
+			expected: `Let me check.
+
+The result shows files.`,
 		},
 	}
 

@@ -103,6 +103,10 @@ func (a *YoloAgent) getSystemPrompt() string {
 	prompt = strings.ReplaceAll(prompt, "{timestamp}", time.Now().Format(time.RFC3339))
 	prompt = strings.ReplaceAll(prompt, "{knowledgeBase}", kbSection)
 
+	// Inject pending todos so the agent is aware of outstanding work
+	todoContext := todoList.RenderPendingContext()
+	prompt += todoContext
+
 	return prompt
 }
 
@@ -616,6 +620,26 @@ func (a *YoloAgent) parseTextToolCalls(text string) []ParsedToolCall {
 		}
 	}
 
+	// Format 6: [tool activity] tool_name(key="value", ...) on the SAME line
+	// Some models emit tool calls inline with the [tool activity] marker
+	// instead of on a separate line, e.g.:
+	//   [tool activity] run_command(command="ls -la")
+	//   [tool activity] read_file(path="main.go", limit=100)
+	if len(calls) == 0 {
+		reFormat6 := regexp.MustCompile(`\[tool activity\]\s+(\w+)\(([^)]*)\)`)
+		validToolSet := map[string]bool{}
+		for _, t := range validTools {
+			validToolSet[t] = true
+		}
+		for _, match := range reFormat6.FindAllStringSubmatch(text, -1) {
+			toolName := match[1]
+			if validToolSet[toolName] {
+				args := parseFuncCallArgs(match[2])
+				calls = append(calls, ParsedToolCall{Name: toolName, Args: args})
+			}
+		}
+	}
+
 	return calls
 }
 
@@ -668,6 +692,75 @@ func parseParamString(paramStr string) map[string]any {
 	return result
 }
 
+// parseFuncCallArgs parses function-call style arguments like:
+//
+//	command="cd /src && ls -la", limit=100
+//
+// It respects quoted values (which may contain commas) and converts
+// unquoted values to appropriate Go types.
+func parseFuncCallArgs(s string) map[string]any {
+	result := make(map[string]any)
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return result
+	}
+
+	for s != "" {
+		s = strings.TrimSpace(s)
+		// Find key
+		eqIdx := strings.Index(s, "=")
+		if eqIdx < 0 {
+			break
+		}
+		key := strings.TrimSpace(s[:eqIdx])
+		s = s[eqIdx+1:]
+
+		var value string
+		if len(s) > 0 && (s[0] == '"' || s[0] == '\'') {
+			// Quoted value — find matching close quote
+			quote := s[0]
+			end := -1
+			for i := 1; i < len(s); i++ {
+				if s[i] == '\\' && i+1 < len(s) {
+					i++ // skip escaped character
+					continue
+				}
+				if s[i] == quote {
+					end = i
+					break
+				}
+			}
+			if end >= 0 {
+				value = s[1:end]
+				s = s[end+1:]
+			} else {
+				// No closing quote — take the rest
+				value = s[1:]
+				s = ""
+			}
+		} else {
+			// Unquoted value — take until comma or end
+			commaIdx := strings.Index(s, ",")
+			if commaIdx >= 0 {
+				value = strings.TrimSpace(s[:commaIdx])
+				s = s[commaIdx:]
+			} else {
+				value = strings.TrimSpace(s)
+				s = ""
+			}
+		}
+
+		// Skip comma separator
+		s = strings.TrimSpace(s)
+		if len(s) > 0 && s[0] == ',' {
+			s = s[1:]
+		}
+
+		result[key] = convertParamValue(value)
+	}
+	return result
+}
+
 // stripTextToolCalls removes text-based tool call syntax from assistant
 // content so that the model does not see both its own textual tool calls
 // and the native tool_calls representation. This prevents the model from
@@ -676,6 +769,10 @@ func stripTextToolCalls(text string) string {
 	// Remove [tool activity]...[/tool activity] blocks (may span multiple lines)
 	reActivity := regexp.MustCompile(`(?s)\[tool activity\].*?\[/tool activity\]`)
 	text = reActivity.ReplaceAllString(text, "")
+
+	// Remove inline [tool activity] tool_name(...) calls (Format 6, no closing tag)
+	reInlineActivity := regexp.MustCompile(`\[tool activity\]\s+\w+\([^)]*\)`)
+	text = reInlineActivity.ReplaceAllString(text, "")
 
 	// Remove <tool_call>...</tool_call> blocks
 	reToolCall := regexp.MustCompile(`(?s)<tool_call>.*?</tool_call>`)
