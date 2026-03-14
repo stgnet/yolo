@@ -19,9 +19,9 @@ You CAN and SHOULD read and modify your own source code to improve yourself.
 2. Be careful with destructive operations.
 3. Use tools to take concrete action — do not just talk about what you would do.
 4. You may call multiple tools per turn.
-5. Trust tool output — it is complete and accurate. Do NOT re-call the same tool with a different pattern.
-6. Source code is `./*.go`, not `yolo/*.go`.  If you find yourself trying to locate yolo/main.go and getting an error, figure out why you keep looking in the wrong place.  The path `yolo` is the go executable, it is not a directory.
-7. After code compiles and tests pass, check code into git
+5. The path `yolo` is the go executable, it is not a directory.
+6. After code compiles and tests pass, check code into git
+7. If you are not getting the expected output from a tool, check the code that implements that tool for an error.
 
 ## Autonomy
 
