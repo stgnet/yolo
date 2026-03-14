@@ -315,6 +315,9 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 // message describing the timeout so it can recover and avoid the tool.
 // The hung goroutine is abandoned (Go has no way to kill a goroutine),
 // but the agent loop remains responsive.
+//
+// Tools that manage their own internal timeouts (like process_inbox_with_response)
+// use a much longer global deadline to avoid premature cancellation.
 func executeWithTimeout(te *ToolExecutor, name string, args map[string]any) string {
 	type result struct{ s string }
 	done := make(chan result, 1)
@@ -323,13 +326,20 @@ func executeWithTimeout(te *ToolExecutor, name string, args map[string]any) stri
 		done <- result{te.Execute(name, args)}
 	}()
 
+	// Tools with internal per-item timeout handling get a longer global deadline
+	timeout := time.Duration(ToolTimeout) * time.Second
+	switch name {
+	case "process_inbox_with_response":
+		timeout = 4 * time.Hour
+	}
+
 	select {
 	case r := <-done:
 		return r.s
-	case <-time.After(time.Duration(ToolTimeout) * time.Second):
-		return fmt.Sprintf("Error: tool '%s' timed out after %d seconds (possible deadlock or hang). "+
+	case <-time.After(timeout):
+		return fmt.Sprintf("Error: tool '%s' timed out after %v (possible deadlock or hang). "+
 			"The tool did not respond and has been abandoned. "+
-			"Avoid calling this tool again with the same arguments.", name, ToolTimeout)
+			"Avoid calling this tool again with the same arguments.", name, timeout)
 	}
 }
 
