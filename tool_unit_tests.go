@@ -293,7 +293,7 @@ func TestToolExecutor_ListTodos(t *testing.T) {
 
 	args := map[string]any{}
 
-	result := executor.listTodos(args)
+	result := executor.listTodosTool(args)
 
 	if containsString(result, "Error") || containsString(result, "error:") {
 		t.Skipf("List todos returned error (acceptable): %s", result)
@@ -405,7 +405,7 @@ func TestToolExecutor_MoveFile_Successful(t *testing.T) {
 
 // TestToolExecutor_GlobRecursive_Successful - Test glob recursive through ToolExecutor
 func TestToolExecutor_GlobRecursive_Successful(t *testing.T) {
-	executor := NewToolExecutor(".", nil)
+	_ = NewToolExecutor(".", nil)
 	tempDir := t.TempDir()
 
 	// Create nested directory structure with files
