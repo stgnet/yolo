@@ -208,6 +208,37 @@ func TestParseTextToolCallsFormat7MarkdownLink(t *testing.T) {
 	}
 }
 
+// TestHallucinatedToolActivity verifies that natural-language [tool activity]
+// markers produce zero parsed tool calls (the agent loop will detect this and
+// send a correction message).
+func TestHallucinatedToolActivity(t *testing.T) {
+	agent := NewYoloAgent()
+
+	hallucinated := []string{
+		`[tool activity] Reading the full email parsing section:`,
+		`[tool activity] Reading lines 100-200 of tools.go:`,
+		`[tool activity] Searching for the check_inbox function definition:`,
+		`[tool activity] The email parsing is likely in lines 300-500. Reading that section:`,
+		`[tool activity] Using search to find email parsing code:`,
+	}
+	for _, input := range hallucinated {
+		calls := agent.parseTextToolCalls(input)
+		if len(calls) != 0 {
+			t.Errorf("Expected 0 calls for hallucinated tool activity %q, got %d", input, len(calls))
+		}
+	}
+
+	// Valid [tool activity] formats should still parse correctly
+	valid := `[tool activity] read_file(path="tools.go", offset=100, limit=100)`
+	calls := agent.parseTextToolCalls(valid)
+	if len(calls) != 1 {
+		t.Fatalf("Expected 1 call for valid tool activity, got %d", len(calls))
+	}
+	if calls[0].Name != "read_file" {
+		t.Errorf("Expected tool name 'read_file', got %q", calls[0].Name)
+	}
+}
+
 func TestParseFuncCallArgs(t *testing.T) {
 	tests := []struct {
 		name     string
