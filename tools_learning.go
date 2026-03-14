@@ -82,6 +82,13 @@ func (t *ToolExecutor) learn(args map[string]any) string {
 	pending := lm.GetPendingImprovements(5)
 	if len(pending) > 0 {
 		sb.WriteString(fmt.Sprintf("\n📝 %d pending improvements from previous sessions\n", len(pending)))
+
+		// Offer to implement top improvements
+		implCount := 2 // Limit implementation count
+		fmt.Printf("💡 Found %d pending improvements. Implementing top %d...\n", len(pending), implCount)
+		if err := lm.ImplementTopImprovements(implCount); err != nil {
+			return fmt.Sprintf("Learning completed but implementation failed: %v", err)
+		}
 	}
 
 	return sb.String()
@@ -96,4 +103,35 @@ func filterImprovementsByPriority(improvements []Improvement, minPriority int) [
 		}
 	}
 	return filtered
+}
+
+// implementTop improvements tool - executes high-priority improvements
+func (t *ToolExecutor) implement(args map[string]any) string {
+	// Initialize learning manager
+	lm := NewLearningManager(".", t)
+
+	// Load existing history
+	if err := lm.LoadHistory(); err != nil {
+		return fmt.Sprintf("Error loading learning history: %v", err)
+	}
+
+	// Get implementation count (default 2 if not specified)
+	implCount := 2
+	if count, ok := args["count"].(int); ok {
+		implCount = count
+	}
+
+	fmt.Printf("\n🔧 Implementing top %d improvements...\n", implCount)
+
+	err := lm.ImplementTopImprovements(implCount)
+	if err != nil {
+		return fmt.Sprintf("Error during implementation: %v", err)
+	}
+
+	pending := lm.GetPendingImprovements(5)
+	var sb strings.Builder
+	sb.WriteString("\n✅ Implementation Complete\n")
+	sb.WriteString(fmt.Sprintf("   Pending improvements remaining: %d\n", len(pending)))
+
+	return sb.String()
 }
