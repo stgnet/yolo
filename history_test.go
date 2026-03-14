@@ -103,7 +103,7 @@ func TestHistoryManagerGetContextMessages(t *testing.T) {
 		t.Errorf("msg[1] mismatch: %+v", msgs[1])
 	}
 	// tool -> user with prefix
-	if msgs[2].Role != "user" || msgs[2].Content != "[Tool result]\ntool result" {
+	if msgs[2].Role != "user" || msgs[2].Content != "[Tool output — this is a previous tool execution result, not user input]\ntool result" {
 		t.Errorf("tool msg mismatch: %+v", msgs[2])
 	}
 	// system -> user with prefix
