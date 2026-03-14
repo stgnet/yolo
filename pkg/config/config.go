@@ -16,24 +16,24 @@ import (
 // YoloConfig is the main configuration structure for the YOLO agent.
 type YoloConfig struct {
 	// Paths and directories
-	BaseDir     string        `yaml:"base_dir,omitempty"`
-	YoloDir     string        `yaml:"yolo_dir,omitempty"`
-	HistoryFile string        `yaml:"history_file,omitempty"`
-	SubagentDir string        `yaml:"subagent_dir,omitempty"`
-	KnowledgeBasePath string  `yaml:"knowledge_base_path,omitempty"`
+	BaseDir           string `yaml:"base_dir,omitempty"`
+	YoloDir           string `yaml:"yolo_dir,omitempty"`
+	HistoryFile       string `yaml:"history_file,omitempty"`
+	SubagentDir       string `yaml:"subagent_dir,omitempty"`
+	KnowledgeBasePath string `yaml:"knowledge_base_path,omitempty"`
 
 	// Ollama configuration
-	OllamaURL     string `yaml:"ollama_url,omitempty"`
-	Model         string `yaml:"model,omitempty"`
-	DefaultNumCtx int    `yaml:"default_num_ctx,omitempty"`
+	OllamaURL      string `yaml:"ollama_url,omitempty"`
+	Model          string `yaml:"model,omitempty"`
+	DefaultNumCtx  int    `yaml:"default_num_ctx,omitempty"`
 	NumCtxOverride string `yaml:"num_ctx_override,omitempty"`
 
 	// Timeout and limits
-	CommandTimeout    time.Duration `yaml:"command_timeout,omitempty"`
-	ToolTimeout       time.Duration `yaml:"tool_timeout,omitempty"`
-	MaxContextMessages int          `yaml:"max_context_messages,omitempty"`
-	MaxToolOutput     int           `yaml:"max_tool_output,omitempty"`
-	MaxSubagentRounds int           `yaml:"max_subagent_rounds,omitempty"`
+	CommandTimeout     time.Duration `yaml:"command_timeout,omitempty"`
+	ToolTimeout        time.Duration `yaml:"tool_timeout,omitempty"`
+	MaxContextMessages int           `yaml:"max_context_messages,omitempty"`
+	MaxToolOutput      int           `yaml:"max_tool_output,omitempty"`
+	MaxSubagentRounds  int           `yaml:"max_subagent_rounds,omitempty"`
 
 	// Input settings
 	DefaultInputDelay time.Duration `yaml:"default_input_delay,omitempty"`

@@ -63,10 +63,10 @@ const (
 	Gray    = "\033[90m"
 
 	// Bold variants
-	BoldRed     = "\033[1m\033[31m"
-	BoldGreen   = "\033[1m\033[32m"
-	BoldYellow  = "\033[1m\033[33m"
-	BoldBlue    = "\033[1m\033[34m"
+	BoldRed    = "\033[1m\033[31m"
+	BoldGreen  = "\033[1m\033[32m"
+	BoldYellow = "\033[1m\033[33m"
+	BoldBlue   = "\033[1m\033[34m"
 )
 
 // OutputPrint prints text to stdout with optional color.

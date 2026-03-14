@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -213,10 +212,10 @@ type StreamMessage struct {
 
 // StreamResponse is a single JSON object in the streaming /api/chat response.
 type StreamResponse struct {
-	Message StreamMessage `json:"message"`
+	Message  StreamMessage `json:"message"`
 	ToolCall bool          `json:"tool_called,omitempty"`
-	Done      bool          `json:"done,omitempty"`
-	Model     string        `json:"model,omitempty"`
+	Done     bool          `json:"done,omitempty"`
+	Model    string        `json:"model,omitempty"`
 }
 
 // ChatOptions holds options for chat requests.
@@ -251,7 +250,7 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 
 	resp, err := c.client.Post(c.baseURL+"/api/chat", "application/json", strings.NewReader(string(payload)))
 	if err != nil {
-		return nil, fmt.Errorf("chat request failed: %w", streamOutput)
+		return nil, fmt.Errorf("chat request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -305,8 +304,8 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 			}
 
 			result.ToolCalls = append(result.ToolCalls, ParsedToolCall{
-				Name:   tc.Function.Name,
-				Args:   argsMap,
+				Name: tc.Function.Name,
+				Args: argsMap,
 			})
 		}
 	}

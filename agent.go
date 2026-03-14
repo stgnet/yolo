@@ -1404,9 +1404,7 @@ func (a *YoloAgent) Run() {
 			// No user input — immediately enter autonomous thinking
 			// (the agent is always thinking unless spoken to)
 			a.inputMgr.mu.Lock()
-			bufEmpty := len(a.inputMgr.buf) == 0
-			a.inputMgr.mu.Unlock()
-			if bufEmpty {
+			if len(a.inputMgr.buf) == 0 {
 				a.inputMgr.ClearLine()
 
 				a.mu.Lock()

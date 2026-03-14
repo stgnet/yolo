@@ -53,8 +53,8 @@ type ChatMessage struct {
 
 // ToolCall represents a tool call from the LLM.
 type ToolCall struct {
-	ID       string    `json:"id"`
-	Function Function  `json:"function"`
+	ID       string   `json:"id"`
+	Function Function `json:"function"`
 }
 
 // Function is the function definition for a tool call.

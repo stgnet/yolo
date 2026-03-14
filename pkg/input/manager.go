@@ -3,7 +3,6 @@ package input
 
 import (
 	"bufio"
-	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -32,8 +31,8 @@ type InputEvent struct {
 
 // InputConfig holds configuration for InputManager.
 type InputConfig struct {
-	Delay           time.Duration
-	BufferSize      int // Size of input events channel buffer
+	Delay      time.Duration
+	BufferSize int // Size of input events channel buffer
 }
 
 // DefaultInputConfig returns default configuration.
@@ -47,10 +46,10 @@ func DefaultInputConfig() InputConfig {
 // NewInputManager creates a new input manager.
 func NewInputManager(cfg InputConfig) *InputManager {
 	im := &InputManager{
-		reader:     bufio.NewReader(os.Stdin),
-		stopChan:   make(chan struct{}),
-		eventsChan: make(chan InputEvent, cfg.BufferSize),
-		delay:      cfg.Delay,
+		reader:      bufio.NewReader(os.Stdin),
+		stopChan:    make(chan struct{}),
+		eventsChan:  make(chan InputEvent, cfg.BufferSize),
+		delay:       cfg.Delay,
 		inputBuffer: make([]byte, 0),
 	}
 
@@ -96,15 +95,6 @@ func (im *InputManager) checkInput() {
 		return
 	}
 
-	// Check for terminal input
-	var inputReady bool
-	if term.IsTerminal(int(os.Stdin.Fd())) {
-		fd := int(os.Stdin.Fd())
-		if ready, _ := term.IsTerminal(fd); ready {
-			inputReady = true
-		}
-	}
-
 	now := time.Now()
 
 	// If we have buffered input and delay has passed, send it
@@ -112,7 +102,7 @@ func (im *InputManager) checkInput() {
 		if now.Sub(im.lastInput) >= im.delay {
 			text := string(im.inputBuffer)
 			im.inputBuffer = im.inputBuffer[:0]
-			
+
 			select {
 			case im.eventsChan <- InputEvent{
 				Timestamp: now,
@@ -127,12 +117,9 @@ func (im *InputManager) checkInput() {
 	}
 
 	// If input ready and no buffering in progress, start buffering
-	if inputReady {
+	if term.IsTerminal(int(os.Stdin.Fd())) {
 		im.lastInput = now
-		im.mu.Unlock()
-		return
 	}
-
 	im.mu.Unlock()
 }
 
@@ -160,7 +147,7 @@ func (im *InputManager) TryReadNonBlocking() (string, bool) {
 // GetEvents returns all pending events (up to the buffer size).
 func (im *InputManager) GetEvents() []InputEvent {
 	events := make([]InputEvent, 0, 100)
-	
+
 	for {
 		select {
 		case event := <-im.eventsChan:

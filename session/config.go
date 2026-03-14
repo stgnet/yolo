@@ -1,5 +1,5 @@
-// Package config provides configuration management for YOLO.
-package config
+// Package session provides configuration management for YOLO.
+package session
 
 import (
 	"encoding/json"
@@ -69,7 +69,7 @@ func getEnvDefault(key, fallback string) string {
 
 // YoloConfigData is the top-level JSON structure for config.json.
 type YoloConfigData struct {
-	Version      int  `json:"version"`
+	Version      int    `json:"version"`
 	Model        string `json:"model,omitempty"`
 	TerminalMode bool   `json:"terminal_mode,omitempty"`
 }
