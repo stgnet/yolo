@@ -121,7 +121,11 @@ func (t *ToolExecutor) checkInbox(args map[string]any) string {
 
 		if markRead {
 			curPath := fmt.Sprintf("/var/mail/b-haven.org/yolo/cur/%s", filename)
-			err = utils.MoveFile(filePath, curPath)
+			// Use no-backup config to avoid leaving .bak files in the inbox
+			// directory, which would be picked up as new emails on the next run.
+			noBackupConfig := utils.DefaultSafetyConfig()
+			noBackupConfig.CreateBackup = false
+			err = utils.MoveFileWithConfig(filePath, curPath, noBackupConfig)
 			if err != nil {
 				output.WriteString(fmt.Sprintf("Error marking email as read: %v\n", err))
 			}
@@ -162,7 +166,26 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 		output.WriteString(fmt.Sprintf("--- Email %d/%d from: %s ---\n", i+1, len(files), parsedEmail.From))
 		output.WriteString(fmt.Sprintf("Subject: %s\n\n", parsedEmail.Subject))
 
-		// Generate response using LLM with per-email timeout (30 seconds)
+		// Skip emails from system/automated senders where a reply is pointless
+		fromLower := strings.ToLower(parsedEmail.From)
+		if strings.Contains(fromLower, "mailer-daemon") ||
+			strings.Contains(fromLower, "postmaster@") ||
+			strings.Contains(fromLower, "noreply@") ||
+			strings.Contains(fromLower, "no-reply@") {
+			output.WriteString("⏭ Skipping automated/system email — no reply needed\n")
+			// Delete the message so it doesn't get reprocessed
+			noBackupConfig := utils.DefaultSafetyConfig()
+			noBackupConfig.CreateBackup = false
+			if err := utils.DeleteFileWithConfig(filePath, noBackupConfig); err != nil {
+				output.WriteString(fmt.Sprintf("Warning: Could not delete skipped email: %v\n", err))
+			} else {
+				output.WriteString("✓ Skipped email removed\n")
+			}
+			output.WriteString("---\n\n")
+			continue
+		}
+
+		// Generate response using LLM with per-email timeout
 		type emailResponseResult struct {
 			response string
 			err      error
@@ -179,22 +202,51 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 			response = r.response
 		case <-time.After(15 * time.Minute):
 			output.WriteString(fmt.Sprintf("⚠️ Warning: Email response generation timed out after 15 minutes\n"))
-			// Leave email in inbox for retry on next processing run
-			output.WriteString("⚠️ Email left in inbox for retry.\n")
+			// Move to cur/ so it's not reprocessed every cycle
+			curPath := fmt.Sprintf("/var/mail/b-haven.org/yolo/cur/%s", filename)
+			noBackupCfg := utils.DefaultSafetyConfig()
+			noBackupCfg.CreateBackup = false
+			if mvErr := utils.MoveFileWithConfig(filePath, curPath, noBackupCfg); mvErr != nil {
+				output.WriteString(fmt.Sprintf("⚠️ Could not move to cur/: %v — email left in inbox\n", mvErr))
+			} else {
+				output.WriteString("⚠️ Email moved to cur/ for retry.\n")
+			}
 			output.WriteString("---\n\n")
 			continue
 		}
 
 		if strings.HasPrefix(response, "[Error generating response:") {
 			output.WriteString(fmt.Sprintf("⚠️ Warning: Failed to generate response for this email\n"))
-			// Leave email in inbox for retry on next processing run
-			output.WriteString("⚠️ Email left in inbox for retry.\n")
+			// Move to cur/ so it's not reprocessed every cycle
+			curPath := fmt.Sprintf("/var/mail/b-haven.org/yolo/cur/%s", filename)
+			noBackupCfg := utils.DefaultSafetyConfig()
+			noBackupCfg.CreateBackup = false
+			if mvErr := utils.MoveFileWithConfig(filePath, curPath, noBackupCfg); mvErr != nil {
+				output.WriteString(fmt.Sprintf("⚠️ Could not move to cur/: %v — email left in inbox\n", mvErr))
+			} else {
+				output.WriteString("⚠️ Email moved to cur/ for retry.\n")
+			}
 			output.WriteString("---\n\n")
 			continue
 		}
 
 		if response == "" {
 			output.WriteString("Warning: Empty response generated, skipping send.\n\n")
+			continue
+		}
+
+		// LLM can signal that no reply should be sent by returning "NO_REPLY"
+		if strings.TrimSpace(response) == "NO_REPLY" {
+			output.WriteString("⏭ LLM indicated no reply needed for this email\n")
+			// Delete the message so it doesn't get reprocessed
+			noBackupConfig := utils.DefaultSafetyConfig()
+			noBackupConfig.CreateBackup = false
+			if err := utils.DeleteFileWithConfig(filePath, noBackupConfig); err != nil {
+				output.WriteString(fmt.Sprintf("Warning: Could not delete skipped email: %v\n", err))
+			} else {
+				output.WriteString("✓ Skipped email removed\n")
+			}
+			output.WriteString("---\n\n")
 			continue
 		}
 
@@ -211,14 +263,25 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 		result := t.sendEmail(emailArgs)
 		if strings.HasPrefix(result, "Error:") {
 			output.WriteString(fmt.Sprintf("❌ Error sending response: %s\n", result))
-			// Do not delete the original email if we failed to send a response;
-			// leave it in the inbox so it can be retried on the next run.
-			output.WriteString("⚠️ Original email preserved in inbox for retry.\n")
+			// Move failed email to cur/ so it's not reprocessed every cycle,
+			// but preserved for manual retry or inspection.
+			curPath := fmt.Sprintf("/var/mail/b-haven.org/yolo/cur/%s", filename)
+			noBackupConfig := utils.DefaultSafetyConfig()
+			noBackupConfig.CreateBackup = false
+			if mvErr := utils.MoveFileWithConfig(filePath, curPath, noBackupConfig); mvErr != nil {
+				output.WriteString(fmt.Sprintf("⚠️ Could not move to cur/: %v — email left in inbox\n", mvErr))
+			} else {
+				output.WriteString("⚠️ Email moved to cur/ for retry.\n")
+			}
 		} else {
 			output.WriteString("✓ Response sent successfully\n")
 
 			// Only delete original email after response was sent successfully
-			err = utils.DeleteFile(filePath)
+			// Use no-backup config to avoid creating .bak files in the inbox
+			// directory, which would be picked up as new emails on the next run.
+			noBackupConfig := utils.DefaultSafetyConfig()
+			noBackupConfig.CreateBackup = false
+			err = utils.DeleteFileWithConfig(filePath, noBackupConfig)
 			if err != nil {
 				output.WriteString(fmt.Sprintf("Warning: Could not delete processed email: %v\n", err))
 			} else {
@@ -278,7 +341,12 @@ RESPONSE FORMAT:
 - Provide specific answers or actions taken
 - Close professionally with context about next steps if applicable
 
-IMPORTANT: Keep response concise (under 200 words). Write your email response now:`, from, subject, currentDateTime, subject, body)
+CANCELLING A REPLY:
+- If the email is from a system address (e.g. MAILER-DAEMON, postmaster, noreply) or is an
+  automated bounce/notification where a reply would be pointless, respond with EXACTLY the
+  text "NO_REPLY" (nothing else) to indicate no reply should be sent.
+
+Write your email response now:`, from, subject, currentDateTime, subject, body)
 
 	// Generate response using LLM directly without timeout
 	return strings.TrimSpace(llmResponseGenerator(prompt))
