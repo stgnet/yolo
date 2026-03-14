@@ -1,0 +1,9 @@
+# YOLO Code Analysis - Initial Observations
+
+## main.go (40 lines)
+- Simple entry point that checks for TTY and launches the agent
+- Has a special "learn" mode that runs runLearnTool()
+- Checks stdin, stdout, stderr are all terminal devices
+- Creates NewYoloAgent() and calls Run()
+- No error handling for NewYoloAgent failure
+- No graceful shutdown handling
