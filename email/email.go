@@ -3,8 +3,20 @@ package email
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
+)
+
+const (
+	// DefaultFrom is the default sender email address
+	DefaultFrom = "yolo@b-haven.org"
+	// DefaultSendmailPath is the default path to the sendmail binary
+	DefaultSendmailPath = "/usr/sbin/sendmail"
+	// EnvFrom is the environment variable for setting the sender email
+	EnvFrom = "YELO_EMAIL_FROM"
+	// EnvSendmailPath is the environment variable for setting the sendmail path
+	EnvSendmailPath = "YELO_SENDBMAIL_PATH"
 )
 
 // Config holds email configuration settings
@@ -14,6 +26,14 @@ type Config struct {
 	SendmailPath string
 }
 
+// getEnvOrDefault returns the value of an environment variable or the default if not set.
+func getEnvOrDefault(key, defaultValue string) string {
+	if val := os.Getenv(key); val != "" {
+		return val
+	}
+	return defaultValue
+}
+
 // Message represents an email to send
 type Message struct {
 	To      []string
@@ -21,12 +41,13 @@ type Message struct {
 	Body    string
 }
 
-// DefaultConfig returns default email configuration using sendmail
+// DefaultConfig returns default email configuration using sendmail.
+// Values can be overridden via environment variables YELO_EMAIL_FROM and YELO_SENDBMAIL_PATH.
 func DefaultConfig() *Config {
 	return &Config{
-		From:         "yolo@b-haven.org",
+		From:         getEnvOrDefault(EnvFrom, DefaultFrom),
 		UseSendmail:  true,
-		SendmailPath: "/usr/sbin/sendmail",
+		SendmailPath: getEnvOrDefault(EnvSendmailPath, DefaultSendmailPath),
 	}
 }
 

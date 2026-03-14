@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -58,6 +59,7 @@ type OllamaClient struct {
 	baseURL  string
 	client   *http.Client
 	ctxCache map[string]int // cached context lengths per model
+	cacheMu  sync.RWMutex   // protects ctxCache from concurrent access
 }
 
 // NewOllamaClient creates a client pointing at the given Ollama API base URL.
@@ -67,6 +69,42 @@ func NewOllamaClient(baseURL string) *OllamaClient {
 		client:   &http.Client{Timeout: 300 * time.Second},
 		ctxCache: make(map[string]int),
 	}
+}
+
+// setContextCache sets a context length value in the cache (write lock required).
+func (c *OllamaClient) setContextCache(model string, length int) {
+	c.cacheMu.Lock()
+	defer c.cacheMu.Unlock()
+	c.ctxCache[model] = length
+}
+
+// deleteContextCache removes a model from the cache (write lock required).
+func (c *OllamaClient) deleteContextCache(model string) {
+	c.cacheMu.Lock()
+	defer c.cacheMu.Unlock()
+	delete(c.ctxCache, model)
+}
+
+// getContextCache retrieves a cached context length (read lock required).
+// Returns the value and ok flag.
+func (c *OllamaClient) getContextCache(model string) (int, bool) {
+	c.cacheMu.RLock()
+	defer c.cacheMu.RUnlock()
+	val, ok := c.ctxCache[model]
+	return val, ok
+}
+
+// getAndDeleteContextCache atomically reads and deletes a cached context length.
+// Returns the value and ok flag. This is useful to avoid race conditions between
+// checking for cache presence and reading the value.
+func (c *OllamaClient) getAndDeleteContextCache(model string) (int, bool) {
+	c.cacheMu.Lock()
+	defer c.cacheMu.Unlock()
+	val, ok := c.ctxCache[model]
+	if ok {
+		delete(c.ctxCache, model)
+	}
+	return val, ok
 }
 
 type OllamaModel struct {
@@ -226,10 +264,10 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 		if n, err := strconv.Atoi(NumCtxOverride); err == nil && n > 0 {
 			numCtx = n
 		}
-	} else if cached, ok := c.ctxCache[model]; ok {
+	} else if cached, ok := c.getAndDeleteContextCache(model); ok {
 		numCtx = cached
 	} else if detected := c.GetModelContextLength(model); detected > 0 {
-		c.ctxCache[model] = detected
+		c.setContextCache(model, detected)
 		numCtx = detected
 	}
 

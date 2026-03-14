@@ -333,13 +333,13 @@ func TestCaseInsensitiveSearch(t *testing.T) {
 	tmpTodoList := NewTodoList(tmpDir + "/.todo.json")
 
 	tmpTodoList.Add("Test Todo")
-	
+
 	// Should find with different case
 	found, _ := tmpTodoList.FindTodo("TEST TODO")
 	if !found {
 		t.Error("Expected case-insensitive search to find 'TEST TODO'")
 	}
-	
+
 	// Complete should also be case-insensitive
 	if !tmpTodoList.Complete("test todo") {
 		t.Error("Expected Complete to work case-insensitively")
@@ -350,12 +350,12 @@ func TestCaseInsensitiveSearch(t *testing.T) {
 func TestValidateTitleEmpty(t *testing.T) {
 	tmpDir := t.TempDir()
 	tmpTodoList := NewTodoList(tmpDir + "/.todo.json")
-	
+
 	err := tmpTodoList.validateTitle("")
 	if err == nil {
 		t.Error("Expected validation error for empty title")
 	}
-	
+
 	_, ok := err.(*TodoValidationError)
 	if !ok {
 		t.Errorf("Expected TodoValidationError, got %T", err)
@@ -365,7 +365,7 @@ func TestValidateTitleEmpty(t *testing.T) {
 func TestValidateTitleWhitespaceOnly(t *testing.T) {
 	tmpDir := t.TempDir()
 	tmpTodoList := NewTodoList(tmpDir + "/.todo.json")
-	
+
 	err := tmpTodoList.validateTitle("   ")
 	if err == nil {
 		t.Error("Expected validation error for whitespace-only title")
@@ -375,13 +375,13 @@ func TestValidateTitleWhitespaceOnly(t *testing.T) {
 func TestValidateTitleTooLong(t *testing.T) {
 	tmpDir := t.TempDir()
 	tmpTodoList := NewTodoList(tmpDir + "/.todo.json")
-	
+
 	longTitle := strings.Repeat("a", 300)
 	err := tmpTodoList.validateTitle(longTitle)
 	if err == nil {
 		t.Error("Expected validation error for title exceeding max length")
 	}
-	
+
 	if ve, ok := err.(*TodoValidationError); ok {
 		if _, hasField := ve.Errors["title"]; !hasField {
 			t.Errorf("Expected 'title' error in TodoValidationError, got errors: %v", ve.Errors)
@@ -392,19 +392,19 @@ func TestValidateTitleTooLong(t *testing.T) {
 func TestValidateTitleDuplicate(t *testing.T) {
 	tmpDir := t.TempDir()
 	tmpTodoList := NewTodoList(tmpDir + "/.todo.json")
-	
+
 	tmpTodoList.Add("Duplicate test")
-	
+
 	err := tmpTodoList.validateTitle("Duplicate test")
 	if err == nil {
 		t.Error("Expected validation error for duplicate title")
 	}
-	
+
 	err = tmpTodoList.validateTitle("DUPLICATE TEST") // case insensitive check
 	if err == nil {
 		t.Error("Expected validation error for duplicate title (case insensitive)")
 	}
-	
+
 	if ve, ok := err.(*TodoValidationError); ok {
 		if _, hasField := ve.Errors["title"]; !hasField {
 			t.Errorf("Expected 'title' error in TodoValidationError, got errors: %v", ve.Errors)
@@ -415,7 +415,7 @@ func TestValidateTitleDuplicate(t *testing.T) {
 func TestCreateTodoItemValidated(t *testing.T) {
 	tmpDir := t.TempDir()
 	tmpTodoList := NewTodoList(tmpDir + "/.todo.json")
-	
+
 	// Valid creation
 	todo, err := tmpTodoList.CreateTodoItem("Valid title")
 	if err != nil {
@@ -424,13 +424,13 @@ func TestCreateTodoItemValidated(t *testing.T) {
 	if todo.Title != "Valid title" {
 		t.Errorf("Expected title 'Valid title', got '%s'", todo.Title)
 	}
-	
+
 	// Invalid - empty
 	_, err = tmpTodoList.CreateTodoItem("")
 	if err == nil {
 		t.Error("Expected error for empty title")
 	}
-	
+
 	// Duplicate after first creation
 	_, err = tmpTodoList.CreateTodoItem("Valid title")
 	if err == nil {
@@ -443,17 +443,17 @@ func TestCreateTodoItemValidated(t *testing.T) {
 func TestBatchCreateSuccess(t *testing.T) {
 	tmpDir := t.TempDir()
 	tmpTodoList := NewTodoList(tmpDir + "/.todo.json")
-	
+
 	titles := []string{"Todo 1", "Todo 2", "Todo 3"}
 	result := tmpTodoList.BatchCreate(titles)
-	
+
 	if result.SuccessCount != 3 {
 		t.Errorf("Expected 3 successes, got %d", result.SuccessCount)
 	}
 	if result.FailureCount != 0 {
 		t.Errorf("Expected 0 failures, got %d", result.FailureCount)
 	}
-	
+
 	if len(result.SuccessItems) != 3 {
 		t.Errorf("Expected 3 success items, got %d", len(result.SuccessItems))
 	}
@@ -462,17 +462,17 @@ func TestBatchCreateSuccess(t *testing.T) {
 func TestBatchCreateWithFailures(t *testing.T) {
 	tmpDir := t.TempDir()
 	tmpTodoList := NewTodoList(tmpDir + "/.todo.json")
-	
+
 	titles := []string{"Valid Todo", "", "Another Valid"} // Empty in middle
 	result := tmpTodoList.BatchCreate(titles)
-	
+
 	if result.SuccessCount != 2 {
 		t.Errorf("Expected 2 successes, got %d", result.SuccessCount)
 	}
 	if result.FailureCount != 1 {
 		t.Errorf("Expected 1 failure, got %d", result.FailureCount)
 	}
-	
+
 	if len(result.Failures) != 1 {
 		t.Errorf("Expected 1 failure entry, got %d", len(result.Failures))
 	}
@@ -481,17 +481,17 @@ func TestBatchCreateWithFailures(t *testing.T) {
 func TestBatchCreateWithDuplicates(t *testing.T) {
 	tmpDir := t.TempDir()
 	tmpTodoList := NewTodoList(tmpDir + "/.todo.json")
-	
+
 	titles := []string{"First", "First"} // Duplicate
 	result := tmpTodoList.BatchCreate(titles)
-	
+
 	if result.SuccessCount != 1 {
 		t.Errorf("Expected 1 success (first occurrence), got %d", result.SuccessCount)
 	}
 	if result.FailureCount != 1 {
 		t.Errorf("Expected 1 failure for duplicate, got %d", result.FailureCount)
 	}
-	
+
 	// Verify only one was created
 	pending := tmpTodoList.GetPending()
 	if len(pending) != 1 {
@@ -502,23 +502,23 @@ func TestBatchCreateWithDuplicates(t *testing.T) {
 func TestBatchDeleteSuccess(t *testing.T) {
 	tmpDir := t.TempDir()
 	tmpTodoList := NewTodoList(tmpDir + "/.todo.json")
-	
+
 	tmpTodoList.Add("Todo to delete 1")
 	tmpTodoList.Add("Todo to delete 2")
 	tmpTodoList.Add("Todo to keep")
-	
+
 	result, err := tmpTodoList.BatchDelete([]string{"Todo to delete 1", "Todo to delete 2"})
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
-	
+
 	if result.SuccessCount != 2 {
 		t.Errorf("Expected 2 successes, got %d", result.SuccessCount)
 	}
 	if result.FailureCount != 0 {
 		t.Errorf("Expected 0 failures, got %d", result.FailureCount)
 	}
-	
+
 	pending := tmpTodoList.GetPending()
 	if len(pending) != 1 {
 		t.Errorf("Expected 1 pending todo remaining, got %d", len(pending))
@@ -531,21 +531,21 @@ func TestBatchDeleteSuccess(t *testing.T) {
 func TestBatchDeleteWithFailures(t *testing.T) {
 	tmpDir := t.TempDir()
 	tmpTodoList := NewTodoList(tmpDir + "/.todo.json")
-	
+
 	tmpTodoList.Add("Existing Todo")
-	
+
 	result, err := tmpTodoList.BatchDelete([]string{"Existing Todo", "Non-existent"})
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
-	
+
 	if result.SuccessCount != 1 {
 		t.Errorf("Expected 1 success, got %d", result.SuccessCount)
 	}
 	if result.FailureCount != 1 {
 		t.Errorf("Expected 1 failure, got %d", result.FailureCount)
 	}
-	
+
 	if len(result.Failures) != 1 {
 		t.Errorf("Expected 1 failure entry, got %d", len(result.Failures))
 	}
@@ -554,26 +554,26 @@ func TestBatchDeleteWithFailures(t *testing.T) {
 func TestBatchCompleteSuccess(t *testing.T) {
 	tmpDir := t.TempDir()
 	tmpTodoList := NewTodoList(tmpDir + "/.todo.json")
-	
+
 	tmpTodoList.Add("Todo to complete 1")
 	tmpTodoList.Add("Todo to complete 2")
-	
+
 	result, err := tmpTodoList.BatchComplete([]string{"Todo to complete 1", "Todo to complete 2"})
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
-	
+
 	if result.SuccessCount != 2 {
 		t.Errorf("Expected 2 successes, got %d", result.SuccessCount)
 	}
 	if result.FailureCount != 0 {
 		t.Errorf("Expected 0 failures, got %d", result.FailureCount)
 	}
-	
+
 	// All should be completed now
 	completed := tmpTodoList.GetCompleted()
 	pending := tmpTodoList.GetPending()
-	
+
 	if len(completed) != 2 {
 		t.Errorf("Expected 2 completed todos, got %d", len(completed))
 	}
@@ -585,14 +585,14 @@ func TestBatchCompleteSuccess(t *testing.T) {
 func TestBatchCompleteWithFailures(t *testing.T) {
 	tmpDir := t.TempDir()
 	tmpTodoList := NewTodoList(tmpDir + "/.todo.json")
-	
+
 	tmpTodoList.Add("Existing Todo")
-	
+
 	result, err := tmpTodoList.BatchComplete([]string{"Existing Todo", "Non-existent", "EXISTING TODO"}) // Duplicate attempt
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
-	
+
 	if result.SuccessCount != 1 {
 		t.Errorf("Expected 1 success, got %d", result.SuccessCount)
 	}
@@ -605,9 +605,9 @@ func TestBatchCompleteWithFailures(t *testing.T) {
 func TestCaseInsensitiveBatchOperations(t *testing.T) {
 	tmpDir := t.TempDir()
 	tmpTodoList := NewTodoList(tmpDir + "/.todo.json")
-	
+
 	tmpTodoList.Add("MixedCase Todo")
-	
+
 	// Test case-insensitive delete
 	result, err := tmpTodoList.BatchDelete([]string{"MIXEDCASE TODO", "mixedcase todo"})
 	if err != nil {
@@ -616,7 +616,7 @@ func TestCaseInsensitiveBatchOperations(t *testing.T) {
 	if result.SuccessCount != 1 {
 		t.Errorf("Expected 1 success (case-insensitive), got %d", result.SuccessCount)
 	}
-	
+
 	// Test case-insensitive complete
 	tmpTodoList.Add("Another MixedCase")
 	result, err = tmpTodoList.BatchComplete([]string{"ANOTHER MIXEDCASE"})
@@ -638,7 +638,7 @@ func TestTodoValidationErrorFormatting(t *testing.T) {
 			"title": "cannot be empty",
 		},
 	}
-	
+
 	errorMsg := err.Error()
 	if !strings.Contains(errorMsg, "validation failed") {
 		t.Errorf("Expected 'validation failed' in error message, got: %s", errorMsg)
@@ -651,7 +651,7 @@ func TestTodoValidationErrorFormatting(t *testing.T) {
 func TestTodoValidationErrorUnwrap(t *testing.T) {
 	baseErr := &TodoValidationError{Field: "title"}
 	wrappedErr := fmt.Errorf("wrapped: %w", baseErr)
-	
+
 	if !errors.As(wrappedErr, new(*TodoValidationError)) {
 		t.Error("Expected to unwrap TodoValidationError")
 	}
@@ -665,7 +665,7 @@ func TestTodoNotFoundErrorFormatting(t *testing.T) {
 			"Existing 2": true,
 		},
 	}
-	
+
 	errorMsg := err.Error()
 	if !strings.Contains(errorMsg, "Missing Todo") {
 		t.Errorf("Expected missing todo title in error, got: %s", errorMsg)
