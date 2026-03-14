@@ -945,7 +945,7 @@ func (t *ToolExecutor) runCommand(args map[string]any) string {
 
 	result := strings.TrimSpace(out.String())
 	if result == "" {
-		return "(no output)"
+		return "Command completed successfully (no output)."
 	}
 	// Sanitize command output to prevent terminal escape sequences from
 	// corrupting the display. This strips cursor movement, screen clearing,
