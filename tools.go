@@ -176,7 +176,7 @@ var validTools = []string{
 	"search_files", "run_command", "spawn_subagent",
 	"list_subagents", "read_subagent_result", "summarize_subagents",
 	"list_models", "switch_model", "think", "restart",
-	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "read_webpage", "learn", "implement", "send_email", "send_report", "check_inbox", "process_inbox_with_response", "add_todo", "complete_todo", "list_todos",
+	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "read_webpage", "learn", "implement", "send_email", "send_report", "check_inbox", "process_inbox_with_response", "add_todo", "complete_todo", "delete_todo", "list_todos",
 }
 
 // subagentTools is the subset of ollamaTools exposed to sub-agents.
