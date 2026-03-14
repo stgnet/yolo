@@ -1614,7 +1614,7 @@ func (t *ToolExecutor) searchDuckDuckGoWithRetry(query string, count int, maxRet
 		client := &http.Client{Timeout: 15 * time.Second}
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
-			lastErr = fmt.Errorf("could not create DuckDuckGo request: %v", err)
+			lastErr = fmt.Errorf("could not create DuckDuckGo request: %w", err)
 			continue
 		}
 
@@ -1622,7 +1622,7 @@ func (t *ToolExecutor) searchDuckDuckGoWithRetry(query string, count int, maxRet
 
 		resp, err := client.Do(req)
 		if err != nil {
-			lastErr = fmt.Errorf("could not fetch from DuckDuckGo: %v", err)
+			lastErr = fmt.Errorf("could not fetch from DuckDuckGo: %w", err)
 			if attempt < maxRetries {
 				delay := time.Duration(attempt+1) * 2 * time.Second
 				time.Sleep(delay)
@@ -1633,7 +1633,7 @@ func (t *ToolExecutor) searchDuckDuckGoWithRetry(query string, count int, maxRet
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			lastErr = fmt.Errorf("could not read DuckDuckGo response: %v", err)
+			lastErr = fmt.Errorf("could not read DuckDuckGo response: %w", err)
 			if attempt < maxRetries {
 				delay := time.Duration(attempt+1) * 2 * time.Second
 				time.Sleep(delay)
@@ -1678,7 +1678,7 @@ func (t *ToolExecutor) searchWikipediaWithRetry(query string, count int, maxRetr
 		client := &http.Client{Timeout: 15 * time.Second}
 		req, err := http.NewRequest("GET", urlStr, nil)
 		if err != nil {
-			lastErr = fmt.Errorf("could not create Wikipedia request: %v", err)
+			lastErr = fmt.Errorf("could not create Wikipedia request: %w", err)
 			continue
 		}
 
@@ -1686,7 +1686,7 @@ func (t *ToolExecutor) searchWikipediaWithRetry(query string, count int, maxRetr
 
 		resp, err := client.Do(req)
 		if err != nil {
-			lastErr = fmt.Errorf("could not fetch from Wikipedia: %v", err)
+			lastErr = fmt.Errorf("could not fetch from Wikipedia: %w", err)
 			if attempt < maxRetries {
 				delay := time.Duration(attempt+1) * 2 * time.Second
 				time.Sleep(delay)
@@ -1697,7 +1697,7 @@ func (t *ToolExecutor) searchWikipediaWithRetry(query string, count int, maxRetr
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			lastErr = fmt.Errorf("could not read Wikipedia response: %v", err)
+			lastErr = fmt.Errorf("could not read Wikipedia response: %w", err)
 			if attempt < maxRetries {
 				delay := time.Duration(attempt+1) * 2 * time.Second
 				time.Sleep(delay)
@@ -1717,7 +1717,7 @@ func (t *ToolExecutor) searchWikipediaWithRetry(query string, count int, maxRetr
 		}
 
 		if err := json.Unmarshal(body, &result); err != nil {
-			lastErr = fmt.Errorf("could not parse Wikipedia JSON: %v", err)
+			lastErr = fmt.Errorf("could not parse Wikipedia JSON: %w", err)
 			continue
 		}
 
