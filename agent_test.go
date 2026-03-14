@@ -161,6 +161,53 @@ func TestParseTextToolCallsFormat6Args(t *testing.T) {
 	}
 }
 
+func TestParseTextToolCallsFormat7MarkdownLink(t *testing.T) {
+	agent := &YoloAgent{}
+
+	// Single tool call: [run_command](command="git status --porcelain")
+	calls := agent.parseTextToolCalls(`[run_command](command="git status --porcelain")`)
+	if len(calls) != 1 {
+		t.Fatalf("Expected 1 call, got %d", len(calls))
+	}
+	if calls[0].Name != "run_command" {
+		t.Errorf("Expected tool name 'run_command', got %q", calls[0].Name)
+	}
+	if cmd, ok := calls[0].Args["command"].(string); !ok || cmd != "git status --porcelain" {
+		t.Errorf("Expected command='git status --porcelain', got %v", calls[0].Args["command"])
+	}
+
+	// Multiple args: [read_file](path="main.go", limit=50)
+	calls = agent.parseTextToolCalls(`[read_file](path="main.go", limit=50)`)
+	if len(calls) != 1 {
+		t.Fatalf("Expected 1 call, got %d", len(calls))
+	}
+	if calls[0].Name != "read_file" {
+		t.Errorf("Expected tool name 'read_file', got %q", calls[0].Name)
+	}
+	if p, ok := calls[0].Args["path"].(string); !ok || p != "main.go" {
+		t.Errorf("Expected path='main.go', got %v", calls[0].Args["path"])
+	}
+	if lim, ok := calls[0].Args["limit"].(int64); !ok || lim != 50 {
+		t.Errorf("Expected limit=50, got %v", calls[0].Args["limit"])
+	}
+
+	// Should not match non-tool names
+	calls = agent.parseTextToolCalls(`[not_a_tool](key="value")`)
+	if len(calls) != 0 {
+		t.Errorf("Expected 0 calls for unknown tool, got %d", len(calls))
+	}
+
+	// Mixed with thinking text (from the reported bug)
+	calls = agent.parseTextToolCalls(`[run_command](command="git status --porcelain")
+[thinking] The git status command keeps returning empty.`)
+	if len(calls) != 1 {
+		t.Fatalf("Expected 1 call, got %d", len(calls))
+	}
+	if calls[0].Name != "run_command" {
+		t.Errorf("Expected tool name 'run_command', got %q", calls[0].Name)
+	}
+}
+
 func TestParseFuncCallArgs(t *testing.T) {
 	tests := []struct {
 		name     string
