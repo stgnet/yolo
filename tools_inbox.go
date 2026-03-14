@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -185,7 +186,7 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 			continue
 		}
 
-		// Generate response using LLM with per-email timeout
+		// Generate response using the full agent loop (with tools, history, system prompt)
 		type emailResponseResult struct {
 			response string
 			err      error
@@ -193,7 +194,7 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 		var response string
 		done := make(chan emailResponseResult, 1)
 		go func() {
-			resp := composeResponseToEmail(parsedEmail.Body, parsedEmail.Subject, parsedEmail.From)
+			resp := t.composeEmailWithAgent(parsedEmail.Body, parsedEmail.Subject, parsedEmail.From)
 			done <- emailResponseResult{response: resp, err: nil}
 		}()
 
@@ -295,23 +296,144 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 	return output.String()
 }
 
-// llmResponseGenerator is a function type for generating LLM responses
-// This allows tests to inject mock generators without needing actual Ollama
-var llmResponseGenerator = func(prompt string) string {
-	return generateLLMText(prompt)
-}
+// llmResponseGenerator is a function type for generating LLM responses.
+// This allows tests to inject mock generators without needing actual Ollama.
+// When set to a non-nil custom function, composeEmailWithAgent falls back to
+// the simple single-turn path for testability.
+var llmResponseGenerator func(prompt string) string
 
-// composeResponseToEmail generates a personalized response to an incoming email using LLM directly
-// Includes email metadata (subject, timestamp, sender info) and thread context for professional responses
-func composeResponseToEmail(body, subject, from string) string {
+// MaxEmailRounds caps the number of tool-calling iterations for email responses.
+const MaxEmailRounds = 10
+
+// composeEmailWithAgent generates a response to an incoming email using the
+// full agent capabilities: system prompt, conversation history, configured
+// model, and tool access (including todos, file reads, web search, etc.).
+// This ensures email replies have the same knowledge as the console agent.
+func (t *ToolExecutor) composeEmailWithAgent(body, subject, from string) string {
 	if body == "" {
 		body = "No content"
 	}
 
-	// Get current date/time for reference in response
+	// If a test mock is installed, use the simple single-turn path
+	if llmResponseGenerator != nil {
+		return strings.TrimSpace(llmResponseGenerator(composeEmailPrompt(body, subject, from)))
+	}
+
+	agent := t.agent
+	if agent == nil {
+		// Fallback: no agent available (shouldn't happen in production)
+		return composeResponseToEmailLegacy(body, subject, from)
+	}
+
 	currentDateTime := time.Now().Format("January 2, 2006 at 3:04 PM MST")
 
-	prompt := fmt.Sprintf(`You are YOLO, an autonomous AI assistant running on a Mac. 
+	// Build messages: system prompt (with knowledge base + todos) + recent
+	// history for context + the email as a user message.
+	systemPrompt := agent.getSystemPrompt()
+
+	emailInstruction := fmt.Sprintf(`You have received an email that you need to reply to.
+
+INCOMING EMAIL:
+- From: %s
+- Subject: %s
+- Date/Time: %s
+
+EMAIL BODY:
+%s
+
+INSTRUCTIONS:
+1. Use your tools to look up any information needed to answer the email accurately.
+   For example, if they ask about your todo list, use the list_todos tool.
+   If they ask about files or code, use read_file or search_files.
+2. Write a professional yet conversational email reply that directly answers their questions.
+3. Address the sender by name if available. Reference the subject/topic.
+4. Do NOT use placeholders like [ACTION_NEEDED]. Write complete, specific answers.
+5. If the email is from a system address (MAILER-DAEMON, postmaster, noreply) or is an
+   automated notification, respond with EXACTLY "NO_REPLY".
+6. Your final response (after any tool calls) should be ONLY the email reply text — no
+   explanations, no markdown headers, no "Here is the reply:" prefix. Just the reply itself.`, from, subject, currentDateTime, body)
+
+	msgs := []ChatMessage{
+		{Role: "system", Content: systemPrompt},
+	}
+	// Include recent conversation history so the email responder knows what
+	// has been discussed on the console.
+	msgs = append(msgs, agent.history.GetContextMessages(MaxContextMessages)...)
+	msgs = append(msgs, ChatMessage{Role: "user", Content: emailInstruction})
+
+	emailTools := EmailTools()
+	model := agent.config.GetModel()
+
+	// Tool-calling loop (mirrors subagent pattern from agent.go)
+	var roundMsgs []ChatMessage
+	var finalText string
+
+	for round := 0; round < MaxEmailRounds; round++ {
+		allMsgs := make([]ChatMessage, 0, len(msgs)+len(roundMsgs))
+		allMsgs = append(allMsgs, msgs...)
+		allMsgs = append(allMsgs, roundMsgs...)
+
+		result, err := agent.ollama.Chat(context.Background(), model, allMsgs, emailTools, nil)
+		if err != nil {
+			return fmt.Sprintf("[Error generating response: %v]", err)
+		}
+
+		toolCalls := result.ToolCalls
+		if len(toolCalls) == 0 {
+			toolCalls = agent.parseTextToolCalls(result.DisplayText)
+		}
+		toolCalls = deduplicateToolCalls(toolCalls)
+
+		if len(toolCalls) == 0 {
+			finalText = result.DisplayText
+			break
+		}
+
+		// Build assistant message with tool_calls
+		var nativeTCs []ToolCall
+		for i, tc := range toolCalls {
+			argsJSON, _ := json.Marshal(tc.Args)
+			nativeTCs = append(nativeTCs, ToolCall{
+				ID: fmt.Sprintf("email_call_%d_%d", round, i),
+				Function: ToolCallFunc{
+					Name:      tc.Name,
+					Arguments: json.RawMessage(argsJSON),
+				},
+			})
+		}
+		roundMsgs = append(roundMsgs, ChatMessage{
+			Role:      "assistant",
+			Content:   result.ContentText,
+			ToolCalls: nativeTCs,
+		})
+
+		// Execute each tool
+		for i, call := range toolCalls {
+			args := call.Args
+			if args == nil {
+				args = map[string]any{}
+			}
+			resultStr := executeWithTimeout(t, call.Name, args)
+			cleanResult := filterToolActivityMarkers(resultStr)
+			roundMsgs = append(roundMsgs, ChatMessage{
+				Role:       "tool",
+				Content:    cleanResult,
+				ToolCallID: fmt.Sprintf("email_call_%d_%d", round, i),
+			})
+		}
+	}
+
+	if finalText == "" {
+		finalText = "(no response generated)"
+	}
+
+	return strings.TrimSpace(finalText)
+}
+
+// composeEmailPrompt builds the email prompt string for the simple single-turn path.
+func composeEmailPrompt(body, subject, from string) string {
+	currentDateTime := time.Now().Format("January 2, 2006 at 3:04 PM MST")
+	return fmt.Sprintf(`You are YOLO, an autonomous AI assistant running on a Mac.
 Your job is to reply to emails in a professional, personalized manner with proper context.
 
 INCOMING EMAIL CONTEXT:
@@ -347,9 +469,28 @@ CANCELLING A REPLY:
   text "NO_REPLY" (nothing else) to indicate no reply should be sent.
 
 Write your email response now:`, from, subject, currentDateTime, subject, body)
+}
 
-	// Generate response using LLM directly without timeout
-	return strings.TrimSpace(llmResponseGenerator(prompt))
+// composeResponseToEmail generates a response using the simple single-turn path.
+// Kept for backward compatibility; production code uses composeEmailWithAgent.
+func composeResponseToEmail(body, subject, from string) string {
+	if body == "" {
+		body = "No content"
+	}
+	prompt := composeEmailPrompt(body, subject, from)
+	if llmResponseGenerator != nil {
+		return strings.TrimSpace(llmResponseGenerator(prompt))
+	}
+	return strings.TrimSpace(composeResponseToEmailLegacy(body, subject, from))
+}
+
+// composeResponseToEmailLegacy is the original single-turn LLM call without tools.
+func composeResponseToEmailLegacy(body, subject, from string) string {
+	if body == "" {
+		body = "No content"
+	}
+	prompt := composeEmailPrompt(body, subject, from)
+	return strings.TrimSpace(generateLLMText(prompt))
 }
 
 // limitString truncates string to maxLen chars, adding "..." if truncated
