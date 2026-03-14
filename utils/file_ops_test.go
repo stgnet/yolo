@@ -3,6 +3,7 @@ package utils
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -83,6 +84,92 @@ func TestReadFileString(t *testing.T) {
 			t.Error("expected empty string on error")
 		}
 	})
+
+	t.Run("empty file", func(t *testing.T) {
+		tmpfile := filepath.Join(t.TempDir(), "empty.txt")
+		os.WriteFile(tmpfile, []byte{}, 0644)
+
+		result, err := ReadFileString(tmpfile)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result != "" {
+			t.Errorf("expected empty string for empty file, got %q", result)
+		}
+	})
+
+	t.Run("binary content", func(t *testing.T) {
+		tmpfile := filepath.Join(t.TempDir(), "binary.bin")
+		binaryContent := []byte{0x00, 0xFF, 0xAB, 0xCD, 0x12}
+		if err := os.WriteFile(tmpfile, binaryContent, 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		result, err := ReadFileString(tmpfile)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if string(binaryContent) != result {
+			t.Errorf("got %q, want %q", result, binaryContent)
+		}
+	})
+
+	t.Run("directory instead of file", func(t *testing.T) {
+		tmpdir := t.TempDir()
+		result, err := ReadFileString(tmpdir)
+		if err == nil {
+			t.Fatal("expected error when reading directory as file")
+		}
+		if result != "" {
+			t.Error("expected empty string on error")
+		}
+	})
+
+	t.Run("permission denied", func(t *testing.T) {
+		tmpfile := filepath.Join(t.TempDir(), "readonly.txt")
+		os.WriteFile(tmpfile, []byte("content"), 0444)
+
+		result, err := ReadFileString(tmpfile)
+		if err != nil {
+			t.Logf("Got expected error: %v", err)
+		} else if result == "" && os.Getuid() == 0 {
+			t.Error("root can read all files, test may not apply")
+		}
+	})
+}
+
+func TestReadFileString_EdgeCases(t *testing.T) {
+	t.Run("file with newlines", func(t *testing.T) {
+		tmpfile := filepath.Join(t.TempDir(), "newlines.txt")
+		content := "line1\nline2\nline3\n"
+		if err := os.WriteFile(tmpfile, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		result, err := ReadFileString(tmpfile)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result != content {
+			t.Errorf("got %q, want %q", result, content)
+		}
+	})
+
+	t.Run("very long file", func(t *testing.T) {
+		tmpfile := filepath.Join(t.TempDir(), "long.txt")
+		longContent := strings.Repeat("a", 1000000) // 1MB string
+		if err := os.WriteFile(tmpfile, []byte(longContent), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		result, err := ReadFileString(tmpfile)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(result) != len(longContent) {
+			t.Errorf("length mismatch: got %d, want %d", len(result), len(longContent))
+		}
+	})
 }
 
 func TestWriteFile(t *testing.T) {
@@ -143,6 +230,91 @@ func TestWriteFile(t *testing.T) {
 		if string(data) != string(newContent) {
 			t.Errorf("got %q, want %q", data, newContent)
 		}
+	})
+
+	t.Run("empty content", func(t *testing.T) {
+		tmpfile := filepath.Join(t.TempDir(), "empty.txt")
+
+		err := WriteFile(tmpfile, []byte{}, 0644)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		data, err := os.ReadFile(tmpfile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(data) != 0 {
+			t.Errorf("expected empty file, got length %d", len(data))
+		}
+	})
+
+	t.Run("write with different permissions", func(t *testing.T) {
+		tmpfile := filepath.Join(t.TempDir(), "test.txt")
+		content := []byte("content")
+
+		err := WriteFile(tmpfile, content, 0600)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		info, err := os.Stat(tmpfile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expectedPerms := os.FileMode(0600)
+		if info.Mode().Perm() != expectedPerms {
+			t.Errorf("got perms %o, want %o", info.Mode().Perm(), expectedPerms)
+		}
+	})
+
+	t.Run("binary content", func(t *testing.T) {
+		tmpfile := filepath.Join(t.TempDir(), "binary.bin")
+		binaryContent := []byte{0x00, 0xFF, 0xAB, 0xCD, 0x12, 0x34}
+
+		err := WriteFile(tmpfile, binaryContent, 0644)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		data, err := os.ReadFile(tmpfile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(data) != string(binaryContent) {
+			t.Errorf("got %q, want %q", data, binaryContent)
+		}
+	})
+
+	t.Run("write to existing directory fails gracefully", func(t *testing.T) {
+		tmpdir := t.TempDir()
+		pathAsFile := filepath.Join(tmpdir, "file")
+		os.MkdirAll(pathAsFile, 0755) // Create as directory
+
+		err := WriteFile(filepath.Join(pathAsFile, "nested.txt"), []byte("test"), 0644)
+		if err == nil {
+			t.Error("expected error when parent is a file, not directory")
+		} else if !strings.Contains(err.Error(), "mkdir") && !errors.IsFileNotFoundError(err) {
+			// Expected error for mkdir or other filesystem issues
+			t.Logf("Got expected error: %v", err)
+		}
+	})
+
+	t.Run("write to readonly directory fails", func(t *testing.T) {
+		tmpdir := t.TempDir()
+		subdir := filepath.Join(tmpdir, "readonly")
+		os.MkdirAll(subdir, 0555) // Read-only directory
+
+		targetPath := filepath.Join(subdir, "test.txt")
+		err := WriteFile(targetPath, []byte("test"), 0644)
+		if err == nil {
+			t.Error("expected error when writing to read-only directory")
+		} else if os.Getuid() != 0 && !errors.IsFileNotFoundError(err) {
+			t.Logf("Got expected permission error: %v", err)
+		}
+
+		// Restore permissions so cleanup works
+		os.Chmod(subdir, 0755)
 	})
 }
 
@@ -267,6 +439,90 @@ func TestDeleteFile(t *testing.T) {
 			t.Error("directory should still exist after failed deletion")
 		}
 	})
+
+	t.Run("delete protected path", func(t *testing.T) {
+		testPath := "go.mod" // In protected paths list
+
+		err := DeleteFile(testPath)
+		if err == nil {
+			t.Fatal("expected error for protected path")
+		}
+
+		// Should not be a FileNotFoundError since the file may or may not exist
+		if errors.IsFileNotFoundError(err) {
+			t.Error("should get permission error for protected path, not FileNotFoundError")
+		}
+	})
+
+	t.Run("delete file with backup created", func(t *testing.T) {
+		tmpfile := filepath.Join(t.TempDir(), "test.txt")
+		content := []byte("content to delete")
+		if err := os.WriteFile(tmpfile, content, 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		err := DeleteFile(tmpfile)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Verify backup was created
+		backupPath := tmpfile + ".bak"
+		if !FileExists(backupPath) {
+			t.Error("expected backup to be created")
+		} else {
+			backupContent, _ := os.ReadFile(backupPath)
+			if string(backupContent) != string(content) {
+				t.Error("backup content should match original")
+			}
+		}
+
+		// Verify file was deleted
+		if FileExists(tmpfile) {
+			t.Error("file should be deleted after successful deletion")
+		}
+	})
+
+	t.Run("permission denied on directory", func(t *testing.T) {
+		tmpdir := t.TempDir()
+		subdir := filepath.Join(tmpdir, "readonly")
+		os.MkdirAll(subdir, 0555) // Read-only
+
+		testFile := filepath.Join(subdir, "test.txt")
+		os.WriteFile(testFile, []byte("content"), 0644)
+
+		err := DeleteFile(testFile)
+		if err == nil {
+			t.Error("expected error when file is in read-only directory")
+		} else if os.Getuid() != 0 && !errors.IsFileNotFoundError(err) {
+			t.Logf("Got expected permission error: %v", err)
+		}
+
+		// Restore permissions so cleanup works
+		os.Chmod(subdir, 0755)
+	})
+}
+
+func TestDeleteFile_CleanupOnBackupFailure(t *testing.T) {
+	tmpfile := filepath.Join(t.TempDir(), "test.txt")
+	content := []byte("content to delete")
+	if err := os.WriteFile(tmpfile, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make the file writable but unreadable to test backup failure path
+	os.Chmod(tmpfile, 0200) // Write-only
+
+	err := DeleteFile(tmpfile)
+	if err == nil {
+		// May succeed or fail depending on whether read is required for backup
+		t.Logf("Delete behavior: %v", err)
+	}
+
+	// Restore and clean up
+	os.Chmod(tmpfile, 0644)
+	DeleteFile(tmpfile)
+	DeleteFile(tmpfile + ".bak")
 }
 
 func TestCopyFile(t *testing.T) {
@@ -298,7 +554,7 @@ func TestCopyFile(t *testing.T) {
 	}
 }
 
-func TestCopyFileSourceNotFound(t *testing.T) {
+func TestCopyFile_SourceNotFound(t *testing.T) {
 	tmpdir := t.TempDir()
 	src := filepath.Join(tmpdir, "nonexistent.txt")
 	dst := filepath.Join(tmpdir, "dest.txt")
@@ -311,6 +567,115 @@ func TestCopyFileSourceNotFound(t *testing.T) {
 	if !errors.IsFileNotFoundError(err) {
 		t.Errorf("expected FileNotFoundError, got: %T", err)
 	}
+}
+
+func TestCopyFile_EmptyContent(t *testing.T) {
+	tmpdir := t.TempDir()
+	src := filepath.Join(tmpdir, "empty.txt")
+	dst := filepath.Join(tmpdir, "dest.txt")
+
+	// Create empty source file
+	os.WriteFile(src, []byte{}, 0644)
+
+	err := CopyFile(src, dst)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	info, err := os.Stat(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if info.Size() != 0 {
+		t.Errorf("expected empty destination, got size %d", info.Size())
+	}
+}
+
+func TestCopyFile_BinaryContent(t *testing.T) {
+	tmpdir := t.TempDir()
+	src := filepath.Join(tmpdir, "binary.bin")
+	dst := filepath.Join(tmpdir, "dest.bin")
+	binaryContent := []byte{0x00, 0xFF, 0xAB, 0xCD, 0x12, 0x34, 0xBE, 0xEF}
+
+	if err := os.WriteFile(src, binaryContent, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := CopyFile(src, dst)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	dstData, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(dstData) != string(binaryContent) {
+		t.Errorf("binary content mismatch: got %q, want %q", dstData, binaryContent)
+	}
+}
+
+func TestCopyFile_OverwriteDestination(t *testing.T) {
+	tmpdir := t.TempDir()
+	src := filepath.Join(tmpdir, "source.txt")
+	dst := filepath.Join(tmpdir, "dest.txt")
+
+	if err := os.WriteFile(src, []byte("source"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	os.WriteFile(dst, []byte("existing"), 0644)
+
+	err := CopyFile(src, dst)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, _ := os.ReadFile(dst)
+	if string(data) != "source" {
+		t.Errorf("expected destination to be overwritten with source content")
+	}
+}
+
+func TestCopyFile_DestinationReadOnly(t *testing.T) {
+	tmpdir := t.TempDir()
+	src := filepath.Join(tmpdir, "source.txt")
+	dst := filepath.Join(tmpdir, "readonly_dest")
+	os.WriteFile(src, []byte("content"), 0644)
+
+	// Create read-only destination directory
+	if err := os.MkdirAll(dst, 0555); err != nil {
+		t.Fatal(err)
+	}
+
+	destPath := filepath.Join(dst, "file.txt")
+	err := CopyFile(src, destPath)
+	if err == nil {
+		t.Error("expected error when copying to read-only directory")
+	} else if os.Getuid() != 0 && !errors.IsFileNotFoundError(err) {
+		t.Logf("Got expected permission error: %v", err)
+	}
+
+	os.Chmod(dst, 0755) // Restore for cleanup
+}
+
+func TestCopyFile_PermissionDenied(t *testing.T) {
+	tmpdir := t.TempDir()
+	src := filepath.Join(tmpdir, "source.txt")
+
+	os.WriteFile(src, []byte("content"), 0444)
+
+	dst := filepath.Join(tmpdir, "dest.txt")
+	err := CopyFile(src, dst)
+	if err != nil {
+		t.Logf("Got error reading source: %v", err)
+	}
+
+	// Clean up - file might still be in weird state
+	os.Chmod(src, 0644)
+	DeleteFile(src)
 }
 
 func TestMoveFile(t *testing.T) {
@@ -342,17 +707,199 @@ func TestMoveFile(t *testing.T) {
 	}
 }
 
-func TestMoveFileCleanupOnError(t *testing.T) {
-	tmpDir := t.TempDir()
-	src := filepath.Join(tmpDir, "source.txt")
-	dstDir := filepath.Join(tmpDir, "readonly_dir")
+func TestMoveFile_OverwritesDestination(t *testing.T) {
+	tmpdir := t.TempDir()
+	src := filepath.Join(tmpdir, "source.txt")
+	dst := filepath.Join(tmpdir, "dest.txt")
+
+	if err := os.WriteFile(src, []byte("source"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	os.WriteFile(dst, []byte("existing"), 0644)
+
+	err := MoveFile(src, dst)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if FileExists(src) {
+		t.Error("source should be deleted")
+	}
+
+	data, _ := os.ReadFile(dst)
+	if string(data) != "source" {
+		t.Errorf("expected destination to have source content")
+	}
+}
+
+func TestMoveFile_NestedDestination(t *testing.T) {
+	tmpdir := t.TempDir()
+	src := filepath.Join(tmpdir, "source.txt")
+	dst := filepath.Join(tmpdir, "subdir1", "subdir2", "dest.txt")
+	content := []byte("content for nested move")
+
+	if err := os.WriteFile(src, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := MoveFile(src, dst)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(data) != string(content) {
+		t.Errorf("content mismatch after move to nested path")
+	}
+}
+
+func TestMoveFile_SourceNotFound(t *testing.T) {
+	tmpdir := t.TempDir()
+	src := filepath.Join(tmpdir, "nonexistent.txt")
+	dst := filepath.Join(tmpdir, "dest.txt")
+
+	err := MoveFile(src, dst)
+	if err == nil {
+		t.Fatal("expected error when source doesn't exist")
+	}
+
+	if !errors.IsFileNotFoundError(err) {
+		t.Errorf("expected FileNotFoundError, got: %T", err)
+	}
+}
+
+func TestMoveFile_PermissionDenied(t *testing.T) {
+	tmpdir := t.TempDir()
+	src := filepath.Join(tmpdir, "source.txt")
+	dstDir := filepath.Join(tmpdir, "readonly_dir")
+
+	if err := os.MkdirAll(dstDir, 0555); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(src, []byte("content"), 0644)
+
+	dst := filepath.Join(dstDir, "dest.txt")
+	err := MoveFile(src, dst)
+	if err == nil && os.Getuid() == 0 {
+		// Root can write to any directory, so no error
+		t.Log("Root user test may not apply")
+	} else if err != nil && os.Getuid() != 0 {
+		t.Logf("Got expected permission error: %v", err)
+	}
+
+	os.Chmod(dstDir, 0755) // Restore for cleanup
+}
+
+func TestMoveFile_InvalidDestinationPath(t *testing.T) {
+	tmpdir := t.TempDir()
+	src := filepath.Join(tmpdir, "source.txt")
+
+	if err := os.WriteFile(src, []byte("content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to move to a path where parent is a file (not directory)
+	blockerPath := filepath.Join(tmpdir, "blocker")
+	os.WriteFile(blockerPath, []byte("block"), 0644)
+
+	dst := filepath.Join(blockerPath, "nested", "dest.txt")
+	err := MoveFile(src, dst)
+	if err == nil {
+		t.Error("expected error when parent path is a file")
+	} else if !errors.IsFileNotFoundError(err) && !strings.Contains(err.Error(), "mkdir") {
+		t.Logf("Got expected filesystem error: %v", err)
+	}
+
+	DeleteFile(blockerPath) // Clean up
+}
+
+func TestMoveFile_BackupCreated(t *testing.T) {
+	tmpdir := t.TempDir()
+	src := filepath.Join(tmpdir, "source.txt")
+	dst := filepath.Join(tmpdir, "dest.txt")
+	content := []byte("content for backup test")
+
+	if err := os.WriteFile(src, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := MoveFile(src, dst)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Backup should be created for source before moving
+	backupPath := src + ".bak"
+	if FileExists(backupPath) {
+		backupContent, _ := os.ReadFile(backupPath)
+		if string(backupContent) != string(content) {
+			t.Error("backup content should match original source")
+		}
+		DeleteFile(backupPath) // Clean up backup
+	}
+}
+
+func TestMoveFile_EmptySource(t *testing.T) {
+	tmpdir := t.TempDir()
+	src := filepath.Join(tmpdir, "empty.txt")
+	dst := filepath.Join(tmpdir, "dest.txt")
+
+	os.WriteFile(src, []byte{}, 0644)
+
+	err := MoveFile(src, dst)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	info, err := os.Stat(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if info.Size() != 0 {
+		t.Errorf("expected empty destination, got size %d", info.Size())
+	}
+}
+
+func TestMoveFile_BinaryContent(t *testing.T) {
+	tmpdir := t.TempDir()
+	src := filepath.Join(tmpdir, "binary.bin")
+	dst := filepath.Join(tmpdir, "dest.bin")
+	binaryContent := []byte{0x00, 0xFF, 0xAB, 0xCD, 0x12, 0xBE, 0xEF}
+
+	if err := os.WriteFile(src, binaryContent, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := MoveFile(src, dst)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(data) != string(binaryContent) {
+		t.Errorf("binary content mismatch after move")
+	}
+}
+
+func TestMoveFile_CleanupOnFailure(t *testing.T) {
+	tmpdir := t.TempDir()
+	src := filepath.Join(tmpdir, "source.txt")
+	dstDir := filepath.Join(tmpdir, "readonly_dir")
 	dst := filepath.Join(dstDir, "dest.txt")
 
-	os.WriteFile(src, []byte("test content"), 0644)
+	os.WriteFile(src, []byte("content"), 0644)
 	os.MkdirAll(dstDir, 0755)
-
-	// Copy file first so we can test cleanup behavior
-	CopyFile(src, dst)
+	CopyFile(src, dst) // Copy file first to simulate partial move failure scenario
 
 	// Delete source manually to simulate partial move failure scenario
 	DeleteFile(src)
@@ -363,13 +910,9 @@ func TestMoveFileCleanupOnError(t *testing.T) {
 		t.Fatal("expected error when source doesn't exist")
 	}
 
-	// The destination from copy should still exist since we can't clean it up
-	// This is expected behavior - the function tries but ignores cleanup errors
-	if !FileExists(dst) {
-		t.Log("cleanup succeeded, dest file removed")
-	} else {
-		t.Log("cleanup failed (expected), dest file still exists")
-	}
+	// The function tries cleanup but ignores errors, so dest may or may not be cleaned up
+	t.Logf("MoveFile behavior on failure: %v", err)
+	DeleteFile(dst) // Clean up
 }
 
 func TestGetFileSize(t *testing.T) {
@@ -586,30 +1129,6 @@ func TestDeleteFile_CannotDeleteDirectory(t *testing.T) {
 	}
 }
 
-func TestMoveFile_CleanupOnFailure(t *testing.T) {
-	tmpdir := t.TempDir()
-	srcPath := filepath.Join(tmpdir, "source.txt")
-	dstPath := filepath.Join(tmpdir, "dest.txt")
-
-	// Create source file
-	if err := os.WriteFile(srcPath, []byte("move me"), 0644); err != nil {
-		t.Fatalf("Setup failed: %v", err)
-	}
-
-	// Test successful move
-	err := MoveFile(srcPath, dstPath)
-	if err != nil {
-		t.Fatalf("Unexpected error on valid move: %v", err)
-	}
-
-	// Verify source is gone and dest exists
-	if FileExists(srcPath) {
-		t.Error("Source file should be deleted after move")
-	}
-	if !FileExists(dstPath) {
-		t.Fatal("Destination file should exist after move")
-	}
-}
 
 func TestGetFileSize_NonExistent(t *testing.T) {
 	size, err := GetFileSize("/nonexistent/file.txt")

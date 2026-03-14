@@ -2,8 +2,15 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"mime"
+	"mime/quotedprintable"
+	"mime/multipart"
+	"net/mail"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,8 +26,177 @@ type Email struct {
 	Raw     string
 }
 
-// parseEmail extracts fields from raw email text
+// decodeMIMEWord decodes MIME encoded words (e.g., =?UTF-8?B?...?=)
+func decodeMIMEWord(word string) string {
+	if strings.HasPrefix(word, "=?") && strings.HasSuffix(word, "?=") {
+		// Manual decoding of RFC 2047 MIME encoded words
+		// Format: =?charset?encoding?encoded_text?=
+		start := strings.Index(word, "=?") + 2
+		end := len(word) - 2
+		
+		if start >= end || start < 2 {
+			return word
+		}
+		
+		rest := word[start:end]
+		colon1 := strings.Index(rest, "?")
+		colon2 := strings.LastIndex(rest, "?")
+		
+		if colon1 <= 0 || colon2 <= colon1+1 || colon2 == len(rest)-1 {
+			return word
+		}
+		
+		charset := rest[:colon1]
+		encoding := rest[colon1+1 : colon2]
+		encoded := rest[colon2+1:]
+		
+		var decoded []byte
+		var err error
+		
+		switch strings.ToLower(encoding) {
+		case "q":
+			decoded, err = decodeQ(encoded)
+		case "b":
+			decoded, err = base64.StdEncoding.DecodeString(encoded)
+		default:
+			return word
+		}
+		
+		if err != nil {
+			return word
+		}
+		
+		// Common charsets to decode - all return the same string in Go
+		switch strings.ToLower(charset) {
+		case "utf-8", "utf8", "iso-8859-1", "latin1":
+			return string(decoded)
+		default:
+			return string(decoded)
+		}
+	}
+	return word
+}
+
+// decodeQ decodes Quoted-Printable encoding (simplified)
+func decodeQ(encoded string) ([]byte, error) {
+	var result []byte
+	i := 0
+	for i < len(encoded) {
+		if encoded[i] == '_' {
+			result = append(result, ' ')
+			i++
+		} else if encoded[i] == '=' && i+2 < len(encoded) {
+			// Hex escape sequence like =3D
+			hex := encoded[i+1 : i+3]
+			b, err := strconv.ParseUint(hex, 16, 8)
+			if err != nil {
+				return result, fmt.Errorf("invalid hex in quoted-printable: %s", hex)
+			}
+			result = append(result, byte(b))
+			i += 3
+		} else {
+			result = append(result, encoded[i])
+			i++
+		}
+	}
+	return result, nil
+}
+
+// parseEmail parses raw email content using Go's net/mail package for proper MIME handling
 func parseEmail(raw string) Email {
+	email := Email{Raw: raw}
+
+	// First, try to use net/mail to parse the headers
+	msg, err := mail.ReadMessage(strings.NewReader(raw))
+	if err != nil {
+		// If parsing fails, fall back to simple string splitting
+		return parseEmailFallback(raw)
+	}
+
+	// Extract From header
+	fromAddr := msg.Header.Get("From")
+	if fromAddr != "" {
+		// Parse the address to get just the email part
+		addr, err := mail.ParseAddress(fromAddr)
+		if err == nil {
+			email.From = addr.Address
+		} else {
+			email.From = strings.TrimSpace(fromAddr)
+		}
+	}
+
+	// Extract To header
+	toAddr := msg.Header.Get("To")
+	if toAddr != "" {
+		email.To = strings.TrimSpace(toAddr)
+	}
+
+	// Extract Subject header
+	subject := msg.Header.Get("Subject")
+	if subject != "" {
+		// Decode any MIME encoded words (e.g., =?UTF-8?B?...?=)
+		decoded := decodeMIMEWord(subject)
+		email.Subject = strings.TrimSpace(decoded)
+	}
+
+	// Extract body content - handle multipart emails
+	contentType := msg.Header.Get("Content-Type")
+	if contentType != "" && strings.HasPrefix(contentType, "multipart/") {
+		// Handle multipart email (could contain both text and attachments)
+		boundary := parseMultipartBoundary(contentType)
+		reader := multipart.NewReader(msg.Body, boundary)
+
+		var bodyBuilder strings.Builder
+		for {
+			part, err := reader.NextPart()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				break
+			}
+
+			// Only extract text/plain parts for the body
+			if part.Header.Get("Content-Type") == "text/plain" ||
+				strings.HasPrefix(part.Header.Get("Content-Type"), "text/plain") {
+				partBody, err := io.ReadAll(part)
+				if err == nil {
+					bodyBuilder.WriteString(string(partBody))
+				}
+			}
+		}
+
+		email.Body = strings.TrimSpace(bodyBuilder.String())
+	} else {
+		// Handle single-part email with quoted-printable encoding
+		decodedReader := quotedprintable.NewReader(msg.Body)
+		body, err := io.ReadAll(decodedReader)
+		if err == nil {
+			email.Body = strings.TrimSpace(string(body))
+		} else {
+			// If decoding fails, read raw body
+			rawBody, _ := io.ReadAll(msg.Body)
+			email.Body = strings.TrimSpace(string(rawBody))
+		}
+	}
+
+	return email
+}
+
+// parseMultipartBoundary extracts the boundary parameter from Content-Type header
+func parseMultipartBoundary(contentType string) string {
+	mediaType, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return ""
+	}
+	if mediaType != "multipart" {
+		return ""
+	}
+	return params["boundary"]
+}
+
+// parseEmailFallback is a simple fallback parser when net/mail fails
+func parseEmailFallback(raw string) Email {
 	email := Email{Raw: raw}
 
 	lines := strings.Split(raw, "\n")

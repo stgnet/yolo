@@ -70,5 +70,65 @@
     "created_at": "2026-03-13T07:25:09.802416-04:00",
     "done": true,
     "completed_at": "2026-03-13T08:17:42.497148-04:00"
+  },
+  {
+    "title": "Add comprehensive test suite (critical - 0% test coverage)",
+    "created_at": "2026-03-14T17:11:05.994497-04:00",
+    "completed_at": "0001-01-01T00:00:00Z"
+  },
+  {
+    "title": "Fix gosec security issues in main.go (high priority)",
+    "created_at": "2026-03-14T17:11:08.991842-04:00",
+    "completed_at": "0001-01-01T00:00:00Z"
+  },
+  {
+    "title": "Add unit tests for utils package",
+    "created_at": "2026-03-14T17:11:12.068318-04:00",
+    "completed_at": "0001-01-01T00:00:00Z"
+  },
+  {
+    "title": "Add unit tests for web_search module",
+    "created_at": "2026-03-14T17:11:15.149064-04:00",
+    "completed_at": "0001-01-01T00:00:00Z"
+  },
+  {
+    "title": "Add unit tests for reddit integration",
+    "created_at": "2026-03-14T17:11:18.374673-04:00",
+    "completed_at": "0001-01-01T00:00:00Z"
+  },
+  {
+    "title": "Add unit tests for google CLI (gog) module",
+    "created_at": "2026-03-14T17:11:21.730053-04:00",
+    "completed_at": "0001-01-01T00:00:00Z"
+  },
+  {
+    "title": "Refactor tools.go to reduce complexity and improve maintainability",
+    "created_at": "2026-03-14T17:11:25.276397-04:00",
+    "completed_at": "0001-01-01T00:00:00Z"
+  },
+  {
+    "title": "Add unit tests for email handling (send_email, check_inbox, send_report)",
+    "created_at": "2026-03-14T17:11:30.761329-04:00",
+    "completed_at": "0001-01-01T00:00:00Z"
+  },
+  {
+    "title": "Add unit tests for git integration module",
+    "created_at": "2026-03-14T17:11:32.114509-04:00",
+    "completed_at": "0001-01-01T00:00:00Z"
+  },
+  {
+    "title": "Add unit tests for filesystem utilities (read_file, write_file, etc.)",
+    "created_at": "2026-03-14T17:11:33.630499-04:00",
+    "completed_at": "0001-01-01T00:00:00Z"
+  },
+  {
+    "title": "Add confirmation/audit log for dangerous operations in autonomous mode",
+    "created_at": "2026-03-14T17:11:51.607119-04:00",
+    "completed_at": "0001-01-01T00:00:00Z"
+  },
+  {
+    "title": "Fix email system - use Go's net/mail package for proper MIME parsing",
+    "created_at": "2026-03-14T17:11:55.733753-04:00",
+    "completed_at": "0001-01-01T00:00:00Z"
   }
 ]
