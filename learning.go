@@ -68,7 +68,7 @@ func (lm *LearningManager) LoadHistory() error {
 
 	err = json.Unmarshal(data, &lm.sessions)
 	if err != nil {
-		return fmt.Errorf("failed to parse learning history: %v", err)
+		return fmt.Errorf("failed to parse learning history: %w", err)
 	}
 	return nil
 }
