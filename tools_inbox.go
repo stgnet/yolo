@@ -177,8 +177,8 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 		select {
 		case r := <-done:
 			response = r.response
-		case <-time.After(30 * time.Second):
-			output.WriteString(fmt.Sprintf("⚠️ Warning: Email response generation timed out after 30 seconds\n"))
+		case <-time.After(15 * time.Minute):
+			output.WriteString(fmt.Sprintf("⚠️ Warning: Email response generation timed out after 15 minutes\n"))
 			// Leave email in inbox for retry on next processing run
 			output.WriteString("⚠️ Email left in inbox for retry.\n")
 			output.WriteString("---\n\n")
