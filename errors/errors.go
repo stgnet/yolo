@@ -47,6 +47,19 @@ type (
 		Data      any
 		Cause     error
 	}
+
+	// TodoValidationError indicates a todo validation failed
+	TodoValidationError struct {
+		Field  string
+		Title  string
+		Errors map[string]string
+	}
+
+	// TodoNotFoundError indicates a todo was not found when trying to complete it
+	TodoNotFoundError struct {
+		Title    string
+		Existing []string
+	}
 )
 
 // Error implements the error interface for FileNotFoundError
@@ -118,7 +131,50 @@ func (e *JSONError) Error() string {
 // Unwrap returns the wrapped error
 func (e *JSONError) Unwrap() error { return e.Cause }
 
-// NewFileNotFoundError creates a new FileNotFoundError
+// Error implements the error interface for TodoValidationError
+func (e *TodoValidationError) Error() string {
+	msg := "validation failed"
+	if e.Field != "" {
+		msg += fmt.Sprintf(" for field '%s'", e.Field)
+	}
+	if e.Title != "" {
+		msg += fmt.Sprintf(" for todo '%s'", e.Title)
+	}
+	if len(e.Errors) > 0 {
+		msg += ":"
+		for field, err := range e.Errors {
+			msg += fmt.Sprintf(" %s=%q", field, err)
+		}
+	}
+	return msg
+}
+
+// Unwrap returns nil as TodoValidationError doesn't wrap another error
+func (e *TodoValidationError) Unwrap() error { return nil }
+
+// Error implements the error interface for TodoNotFoundError
+func (e *TodoNotFoundError) Error() string {
+	msg := fmt.Sprintf("todo not found: %s", e.Title)
+	if len(e.Existing) > 0 {
+		msg += ". Existing todos:"
+		for _, title := range e.Existing {
+			msg += " " + title
+		}
+	}
+	return msg
+}
+
+// NewTodoValidationError creates a new TodoValidationError
+func NewTodoValidationError(field string, title string, errors map[string]string) *TodoValidationError {
+	return &TodoValidationError{Field: field, Title: title, Errors: errors}
+}
+
+// NewTodoNotFoundError creates a new TodoNotFoundError
+func NewTodoNotFoundError(title string, existing []string) *TodoNotFoundError {
+	return &TodoNotFoundError{Title: title, Existing: existing}
+}
+
+// Helper functions for context map extraction
 func NewFileNotFoundError(op, path string, cause error) *FileNotFoundError {
 	return &FileNotFoundError{Op: op, Path: path, Cause: cause}
 }
