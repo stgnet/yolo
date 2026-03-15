@@ -2,7 +2,7 @@ package main
 
 import (
 	"bufio"
-	"crypto/md5"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -1542,8 +1542,8 @@ var searchCacheTTL = 5 * time.Minute // Cache entries expire after 5 minutes
 
 // getSearchCacheKey generates a unique key for caching
 func getSearchCacheKey(query string, count int) string {
-	hash := md5.Sum([]byte(fmt.Sprintf("%s:%d", strings.ToLower(query), count)))
-	return fmt.Sprintf("%x", hash[:8]) // Use first 8 bytes of MD5 as key
+	hash := sha256.Sum256([]byte(fmt.Sprintf("%s:%d", strings.ToLower(query), count)))
+	return fmt.Sprintf("%x", hash[:8]) // Use first 8 bytes of SHA-256 as key
 }
 
 // getFromSearchCache retrieves a cached result if available and not expired
