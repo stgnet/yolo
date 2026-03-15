@@ -9,12 +9,12 @@ import (
 
 // AuditEntry represents a single audit log entry
 type AuditEntry struct {
-	Timestamp   string `json:"timestamp"`
-	Action      string `json:"action"`
-	Path        string `json:"path,omitempty"`
-	Details     string `json:"details,omitempty"`
-	Operator    string `json:"operator"` // In autonomous mode: "Yolo"
-	Success     bool   `json:"success"`
+	Timestamp string `json:"timestamp"`
+	Action    string `json:"action"`
+	Path      string `json:"path,omitempty"`
+	Details   string `json:"details,omitempty"`
+	Operator  string `json:"operator"` // In autonomous mode: "Yolo"
+	Success   bool   `json:"success"`
 }
 
 const auditLogPath = ".audit_log.json"
@@ -70,7 +70,7 @@ func LogDestructiveAction(action string, path string, details string, success bo
 	}
 
 	// Log to stdout as well for immediate visibility
-	logMessage := fmt.Sprintf("[AUDIT] Action: %s | Path: %s | Details: %s | Success: %t", 
+	logMessage := fmt.Sprintf("[AUDIT] Action: %s | Path: %s | Details: %s | Success: %t",
 		action, path, details, success)
 	fmt.Println(logMessage)
 }
@@ -108,5 +108,5 @@ func PrintAuditSummary(limit int) {
 			fmt.Printf("    Details: %s\n", entry.Details)
 		}
 	}
-	fmt.Println("===========================================\n")
+	fmt.Println("===========================================")
 }

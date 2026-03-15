@@ -1,0 +1,9 @@
+# YOLO Agent HTTP Routes Configuration
+routes:
+  - path: /health
+    method: GET
+    description: Health check endpoint
+    
+  - path: /agent/run
+    method: POST
+    description: Execute agent command via HTTP

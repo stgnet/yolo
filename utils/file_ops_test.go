@@ -77,7 +77,7 @@ func TestWriteFileCreateDirs(t *testing.T) {
 
 func TestListFilesTopLevel(t *testing.T) {
 	tmpDir := t.TempDir()
-	
+
 	// Create test files
 	files := []string{"file1.txt", "file2.txt", "dir1/file3.txt"}
 	for _, f := range files {
@@ -117,7 +117,7 @@ func TestEnsureDir(t *testing.T) {
 
 func TestDeleteFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	
+
 	testFile := filepath.Join(tmpDir, "file.txt")
 	content := "Content to delete"
 
