@@ -801,7 +801,7 @@ func (a *YoloAgent) parseTextToolCalls(text string) []ParsedToolCall {
 	//   <parameter=query>md5</parameter>
 	//   <parameter=pattern>**/*.go</parameter>
 	if len(calls) == 0 {
-		reFormat8 := regexp.MustCompile(`(?s)\[(\w+)\]\s*\n((?:\s*<parameter=\w+>.*?(?:</parameter>|\n|$))+)`)
+		reFormat8 := regexp.MustCompile(`(?s)\[(\w+)\]\s*\n((?:\s*<parameter=\w+>.*?(?:</parameter>|$))+)`)
 		reParam8 := regexp.MustCompile(`<parameter=(\w+)>\s*([\s\S]*?)(?:</parameter>|$)`)
 		validToolSet := map[string]bool{}
 		for _, t := range validTools {
