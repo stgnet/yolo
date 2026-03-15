@@ -329,3 +329,67 @@ Finally, I'll create a new test file based on what I find.
 		}
 	}
 }
+
+// TestHybridBracketXMLFormat tests Format 8: [tool_name]\n<parameter=key>value
+func TestHybridBracketXMLFormat(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected []ParsedToolCall
+	}{
+		{
+			name: "single parameter with closing tag",
+			input: `[run_command]
+<parameter=command>ls -la</parameter>`,
+			expected: []ParsedToolCall{
+				{Name: "run_command", Args: map[string]any{"command": "ls -la"}},
+			},
+		},
+		{
+			name: "multiple parameters",
+			input: `[search_files]
+<parameter=query>md5</parameter>
+<parameter=pattern>**/*.go</parameter>`,
+			expected: []ParsedToolCall{
+				{Name: "search_files", Args: map[string]any{"query": "md5", "pattern": "**/*.go"}},
+			},
+		},
+		{
+			name: "parameter without closing tag",
+			input: `[run_command]
+<parameter=command>cd /src && grep -rn "crypto/md5" . 2>/dev/null | head -20`,
+			expected: []ParsedToolCall{
+				{Name: "run_command", Args: map[string]any{"command": `cd /src && grep -rn "crypto/md5" . 2>/dev/null | head -20`}},
+			},
+		},
+		{
+			name: "with thinking text before",
+			input: `[thinking] Let me search for md5 usage.
+[search_files]
+<parameter=query>crypto/md5</parameter>
+<parameter=pattern>**/*.go</parameter>`,
+			expected: []ParsedToolCall{
+				{Name: "search_files", Args: map[string]any{"query": "crypto/md5", "pattern": "**/*.go"}},
+			},
+		},
+	}
+
+	a := &YoloAgent{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			calls := a.parseTextToolCalls(tt.input)
+			if len(calls) != len(tt.expected) {
+				t.Errorf("Expected %d tool calls, got %d. Calls: %+v", len(tt.expected), len(calls), calls)
+				return
+			}
+			for i, call := range calls {
+				if call.Name != tt.expected[i].Name {
+					t.Errorf("Call %d: expected name %q, got %q", i, tt.expected[i].Name, call.Name)
+				}
+				if !reflect.DeepEqual(call.Args, tt.expected[i].Args) {
+					t.Errorf("Call %d: expected args %+v, got %+v", i, tt.expected[i].Args, call.Args)
+				}
+			}
+		})
+	}
+}
