@@ -19,6 +19,7 @@ type YoloConfigData struct {
 	Version      int    `json:"version"`
 	Model        string `json:"model,omitempty"`         // currently selected Ollama model
 	TerminalMode bool   `json:"terminal_mode,omitempty"` // true = classic split-screen UI; false (default) = buffer mode
+	DebugMode    *bool  `json:"debug_mode,omitempty"`    // true (default) = show full tool args/results verbatim
 }
 
 // YoloConfig owns the in-memory config and handles reading/writing to disk.
@@ -102,6 +103,25 @@ func (c *YoloConfig) GetTerminalMode() bool {
 func (c *YoloConfig) SetTerminalMode(enabled bool) {
 	c.mu.Lock()
 	c.Data.TerminalMode = enabled
+	c.mu.Unlock()
+	c.Save()
+}
+
+// GetDebugMode returns whether debug mode is enabled. Defaults to true
+// when not explicitly set so that first-run users see full verbatim output.
+func (c *YoloConfig) GetDebugMode() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.Data.DebugMode == nil {
+		return true // default on
+	}
+	return *c.Data.DebugMode
+}
+
+// SetDebugMode updates the debug mode setting and persists to disk.
+func (c *YoloConfig) SetDebugMode(enabled bool) {
+	c.mu.Lock()
+	c.Data.DebugMode = &enabled
 	c.mu.Unlock()
 	c.Save()
 }
