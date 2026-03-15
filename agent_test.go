@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -525,5 +526,42 @@ func TestParseParamString(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestIsFileMutationTool(t *testing.T) {
+	mutations := []string{"write_file", "edit_file", "move_file"}
+	for _, name := range mutations {
+		if !isFileMutationTool(name) {
+			t.Errorf("expected %q to be a file mutation tool", name)
+		}
+	}
+
+	nonMutations := []string{"read_file", "list_files", "run_command", "search", ""}
+	for _, name := range nonMutations {
+		if isFileMutationTool(name) {
+			t.Errorf("expected %q to NOT be a file mutation tool", name)
+		}
+	}
+}
+
+func TestWriteFileErrorOnPathConflict(t *testing.T) {
+	dir := t.TempDir()
+	executor := NewToolExecutor(dir, nil)
+
+	// Create a regular file named "pkg" so that write_file("pkg/main.go", ...)
+	// fails because "pkg" is a file, not a directory.
+	os.WriteFile(filepath.Join(dir, "pkg"), []byte("binary"), 0o644)
+
+	result := executor.Execute("write_file", map[string]any{
+		"path":    "pkg/main.go",
+		"content": "package main",
+	})
+
+	if !strings.HasPrefix(result, "Error: ") {
+		t.Fatalf("expected error result, got: %s", result)
+	}
+	if !strings.Contains(result, "could not create directory") {
+		t.Errorf("expected 'could not create directory' in error, got: %s", result)
 	}
 }
