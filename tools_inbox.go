@@ -583,12 +583,25 @@ INSTRUCTIONS:
 			ToolCalls: nativeTCs,
 		})
 
-		// Execute each tool
+		// Execute each tool — abort remaining if a file-mutation tool fails
+		inboxFileMutationFailed := false
 		for i, call := range toolCalls {
 			args := call.Args
 			if args == nil {
 				args = map[string]any{}
 			}
+
+			if inboxFileMutationFailed {
+				abortMsg := fmt.Sprintf("Error: skipped — a prior file operation failed. "+
+					"Review earlier errors before retrying this tool call (%s).", call.Name)
+				roundMsgs = append(roundMsgs, ChatMessage{
+					Role:       "tool",
+					Content:    abortMsg,
+					ToolCallID: fmt.Sprintf("email_call_%d_%d", round, i),
+				})
+				continue
+			}
+
 			resultStr := executeWithTimeout(t, call.Name, args)
 			cleanResult := filterToolActivityMarkers(resultStr)
 			roundMsgs = append(roundMsgs, ChatMessage{
@@ -596,6 +609,10 @@ INSTRUCTIONS:
 				Content:    cleanResult,
 				ToolCallID: fmt.Sprintf("email_call_%d_%d", round, i),
 			})
+
+			if strings.HasPrefix(resultStr, "Error: ") && isFileMutationTool(call.Name) {
+				inboxFileMutationFailed = true
+			}
 		}
 	}
 
