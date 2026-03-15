@@ -405,12 +405,32 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		// We don't interrupt execution — tools keep running normally —
 		// but we consume the message so the agent sees it on
 		// its next LLM round.
+		//
+		// Exception: if a file-mutation tool (write_file, edit_file, etc.)
+		// fails, we abort remaining tool calls in the batch so the LLM
+		// can see the error and adjust before continuing.
 		userInterjected := false
+		fileMutationFailed := false
 		for i, call := range toolCalls {
 			name := call.Name
 			args := call.Args
 			if args == nil {
 				args = map[string]any{}
+			}
+
+			// If a prior file-mutation tool failed, skip remaining calls
+			// and report them as aborted so the LLM knows to retry.
+			if fileMutationFailed {
+				abortMsg := fmt.Sprintf("Error: skipped — a prior file operation failed. "+
+					"Review earlier errors before retrying this tool call (%s).", name)
+				cprint(Red, fmt.Sprintf("  [%s] SKIPPED (prior file operation failed)", name))
+				roundMsgs = append(roundMsgs, ChatMessage{
+					Role:       "tool",
+					Content:    abortMsg,
+					ToolCallID: fmt.Sprintf("call_%d_%d", roundNum, i),
+				})
+				toolLog = append(toolLog, toolLogEntry{name: name, args: args, result: abortMsg})
+				continue
 			}
 
 			shortArgs, _ := json.Marshal(args)
@@ -428,7 +448,13 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 			}
 			preview = strings.ReplaceAll(preview, "\r", "")
 			preview = strings.ReplaceAll(preview, "\n", " ")
-			cprint(Gray, fmt.Sprintf("  => %s", preview))
+
+			// Display errors prominently in red so the user sees failures
+			if strings.HasPrefix(resultStr, "Error: ") {
+				cprint(Red, fmt.Sprintf("  => %s", preview))
+			} else {
+				cprint(Gray, fmt.Sprintf("  => %s", preview))
+			}
 
 			cleanResult := filterToolActivityMarkers(resultStr)
 			roundMsgs = append(roundMsgs, ChatMessage{
@@ -437,6 +463,11 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 				ToolCallID: fmt.Sprintf("call_%d_%d", roundNum, i),
 			})
 			toolLog = append(toolLog, toolLogEntry{name: name, args: args, result: cleanResult})
+
+			// Check if a file-mutation tool failed — abort remaining batch
+			if strings.HasPrefix(resultStr, "Error: ") && isFileMutationTool(name) {
+				fileMutationFailed = true
+			}
 		}
 
 		// After the tool batch completes, check if the user typed something
@@ -814,6 +845,17 @@ func parseFuncCallArgs(s string) map[string]any {
 	return result
 }
 
+// isFileMutationTool returns true for tools that create or modify files.
+// When these tools fail, remaining tool calls in the batch are aborted
+// so the LLM can see the error and adjust before continuing.
+func isFileMutationTool(name string) bool {
+	switch name {
+	case "write_file", "edit_file", "move_file":
+		return true
+	}
+	return false
+}
+
 // stripTextToolCalls removes text-based tool call syntax from assistant
 // content so that the model does not see both its own textual tool calls
 // and the native tool_calls representation. This prevents the model from
@@ -979,11 +1021,24 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 				ToolCalls: nativeTCs,
 			})
 
-			// Execute each tool
+			// Execute each tool — abort remaining if a file-mutation tool fails
+			saFileMutationFailed := false
 			for i, call := range toolCalls {
 				args := call.Args
 				if args == nil {
 					args = map[string]any{}
+				}
+
+				if saFileMutationFailed {
+					abortMsg := fmt.Sprintf("Error: skipped — a prior file operation failed. "+
+						"Review earlier errors before retrying this tool call (%s).", call.Name)
+					cprint(Red, fmt.Sprintf("%s [%s] SKIPPED (prior file operation failed)", prefix, call.Name))
+					roundMsgs = append(roundMsgs, ChatMessage{
+						Role:       "tool",
+						Content:    abortMsg,
+						ToolCallID: fmt.Sprintf("sa%d_call_%d_%d", aid, round, i),
+					})
+					continue
 				}
 
 				shortArgs, _ := json.Marshal(args)
@@ -1001,7 +1056,12 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 				}
 				preview = strings.ReplaceAll(preview, "\r", "")
 				preview = strings.ReplaceAll(preview, "\n", " ")
-				cprint(Gray, fmt.Sprintf("%s => %s", prefix, preview))
+
+				if strings.HasPrefix(resultStr, "Error: ") {
+					cprint(Red, fmt.Sprintf("%s => %s", prefix, preview))
+				} else {
+					cprint(Gray, fmt.Sprintf("%s => %s", prefix, preview))
+				}
 
 				cleanResult := filterToolActivityMarkers(resultStr)
 				roundMsgs = append(roundMsgs, ChatMessage{
@@ -1009,6 +1069,10 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 					Content:    cleanResult,
 					ToolCallID: fmt.Sprintf("sa%d_call_%d_%d", aid, round, i),
 				})
+
+				if strings.HasPrefix(resultStr, "Error: ") && isFileMutationTool(call.Name) {
+					saFileMutationFailed = true
+				}
 			}
 		}
 
