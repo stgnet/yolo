@@ -189,7 +189,7 @@ func parseMultipartBoundary(contentType string) string {
 	if err != nil {
 		return ""
 	}
-	if mediaType != "multipart" {
+	if !strings.HasPrefix(mediaType, "multipart/") {
 		return ""
 	}
 	return params["boundary"]
