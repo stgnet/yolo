@@ -18,6 +18,20 @@ import (
 	"time"
 )
 
+// AuditLogger provides logging for destructive operations
+type AuditLogger struct {
+	log func(format string, args ...interface{})
+}
+
+// LogDestructiveAction logs information about a destructive operation
+func (a *AuditLogger) LogDestructiveAction(action string, details interface{}) error {
+	timestamp := time.Now().Format(time.RFC3339)
+	if a.log != nil {
+		a.log("DESTRUCTIVE ACTION: %s [%s]", action, timestamp)
+	}
+	return nil
+}
+
 // EmailMessage represents a parsed email from the mailbox
 type EmailMessage struct {
 	From        string   `json:"from"`
@@ -237,13 +251,14 @@ func errorMessage(format string, args ...any) string {
 // implementations.  All file operations are sandboxed under baseDir
 // via safePath.
 type ToolExecutor struct {
-	baseDir string     // root directory for file operations
-	agent   *YoloAgent // back-reference for sub-agent spawning, model switching, etc.
+	baseDir     string       // root directory for file operations
+	agent       *YoloAgent   // back-reference for sub-agent spawning, model switching, etc.
+	auditLogger *AuditLogger // audit logger for destructive operation tracking
 }
 
 // NewToolExecutor creates an executor rooted at baseDir.
 func NewToolExecutor(baseDir string, agent *YoloAgent) *ToolExecutor {
-	return &ToolExecutor{baseDir: baseDir, agent: agent}
+	return &ToolExecutor{baseDir: baseDir, agent: agent, auditLogger: &AuditLogger{}}
 }
 
 // safePath resolves and validates that a relative path stays within baseDir.
@@ -274,6 +289,7 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 	case "read_file":
 		return t.readFile(args)
 	case "write_file":
+		t.auditLogger.LogDestructiveAction("write_file", map[string]interface{}{"path": args[0], "content_length": len(args[1])})
 		return t.writeFile(args)
 	case "edit_file":
 		return t.editFile(args)
@@ -302,6 +318,7 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 	case "make_dir":
 		return t.makeDir(args)
 	case "remove_dir":
+		t.auditLogger.LogDestructiveAction("remove_dir", map[string]interface{}{"path": args[0]})
 		return t.removeDir(args)
 	case "copy_file":
 		return t.copyFile(args)
@@ -320,6 +337,7 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 	case "implement":
 		return t.implement(args)
 	case "send_email":
+		t.auditLogger.LogDestructiveAction("send_email", map[string]interface{}{"to": args[1], "subject": args[2]})
 		return t.sendEmail(args)
 	case "send_report":
 		return t.sendReport(args)
@@ -566,7 +584,13 @@ func (t *ToolExecutor) listFiles(args map[string]any) string {
 
 	var files, dirs []string
 	for _, m := range matches {
-		rel, _ := filepath.Rel(t.baseDir, m)
+		rel, err := filepath.Rel(t.baseDir, m)
+	if err != nil {
+		continue
+	}
+	if strings.HasPrefix(rel, "..") {
+		continue
+	}
 		// Skip noise directories
 		topDir := strings.SplitN(rel, string(filepath.Separator), 2)[0]
 		if topDir == ".yolo" || topDir == ".git" || topDir == "__pycache__" || topDir == "node_modules" {
