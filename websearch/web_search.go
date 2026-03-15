@@ -19,14 +19,14 @@ type SearchResult struct {
 
 // MockHTTPClient implements http.Client for testing with configurable behavior
 type MockHTTPClient struct {
-	Response      *http.Response
-	Body          io.Reader
-	Error         error
-	StatusCode    int
-	Header        http.Header
-	Delay         time.Duration
-	RateLimit     bool
-	RetryAfter    int
+	Response   *http.Response
+	Body       io.Reader
+	Error      error
+	StatusCode int
+	Header     http.Header
+	Delay      time.Duration
+	RateLimit  bool
+	RetryAfter int
 }
 
 // Do implements the RoundTripper interface with custom behaviors for testing

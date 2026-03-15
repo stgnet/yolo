@@ -3,6 +3,7 @@ package email
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -99,7 +100,10 @@ func (c *Client) sendViaSendmail(msg *Message) error {
 
 	err := cmd.Run()
 	if err != nil {
-		return fmt.Errorf("sendmail failed: %w", err)
+		// Log error with context including recipient email, subject, and error details
+		log.Printf("[EMAIL ERROR] Failed to send email:\n  Recipients: %s\n  Subject: %s\n  Error: %v",
+			strings.Join(msg.To, ", "), msg.Subject, err)
+		return fmt.Errorf("sendmail failed for email '%s' to %s: %w", msg.Subject, strings.Join(msg.To, ", "), err)
 	}
 
 	return nil

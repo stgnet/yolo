@@ -14,9 +14,9 @@ import (
 
 func TestPool_WorkerPoolBehaviorWithVariousSizes(t *testing.T) {
 	tests := []struct {
-		name     string
+		name       string
 		numWorkers int
-		numTasks int
+		numTasks   int
 	}{
 		{"SingleWorkerSingleTask", 1, 1},
 		{"SingleWorkerMultipleTasks", 1, 10},
@@ -29,7 +29,7 @@ func TestPool_WorkerPoolBehaviorWithVariousSizes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			
+
 			pool := NewWorkerPool(tt.numWorkers, 100)
 			var completed atomic.Int32
 			var orderMu sync.Mutex
@@ -39,7 +39,7 @@ func TestPool_WorkerPoolBehaviorWithVariousSizes(t *testing.T) {
 			for i := 0; i < tt.numTasks; i++ {
 				tid := taskID
 				taskID++
-				
+
 				err := pool.Submit(func(ctx context.Context) error {
 					orderMu.Lock()
 					executionOrder = append(executionOrder, tid)
@@ -64,10 +64,10 @@ func TestPool_WorkerPoolBehaviorWithVariousSizes(t *testing.T) {
 func TestPool_CapacityLimitsAndQueueing(t *testing.T) {
 	t.Run("QueueReachesCapacityRejectsNewTasks", func(t *testing.T) {
 		t.Parallel()
-		
+
 		pool := NewWorkerPool(1, 3) // 1 worker, capacity of 3
 		var rejected int32
-		
+
 		for i := 0; i < 5; i++ {
 			err := pool.Submit(func(ctx context.Context) error {
 				time.Sleep(10 * time.Millisecond)
@@ -79,7 +79,7 @@ func TestPool_CapacityLimitsAndQueueing(t *testing.T) {
 		}
 
 		pool.Stop()
-		
+
 		if rejected == 0 {
 			t.Error("Expected at least one task to be rejected due to capacity limit")
 		}
@@ -87,17 +87,17 @@ func TestPool_CapacityLimitsAndQueueing(t *testing.T) {
 
 	t.Run("QueueFillsAndDrainsCorrectly", func(t *testing.T) {
 		t.Parallel()
-		
+
 		pool := NewWorkerPool(2, 5)
 		var active int32
 		var maxActive atomic.Int32
-		
+
 		for i := 0; i < 10; i++ {
 			err := pool.Submit(func(ctx context.Context) error {
 				current := atomic.AddInt32(&active, 1)
 				time.Sleep(20 * time.Millisecond)
 				atomic.AddInt32(&active, -1)
-				
+
 				maxActive.Store(max(int64(maxActive.Load()), int64(current)))
 				return nil
 			})
@@ -116,18 +116,18 @@ func TestPool_CapacityLimitsAndQueueing(t *testing.T) {
 
 	t.Run("QueueUnderLoadMaintainsOrder", func(t *testing.T) {
 		t.Parallel()
-		
+
 		pool := NewWorkerPool(3, 100)
 		var orderMu sync.Mutex
 		var executionOrder []int
 		taskID := 0
-		
+
 		for i := 0; i < 20; i++ {
 			tid := taskID
 			taskID++
-			
+
 			err := pool.Submit(func(ctx context.Context) error {
-				time.Sleep(time.Duration(tid % 3) * time.Millisecond)
+				time.Sleep(time.Duration(tid%3) * time.Millisecond)
 				orderMu.Lock()
 				executionOrder = append(executionOrder, tid)
 				orderMu.Unlock()
@@ -148,8 +148,8 @@ func TestPool_CapacityLimitsAndQueueing(t *testing.T) {
 
 func TestPool_GracefulShutdownScenarios(t *testing.T) {
 	tests := []struct {
-		name       string
-		taskDuration time.Duration
+		name          string
+		taskDuration  time.Duration
 		shutdownDelay time.Duration
 	}{
 		{"ImmediateShutdownNoTasks", 0, 0},
@@ -161,16 +161,16 @@ func TestPool_GracefulShutdownScenarios(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			
+
 			pool := NewWorkerPool(3, 100)
 			var completed int32
 			var started int32
-			
+
 			taskDuration := tt.taskDuration
 			if taskDuration == 0 {
 				taskDuration = 1 * time.Millisecond
 			}
-			
+
 			for i := 0; i < 5; i++ {
 				err := pool.Submit(func(ctx context.Context) error {
 					atomic.AddInt32(&started, 1)
@@ -184,7 +184,7 @@ func TestPool_GracefulShutdownScenarios(t *testing.T) {
 			}
 
 			time.Sleep(tt.shutdownDelay)
-			
+
 			startTime := time.Now()
 			pool.Stop()
 			shutdownDuration := time.Since(startTime)
@@ -212,16 +212,16 @@ func TestPool_ErrorHandlingDuringTaskExecution(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			
+
 			pool := NewWorkerPool(2, 50)
 			var succeeded int32
 			var failed int32
-			
+
 			taskID := 0
 			for i := 0; i < tt.taskCount; i++ {
 				tid := taskID
 				taskID++
-				
+
 				err := pool.Submit(func(ctx context.Context) error {
 					if tid%2 == 1 || tt.errorType != nil {
 						atomic.AddInt32(&failed, 1)
@@ -230,7 +230,7 @@ func TestPool_ErrorHandlingDuringTaskExecution(t *testing.T) {
 					atomic.AddInt32(&succeeded, 1)
 					return nil
 				})
-				
+
 				if err != nil && tid < tt.taskCount {
 					t.Fatalf("Failed to submit task %d: %v", tid, err)
 				}
@@ -300,14 +300,14 @@ func TestPool_GoroutineLeakDetection(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			
+
 			runtime := NewPoolRuntime()
 			runtime.Start(time.Second)
-			
+
 			tt.runFunc()
-			
+
 			pool.GarbageCollectGoroutines()
-			
+
 			// Check for leaks after goroutine collection
 			if len(runtime.ongoingTasks) > tt.maxGorouts {
 				t.Errorf("Potential goroutine leak detected: %d ongoing tasks", len(runtime.ongoingTasks))
@@ -319,11 +319,11 @@ func TestPool_GoroutineLeakDetection(t *testing.T) {
 func TestPool_ConcurrentAccessPatterns(t *testing.T) {
 	t.Run("MultipleSubmitCallsConcurrently", func(t *testing.T) {
 		t.Parallel()
-		
+
 		pool := NewWorkerPool(4, 100)
 		var wg sync.WaitGroup
 		submitCount := int32(0)
-		
+
 		for i := 0; i < 10; i++ {
 			wg.Add(1)
 			go func() {
@@ -334,10 +334,10 @@ func TestPool_ConcurrentAccessPatterns(t *testing.T) {
 				atomic.AddInt32(&submitCount, 1)
 			}()
 		}
-		
+
 		wg.Wait()
 		pool.Stop()
-		
+
 		if submitCount != 10 {
 			t.Errorf("Expected all submissions to complete, got %d", submitCount)
 		}
@@ -345,10 +345,10 @@ func TestPool_ConcurrentAccessPatterns(t *testing.T) {
 
 	t.Run("SubmitDuringStopRaceCondition", func(t *testing.T) {
 		t.Parallel()
-		
+
 		pool := NewWorkerPool(4, 50)
 		var stopComplete atomic.Bool
-		
+
 		go func() {
 			for i := 0; i < 20; i++ {
 				pool.Submit(func(ctx context.Context) error {
@@ -360,7 +360,7 @@ func TestPool_ConcurrentAccessPatterns(t *testing.T) {
 
 		time.Sleep(10 * time.Millisecond)
 		go pool.Stop()
-		
+
 		for !stopComplete.Load() {
 			select {
 			case <-time.After(3 * time.Second):
@@ -374,10 +374,10 @@ func TestPool_ConcurrentAccessPatterns(t *testing.T) {
 
 	t.Run("PoolSizeChangesSafe", func(t *testing.T) {
 		t.Parallel()
-		
+
 		pool := NewWorkerPool(4, 50)
 		var activeWorkers atomic.Int32
-		
+
 		for i := 0; i < 30; i++ {
 			pool.Submit(func(ctx context.Context) error {
 				current := atomic.AddInt32(&activeWorkers, 1)
@@ -386,9 +386,9 @@ func TestPool_ConcurrentAccessPatterns(t *testing.T) {
 				return nil
 			})
 		}
-		
+
 		pool.Stop()
-		
+
 		if activeWorkers.Load() != 0 {
 			t.Errorf("Pool not stopped properly: %d workers still active", activeWorkers.Load())
 		}
@@ -398,19 +398,19 @@ func TestPool_ConcurrentAccessPatterns(t *testing.T) {
 func TestPool_TimeoutScenarios(t *testing.T) {
 	t.Run("TaskTimeoutWithContext", func(t *testing.T) {
 		t.Parallel()
-		
+
 		pool := NewWorkerPool(2, 50)
 		var timeouts int32
-		
+
 		for i := 0; i < 5; i++ {
 			timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-			
+
 			err := pool.Submit(func(ctx context.Context) error {
 				time.Sleep(100 * time.Millisecond)
 				cancel()
 				return nil
 			})
-			
+
 			if err != nil {
 				t.Logf("Task %d rejected: %v", i, err)
 			}
@@ -421,9 +421,9 @@ func TestPool_TimeoutScenarios(t *testing.T) {
 
 	t.Run("PoolStopTimeoutNoHang", func(t *testing.T) {
 		t.Parallel()
-		
+
 		pool := NewWorkerPool(3, 100)
-		
+
 		for i := 0; i < 20; i++ {
 			pool.Submit(func(ctx context.Context) error {
 				time.Sleep(10 * time.Millisecond)
@@ -434,7 +434,7 @@ func TestPool_TimeoutScenarios(t *testing.T) {
 		start := time.Now()
 		pool.Stop()
 		duration := time.Since(start)
-		
+
 		if duration > 2*time.Second {
 			t.Errorf("Pool stop took too long: %v", duration)
 		}
