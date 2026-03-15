@@ -315,9 +315,31 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 	var toolCalls []ParsedToolCall
 	inThinking := false
 	inToolActivity := false
+	// activeOpenMarker records which open marker started the current tool
+	// activity block so we can look for its correct corresponding close.
+	var activeOpenMarker string
 	// pendingBuf accumulates text that might contain a partial
 	// "[tool activity]" or "[/tool activity]" marker split across tokens.
 	var pendingBuf string
+
+	// closeMarkerMap maps each open marker to its corresponding close marker.
+	// This prevents </function> from prematurely closing a <tool_call> block.
+	closeMarkerMap := map[string]string{
+		"[tool activity]": "[/tool activity]",
+		"<tool_call>":     "</tool_call>",
+		"<function=":      "</function>",
+	}
+
+	// allCloseMarkers lists every possible closing tag so we can suppress
+	// orphaned close tags that appear outside an active tool-activity block
+	// (e.g. when the LLM splits a tool call across thinking/content boundaries).
+	allCloseMarkers := []string{"[/tool activity]", "</tool_call>", "</function>", "</parameter>"}
+
+	// allMarkers combines open and close markers for partial-match detection.
+	allMarkers := []string{
+		"[tool activity]", "<tool_call>", "<function=",
+		"[/tool activity]", "</tool_call>", "</function>", "</parameter>",
+	}
 
 	scanner := bufio.NewScanner(resp.Body)
 	// Increase scanner buffer for large responses
@@ -375,6 +397,7 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 						idx    int
 						marker string
 					}
+
 					var best *markerMatch
 					for _, openMarker := range []string{"[tool activity]", "<tool_call>", "<function="} {
 						idx := strings.Index(pendingBuf, openMarker)
@@ -382,6 +405,27 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 							best = &markerMatch{idx: idx, marker: openMarker}
 						}
 					}
+
+					// Also check for orphaned close markers that appear
+					// before any open marker. These are leftovers from tool
+					// calls that started in thinking tokens, so suppress them.
+					var bestClose *markerMatch
+					for _, cm := range allCloseMarkers {
+						idx := strings.Index(pendingBuf, cm)
+						if idx >= 0 && (bestClose == nil || idx < bestClose.idx) {
+							bestClose = &markerMatch{idx: idx, marker: cm}
+						}
+					}
+
+					if bestClose != nil && (best == nil || bestClose.idx < best.idx) {
+						// Orphaned close marker before any open marker — skip it.
+						if bestClose.idx > 0 {
+							outPrint(pendingBuf[:bestClose.idx])
+						}
+						pendingBuf = pendingBuf[bestClose.idx+len(bestClose.marker):]
+						continue
+					}
+
 					if best != nil {
 						// Flush text before marker in default color
 						if best.idx > 0 {
@@ -391,13 +435,14 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 						outPrint(Yellow + best.marker)
 						pendingBuf = pendingBuf[best.idx+len(best.marker):]
 						inToolActivity = true
+						activeOpenMarker = best.marker
 						continue
 					}
 					// Check if the tail of pendingBuf could be a partial marker
 					partial := false
-					for _, openMarker := range []string{"[tool activity]", "<tool_call>", "<function="} {
-						for i := 1; i < len(openMarker) && i <= len(pendingBuf); i++ {
-							if strings.HasSuffix(pendingBuf, openMarker[:i]) {
+					for _, marker := range allMarkers {
+						for i := 1; i < len(marker) && i <= len(pendingBuf); i++ {
+							if strings.HasSuffix(pendingBuf, marker[:i]) {
 								// Flush everything except the potential partial match
 								safe := pendingBuf[:len(pendingBuf)-i]
 								if safe != "" {
@@ -418,44 +463,37 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 					}
 					break // wait for more tokens
 				} else {
-					// Check for any of the tool activity close markers
-					type markerMatch struct {
-						idx    int
-						marker string
+					// Look only for the close marker that matches the active
+					// open marker. This prevents </function> from prematurely
+					// ending a <tool_call> block and orphaning </tool_call>.
+					expectedClose := closeMarkerMap[activeOpenMarker]
+					if expectedClose == "" {
+						expectedClose = "</tool_call>" // fallback
 					}
-					var best *markerMatch
-					for _, closeMarker := range []string{"[/tool activity]", "</tool_call>", "</function>"} {
-						idx := strings.Index(pendingBuf, closeMarker)
-						if idx >= 0 && (best == nil || idx < best.idx) {
-							best = &markerMatch{idx: idx, marker: closeMarker}
-						}
-					}
-					if best != nil {
+
+					idx := strings.Index(pendingBuf, expectedClose)
+					if idx >= 0 {
 						// Print text before closing marker in yellow
-						if best.idx > 0 {
-							outPrint(pendingBuf[:best.idx])
+						if idx > 0 {
+							outPrint(pendingBuf[:idx])
 						}
 						// Print closing marker in yellow, then reset
-						outPrint(best.marker + Reset)
-						pendingBuf = pendingBuf[best.idx+len(best.marker):]
+						outPrint(expectedClose + Reset)
+						pendingBuf = pendingBuf[idx+len(expectedClose):]
 						inToolActivity = false
+						activeOpenMarker = ""
 						continue
 					}
 					// Check for partial closing marker at end
 					partial := false
-					for _, closeMarker := range []string{"[/tool activity]", "</tool_call>", "</function>"} {
-						for i := 1; i < len(closeMarker) && i <= len(pendingBuf); i++ {
-							if strings.HasSuffix(pendingBuf, closeMarker[:i]) {
-								safe := pendingBuf[:len(pendingBuf)-i]
-								if safe != "" {
-									outPrint(safe)
-								}
-								pendingBuf = pendingBuf[len(pendingBuf)-i:]
-								partial = true
-								break
+					for i := 1; i < len(expectedClose) && i <= len(pendingBuf); i++ {
+						if strings.HasSuffix(pendingBuf, expectedClose[:i]) {
+							safe := pendingBuf[:len(pendingBuf)-i]
+							if safe != "" {
+								outPrint(safe)
 							}
-						}
-						if partial {
+							pendingBuf = pendingBuf[len(pendingBuf)-i:]
+							partial = true
 							break
 						}
 					}
