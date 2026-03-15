@@ -221,9 +221,10 @@ type StreamTCFunc struct {
 
 // ChatResult is the aggregated result of a complete streaming chat call.
 type ChatResult struct {
-	DisplayText string           // text shown to the user (may include thinking)
-	ContentText string           // raw content from the model
-	ToolCalls   []ParsedToolCall // tool calls extracted from the response
+	DisplayText  string           // text shown to the user (may include thinking)
+	ContentText  string           // raw content from the model
+	ThinkingText string           // raw thinking from the model
+	ToolCalls    []ParsedToolCall // tool calls extracted from the response
 }
 
 // ParsedToolCall is a tool name + arguments ready for ToolExecutor.Execute.
@@ -328,6 +329,7 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 		"[tool activity]": "[/tool activity]",
 		"<tool_call>":     "</tool_call>",
 		"<function=":      "</function>",
+		"<parameter=":     "</parameter>",
 	}
 
 	// allCloseMarkers lists every possible closing tag so we can suppress
@@ -337,7 +339,7 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 
 	// allMarkers combines open and close markers for partial-match detection.
 	allMarkers := []string{
-		"[tool activity]", "<tool_call>", "<function=",
+		"[tool activity]", "<tool_call>", "<function=", "<parameter=",
 		"[/tool activity]", "</tool_call>", "</function>", "</parameter>",
 	}
 
@@ -399,7 +401,7 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 					}
 
 					var best *markerMatch
-					for _, openMarker := range []string{"[tool activity]", "<tool_call>", "<function="} {
+					for _, openMarker := range []string{"[tool activity]", "<tool_call>", "<function=", "<parameter="} {
 						idx := strings.Index(pendingBuf, openMarker)
 						if idx >= 0 && (best == nil || idx < best.idx) {
 							best = &markerMatch{idx: idx, marker: openMarker}
@@ -551,8 +553,9 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 	toolCalls = deduplicateToolCalls(toolCalls)
 
 	return &ChatResult{
-		DisplayText: displayText,
-		ContentText: contentText,
-		ToolCalls:   toolCalls,
+		DisplayText:  displayText,
+		ContentText:  contentText,
+		ThinkingText: thinkingText,
+		ToolCalls:    toolCalls,
 	}, nil
 }
