@@ -191,7 +191,7 @@ func (a *YoloAgent) displaySessionResumption() {
 		cprint(Gray, fmt.Sprintf("    Role: %s", lastAssistantMsg.Role))
 
 		// Show full content if it's a tool result or short message, otherwise truncate with indicator
-		content := lastAssistantMsg.Content
+		content := stripOrphanedCloseTags(lastAssistantMsg.Content)
 		if len(content) > 200 {
 			content = content[:200] + "..."
 		}
@@ -224,7 +224,7 @@ func (a *YoloAgent) displaySessionResumption() {
 			default:
 				prefix = m.Role
 			}
-			content := truncateString(m.Content, 50)
+			content := truncateString(stripOrphanedCloseTags(m.Content), 50)
 			cprint(Gray, fmt.Sprintf("    [%s] %s", prefix, content))
 		}
 		fmt.Println()
@@ -932,11 +932,48 @@ func stripTextToolCalls(text string) string {
 	reHybrid := regexp.MustCompile(`(?s)\[\w+\]\s*\n(?:\s*<parameter=\w+>.*?(?:</parameter>|\n))+`)
 	text = reHybrid.ReplaceAllString(text, "")
 
+	// Remove orphaned closing tags that have no matching open tag
+	text = stripOrphanedCloseTags(text)
+
 	// Collapse multiple blank lines into one
 	reBlank := regexp.MustCompile(`\n{3,}`)
 	text = reBlank.ReplaceAllString(text, "\n\n")
 
 	return strings.TrimSpace(text)
+}
+
+// stripOrphanedCloseTags removes closing XML tags (</parameter>, </function>,
+// </tool_call>) that appear without a corresponding open tag. These are
+// leftovers from tool calls split across thinking/content boundaries.
+func stripOrphanedCloseTags(text string) string {
+	orphanedTags := []string{"</parameter>", "</function>", "</tool_call>", "[/tool activity]"}
+	for _, tag := range orphanedTags {
+		for strings.Contains(text, tag) {
+			idx := strings.Index(text, tag)
+			// Check if there's a matching open tag before this close tag
+			var openTag string
+			switch tag {
+			case "</parameter>":
+				openTag = "<parameter="
+			case "</function>":
+				openTag = "<function="
+			case "</tool_call>":
+				openTag = "<tool_call>"
+			case "[/tool activity]":
+				openTag = "[tool activity]"
+			}
+			preceding := text[:idx]
+			openIdx := strings.LastIndex(preceding, openTag)
+			if openIdx < 0 {
+				// No matching open tag — this is orphaned, remove it
+				text = text[:idx] + text[idx+len(tag):]
+			} else {
+				// Has a matching open tag — leave it alone, stop checking this tag
+				break
+			}
+		}
+	}
+	return text
 }
 
 // ── Model switching ──
