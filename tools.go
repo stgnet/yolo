@@ -131,7 +131,7 @@ var ollamaTools = []ToolDef{
 		map[string]ToolParam{
 			"command": {Type: "string", Description: "gog subcommand and arguments (e.g., 'gmail search newer_than:1d --max 5', 'calendar list events', 'drive list')"},
 		}, []string{"command"}),
-	toolDef("web_search", "Search the web using DuckDuckGo. Returns instant answers, related topics, and abstract snippets from search results.",
+	toolDef("web_search", "Search the web using DuckDuckGo and Brave Search. Returns instant answers, related topics, and abstract snippets from search results.",
 		map[string]ToolParam{
 			"query": {Type: "string", Description: "Search query (required)"},
 			"count": {Type: "integer", Description: "Number of results to return (default: 5, max: 10)"},
@@ -179,6 +179,12 @@ var ollamaTools = []ToolDef{
 	toolDef("list_todos", "List all todos (pending and completed) from .todo.json file",
 		map[string]ToolParam{},
 		nil),
+	toolDef("gitStatus", "Get git repository status. Runs 'git status' command in the current working directory.", map[string]ToolParam{}, nil),
+	toolDef("gitDiff", "Show git diff. Runs 'git diff [commit_range]' command. If commit_range is provided, shows differences between that range.",
+		map[string]ToolParam{
+			"commit_range": {Type: "string", Description: "Optional commit range for diff (e.g., HEAD~1..HEAD)"},
+		}, nil),
+	toolDef("gitListBranches", "List all git branches (local and remote). Runs 'git branch -a' command in the current working directory.", map[string]ToolParam{}, nil),
 }
 
 // ─── Tool Executor ───────────────────────────────────────────────────
@@ -289,7 +295,7 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 	case "read_file":
 		return t.readFile(args)
 	case "write_file":
-		t.auditLogger.LogDestructiveAction("write_file", map[string]interface{}{"path": args[0], "content_length": len(args[1])})
+		t.auditLogger.LogDestructiveAction("write_file", map[string]interface{}{"path": args["path"], "content_length": len(args["content"].(string))})
 		return t.writeFile(args)
 	case "edit_file":
 		return t.editFile(args)
@@ -318,7 +324,7 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 	case "make_dir":
 		return t.makeDir(args)
 	case "remove_dir":
-		t.auditLogger.LogDestructiveAction("remove_dir", map[string]interface{}{"path": args[0]})
+		t.auditLogger.LogDestructiveAction("remove_dir", map[string]interface{}{"path": args["path"]})
 		return t.removeDir(args)
 	case "copy_file":
 		return t.copyFile(args)
@@ -337,7 +343,7 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 	case "implement":
 		return t.implement(args)
 	case "send_email":
-		t.auditLogger.LogDestructiveAction("send_email", map[string]interface{}{"to": args[1], "subject": args[2]})
+		t.auditLogger.LogDestructiveAction("send_email", map[string]interface{}{"to": args["to"], "subject": args["subject"]})
 		return t.sendEmail(args)
 	case "send_report":
 		return t.sendReport(args)
@@ -585,12 +591,12 @@ func (t *ToolExecutor) listFiles(args map[string]any) string {
 	var files, dirs []string
 	for _, m := range matches {
 		rel, err := filepath.Rel(t.baseDir, m)
-	if err != nil {
-		continue
-	}
-	if strings.HasPrefix(rel, "..") {
-		continue
-	}
+		if err != nil {
+			continue
+		}
+		if strings.HasPrefix(rel, "..") {
+			continue
+		}
 		// Skip noise directories
 		topDir := strings.SplitN(rel, string(filepath.Separator), 2)[0]
 		if topDir == ".yolo" || topDir == ".git" || topDir == "__pycache__" || topDir == "node_modules" {
@@ -1585,7 +1591,7 @@ func (t *ToolExecutor) getFromSearchCache(key string) (string, bool) {
 
 // addToSearchCache stores a result in the cache
 func (t *ToolExecutor) addToSearchCache(key, result string) {
-	if result != "" && !t.isEmptySearchResult(result) {
+	if result != "" && !t.isEmptySearchResult(result, "") {
 		searchCache.Store(key, &searchCacheEntry{
 			Result: result,
 			Ts:     time.Now(),
@@ -1619,7 +1625,7 @@ func (t *ToolExecutor) webSearch(args map[string]any) string {
 	ddgResult := t.searchDuckDuckGo(query, count)
 
 	// If DuckDuckGo returned meaningful results, use them
-	if !t.isEmptySearchResult(ddgResult) {
+	if !t.isEmptySearchResult(ddgResult, "") {
 		t.addToSearchCache(cacheKey, ddgResult)
 		return ddgResult
 	}
@@ -1628,12 +1634,12 @@ func (t *ToolExecutor) webSearch(args map[string]any) string {
 	wikiResult := t.searchWikipedia(query, count)
 
 	// If Wikipedia also failed or has no results, combine both
-	if t.isEmptySearchResult(wikiResult) {
+	if t.isEmptySearchResult(wikiResult, "") {
 		return fmt.Sprintf("No search results found for \"%s\". DuckDuckGo and Wikipedia returned no relevant information.\n\nTry:\n- Using more specific keywords\n- Searching for a different topic\n- Checking spelling of terms", query)
 	}
 
 	// Combine both if DuckDuckGo had partial info
-	if ddgResult != "" && !t.isEmptySearchResult(ddgResult) {
+	if ddgResult != "" && !t.isEmptySearchResult(ddgResult, "") {
 		combined := ddgResult + "\n---\n\n" + wikiResult
 		t.addToSearchCache(cacheKey, combined)
 		return combined
@@ -1643,7 +1649,8 @@ func (t *ToolExecutor) webSearch(args map[string]any) string {
 	return wikiResult
 }
 
-func (t *ToolExecutor) isEmptySearchResult(result string) bool {
+func (t *ToolExecutor) isEmptySearchResult(result string, bodyText string) bool {
+	// Explicit empty result indicators
 	emptyPatterns := []string{
 		"No results found",
 		"Error:",
@@ -1657,8 +1664,26 @@ func (t *ToolExecutor) isEmptySearchResult(result string) bool {
 		}
 	}
 
+	// Check for challenge pages or bot detection (common DuckDuckGo responses)
+	botDetectionPatterns := []string{
+		"checking your browser",
+		"please verify you are a human",
+		"robot verification",
+		"ddg_challenge_response",
+		"captcha",
+		"verify you are not a robot",
+		"security check",
+	}
+
+	for _, pattern := range botDetectionPatterns {
+		if strings.Contains(strings.ToLower(bodyText), pattern) ||
+			strings.Contains(strings.ToLower(result), pattern) {
+			return true // This indicates a challenge page, not real results
+		}
+	}
+
 	// Check if result is just a header with minimal content
-	if len(result) < 100 {
+	if len(result) < 150 {
 		return true
 	}
 
@@ -1675,50 +1700,85 @@ func (t *ToolExecutor) searchDuckDuckGoWithRetry(query string, count int, maxRet
 	var lastErr error
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
-		url := fmt.Sprintf("https://api.duckduckgo.com/?q=%s&format=json&no_html=1",
-			url.QueryEscape(query))
+		// Try modern DuckDuckGo Instant Answer API first with no_html parameter
+		searchURL := fmt.Sprintf("https://api.duckduckgo.com/?q=%s&format=json&no_html=1", url.QueryEscape(query))
 
 		client := &http.Client{Timeout: 15 * time.Second}
-		req, err := http.NewRequest("GET", url, nil)
+		req, err := http.NewRequest("GET", searchURL, nil)
 		if err != nil {
 			lastErr = fmt.Errorf("could not create DuckDuckGo request: %w", err)
 			continue
 		}
 
-		req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; YOLO-Search-Bot/1.0)")
+		// Set proper headers for JSON API to avoid bot detection
+		req.Header.Set("User-Agent", "YOLO-Search-Bot/1.0 (+https://b-haven.org/bot)")
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 
 		resp, err := client.Do(req)
 		if err != nil {
-			lastErr = fmt.Errorf("could not fetch from DuckDuckGo: %w", err)
+			lastErr = fmt.Errorf("could not fetch from DuckDuckGo JSON API: %w", err)
 			if attempt < maxRetries {
 				delay := time.Duration(attempt+1) * 2 * time.Second
 				time.Sleep(delay)
+				continue
 			}
 			continue
 		}
-		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
 
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			lastErr = fmt.Errorf("could not read DuckDuckGo response: %w", err)
-			if attempt < maxRetries {
-				delay := time.Duration(attempt+1) * 2 * time.Second
-				time.Sleep(delay)
+		contentType := resp.Header.Get("Content-Type")
+
+		// Check if we got JSON response
+		if strings.Contains(contentType, "application/json") || (len(body) > 0 && body[0] == '{') {
+			var iaResult map[string]any
+			if err := json.Unmarshal(body, &iaResult); err == nil {
+				result := t.parseDuckDuckGoJSON(query, count, body)
+				if !t.isEmptySearchResult(result, string(body)) {
+					return result
+				}
 			}
-			continue
-		}
-
-		// Try to parse as JSON first (Instant Answer format)
-		var iaResult map[string]any
-		if err := json.Unmarshal(body, &iaResult); err == nil {
-			result := t.parseDuckDuckGoJSON(query, count, body)
-			if !t.isEmptySearchResult(result) {
+		} else if strings.Contains(contentType, "text/html") || (len(body) > 0 && body[0] == '<') {
+			// Got HTML instead of JSON - likely API changed or bot detection
+			result := t.parseDuckDuckGoHTML(query, count, body)
+			if !t.isEmptySearchResult(result, string(body)) {
 				return result
 			}
 		}
 
-		// Fall back to HTML parsing (won't work for API endpoint, but kept for completeness)
-		return ""
+		// If we're here, either parse failed or result was empty from JSON API
+		// Now try the HTML search API as fallback for more comprehensive results
+		htmlURL := fmt.Sprintf("https://html.duckduckgo.com/html/?q=%s", url.QueryEscape(query))
+
+		req, _ = http.NewRequest("GET", htmlURL, nil)
+
+		// Set proper headers for HTML API to avoid bot detection
+		req.Header.Set("User-Agent", "YOLO-Search-Bot/1.0 (+https://b-haven.org/bot)")
+		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+		req.Header.Set("Referer", "https://duckduckgo.com/")
+
+		resp, err = client.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("could not fetch from DuckDuckGo HTML API: %w", err)
+			if attempt < maxRetries {
+				delay := time.Duration(attempt+1) * 2 * time.Second
+				time.Sleep(delay)
+				continue
+			}
+			continue
+		}
+		htmlBody, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		result := t.parseDuckDuckGoHTML(query, count, htmlBody)
+		if !t.isEmptySearchResult(result, string(htmlBody)) {
+			return result
+		}
+
+		lastErr = fmt.Errorf("DuckDuckGo returned no results for query: %s", query)
+		continue
 	}
 
 	if lastErr != nil {
@@ -1847,15 +1907,15 @@ func (t *ToolExecutor) parseDuckDuckGoJSON(query string, count int, data []byte)
 				Text string `json:"text"`
 				Url  string `json:"url"`
 			} `json:"results,omitempty"`
-		} `json:"related_topics,omitempty"`
+		} `json:"RelatedTopics,omitempty"`
 	}
 
 	if err := json.Unmarshal(data, &result); err != nil {
-		return fmt.Sprintf("Error parsing JSON: %v", err)
+		return ""
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Search results for \"%s\":\n\n", query))
+	sb.WriteString(fmt.Sprintf("**DuckDuckGo Search Results for: %s**\n\n", query))
 
 	// Direct answer (if any)
 	if result.Answer != "" {
@@ -1865,9 +1925,8 @@ func (t *ToolExecutor) parseDuckDuckGoJSON(query string, count int, data []byte)
 	// Abstract/summary
 	if result.Abstract != "" {
 		sb.WriteString(fmt.Sprintf("**Summary:** %s\n", result.Abstract))
-		if result.AbstractSource != "" {
-			sb.WriteString(fmt.Sprintf("Source: [from%s](%s)\n\n",
-				result.AbstractSource, result.AbstractURL))
+		if result.AbstractSource != "" && result.AbstractURL != "" {
+			sb.WriteString(fmt.Sprintf("Source: [%s](%s)\n\n", result.AbstractSource, result.AbstractURL))
 		} else {
 			sb.WriteString("\n")
 		}
@@ -1875,7 +1934,7 @@ func (t *ToolExecutor) parseDuckDuckGoJSON(query string, count int, data []byte)
 
 	// Image (if any)
 	if result.Image != "" {
-		sb.WriteString(fmt.Sprintf("[![](%s)](%s)\n\n", result.Image, result.Image))
+		sb.WriteString(fmt.Sprintf("[Image](%s)\n\n", result.Image))
 	}
 
 	// Related topics and results
@@ -1922,6 +1981,38 @@ func (t *ToolExecutor) parseDuckDuckGoJSON(query string, count int, data []byte)
 				if r.Url != "" {
 					sb.WriteString(fmt.Sprintf("   [%s](%s)\n\n", r.Url, r.Url))
 				}
+			}
+		}
+	}
+
+	// Also try parsing old format with lowercase related_topics
+	var legacyResult struct {
+		Query         string `json:"query"`
+		RelatedTopics []struct {
+			Title   string          `json:"text,omitempty"`
+			Result  json.RawMessage `json:"result,omitempty"`
+			Results []struct {
+				Text string `json:"text"`
+				Url  string `json:"url"`
+			} `json:"results,omitempty"`
+		} `json:"related_topics,omitempty"`
+	}
+
+	if err := json.Unmarshal(data, &legacyResult); err == nil && len(legacyResult.RelatedTopics) > 0 {
+		for _, topic := range legacyResult.RelatedTopics {
+			if resultsCount >= count {
+				break
+			}
+
+			var singleResult struct {
+				Text string `json:"text"`
+				Url  string `json:"url"`
+			}
+			if len(topic.Result) > 0 && json.Unmarshal(topic.Result, &singleResult) == nil && singleResult.Text != "" {
+				resultsCount++
+				title := topic.Title
+				sb.WriteString(fmt.Sprintf("%d. **%s**\n", resultsCount, title))
+				sb.WriteString(fmt.Sprintf("   [%s](%s)\n\n", singleResult.Url, singleResult.Url))
 			}
 		}
 	}

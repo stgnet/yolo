@@ -36,8 +36,8 @@ func DefaultSafetyConfig() *SafetyConfig {
 	}
 }
 
-// isProtectedPath checks if a path should be protected from modification.
-func (sc *SafetyConfig) isProtectedPath(path string) bool {
+// IsProtectedPath checks if a path should be protected from modification.
+func (sc *SafetyConfig) IsProtectedPath(path string) bool {
 	cleanPath := filepath.Clean(path)
 	for _, protected := range sc.ProtectedPaths {
 		if cleanPath == protected || strings.HasPrefix(cleanPath, protected+"/") {
@@ -45,6 +45,11 @@ func (sc *SafetyConfig) isProtectedPath(path string) bool {
 		}
 	}
 	return false
+}
+
+// isProtectedPath is an alias for IsProtectedPath (lowercase for internal use).
+func (sc *SafetyConfig) isProtectedPath(path string) bool {
+	return sc.IsProtectedPath(path)
 }
 
 // createBackup creates a .bak backup of the file before destructive operations.
