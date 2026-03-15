@@ -322,6 +322,10 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 	// pendingBuf accumulates text that might contain a partial
 	// "[tool activity]" or "[/tool activity]" marker split across tokens.
 	var pendingBuf string
+	// thinkingBuf accumulates thinking tokens so we can detect and suppress
+	// orphaned close tags (</parameter>, </function>, etc.) that may be
+	// split across token boundaries.
+	var thinkingBuf string
 
 	// closeMarkerMap maps each open marker to its corresponding close marker.
 	// This prevents </function> from prematurely closing a <tool_call> block.
@@ -376,17 +380,68 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 				outPrint(fmt.Sprintf("%s[thinking] ", Gray))
 				inThinking = true
 			}
-			// Strip orphaned closing tags from thinking tokens. The LLM
-			// sometimes emits </parameter></function></tool_call> at the
-			// end of thinking blocks without corresponding open tags.
-			thinking = stripOrphanedCloseTags(thinking)
-			outPrint(thinking)
 			thinkingParts = append(thinkingParts, thinking)
+			// Buffer thinking tokens to detect and suppress orphaned close
+			// tags (</parameter>, </function>, etc.) that may be split
+			// across token boundaries.
+			thinkingBuf += thinking
+			for thinkingBuf != "" {
+				// Find the earliest orphaned close tag in the buffer.
+				bestIdx := -1
+				bestMarker := ""
+				for _, cm := range allCloseMarkers {
+					idx := strings.Index(thinkingBuf, cm)
+					if idx >= 0 && (bestIdx < 0 || idx < bestIdx) {
+						bestIdx = idx
+						bestMarker = cm
+					}
+				}
+				if bestIdx >= 0 {
+					// Print text before the orphaned close tag, skip the tag itself.
+					if bestIdx > 0 {
+						outPrint(thinkingBuf[:bestIdx])
+					}
+					thinkingBuf = thinkingBuf[bestIdx+len(bestMarker):]
+					continue
+				}
+				// Check if the tail of the buffer could be the start of a close tag.
+				partial := false
+				for _, cm := range allCloseMarkers {
+					for i := 1; i < len(cm) && i <= len(thinkingBuf); i++ {
+						if strings.HasSuffix(thinkingBuf, cm[:i]) {
+							safe := thinkingBuf[:len(thinkingBuf)-i]
+							if safe != "" {
+								outPrint(safe)
+							}
+							thinkingBuf = thinkingBuf[len(thinkingBuf)-i:]
+							partial = true
+							break
+						}
+					}
+					if partial {
+						break
+					}
+				}
+				if !partial {
+					outPrint(thinkingBuf)
+					thinkingBuf = ""
+				}
+				break // wait for more tokens
+			}
 		}
 
 		// Handle content tokens
 		if content != "" {
 			if inThinking {
+				// Flush any remaining thinking buffer (partial close tags
+				// that never completed are printed as-is).
+				if thinkingBuf != "" {
+					thinkingBuf = stripOrphanedCloseTags(thinkingBuf)
+					if thinkingBuf != "" {
+						outPrint(thinkingBuf)
+					}
+					thinkingBuf = ""
+				}
 				outPrint(fmt.Sprintf("%s\n", Reset))
 				inThinking = false
 			}
@@ -528,6 +583,14 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 	}
 
 	if inThinking {
+		// Flush remaining thinking buffer at end of stream.
+		if thinkingBuf != "" {
+			thinkingBuf = stripOrphanedCloseTags(thinkingBuf)
+			if thinkingBuf != "" {
+				outPrint(thinkingBuf)
+			}
+			thinkingBuf = ""
+		}
 		outPrint(Reset)
 	}
 	// Flush any remaining pending buffer from tool activity detection
