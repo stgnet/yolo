@@ -24,14 +24,14 @@ type SearchResult struct {
 
 // MockHTTPClient implements http.Client for testing with configurable behavior
 type MockHTTPClient struct {
-	Response      *http.Response
-	Body          io.Reader
-	Error         error
-	StatusCode    int
-	Header        http.Header
-	Delay         time.Duration
-	RateLimit     bool
-	RetryAfter    int
+	Response   *http.Response
+	Body       io.Reader
+	Error      error
+	StatusCode int
+	Header     http.Header
+	Delay      time.Duration
+	RateLimit  bool
+	RetryAfter int
 }
 
 // Do implements the RoundTripper interface with custom behaviors for testing
@@ -316,10 +316,10 @@ func TestRateLimitingResponse(t *testing.T) {
 			errorContains: "rate limit",
 		},
 		{
-			name:     "503 Service Unavailable",
+			name:       "503 Service Unavailable",
 			statusCode: 503,
 			retryAfter: 30,
-			wantErr:  true,
+			wantErr:    true,
 		},
 		{
 			name:          "500 Internal Server Error",
@@ -453,39 +453,39 @@ func TestEdgeCasesInParsing(t *testing.T) {
 // TestInvalidURLsAndLinks tests invalid URL handling
 func TestInvalidURLsAndLinks(t *testing.T) {
 	tests := []struct {
-		name     string
-		query    string
-		wantErr  bool
+		name    string
+		query   string
+		wantErr bool
 	}{
 		{
-			name:     "malformed URL in query",
-			query:    "http://invalid-url-@#$%.com",
-			wantErr:  false,
+			name:    "malformed URL in query",
+			query:   "http://invalid-url-@#$%.com",
+			wantErr: false,
 		},
 		{
-			name:     "protocol-relative URL",
-			query:    "//evil.com",
-			wantErr:  false,
+			name:    "protocol-relative URL",
+			query:   "//evil.com",
+			wantErr: false,
 		},
 		{
-			name:     "URL with special characters",
-			query:    "https://example.com/path?param=value&other=123#anchor",
-			wantErr:  false,
+			name:    "URL with special characters",
+			query:   "https://example.com/path?param=value&other=123#anchor",
+			wantErr: false,
 		},
 		{
-			name:     "IPv4 address",
-			query:    "192.168.1.1",
-			wantErr:  false,
+			name:    "IPv4 address",
+			query:   "192.168.1.1",
+			wantErr: false,
 		},
 		{
-			name:     "IPv6 address",
-			query:    "::1 or 2001:db8::1",
-			wantErr:  false,
+			name:    "IPv6 address",
+			query:   "::1 or 2001:db8::1",
+			wantErr: false,
 		},
 		{
-			name:     "URL-encoded query components",
-			query:    "%3Cscript%3E",
-			wantErr:  false,
+			name:    "URL-encoded query components",
+			query:   "%3Cscript%3E",
+			wantErr: false,
 		},
 	}
 
@@ -510,65 +510,65 @@ func TestInvalidURLsAndLinks(t *testing.T) {
 // TestUnicodeCharacterHandling tests comprehensive Unicode handling
 func TestUnicodeCharacterHandling(t *testing.T) {
 	tests := []struct {
-		name        string
-		query       string
-		wantLen     int
-		contains    string
+		name     string
+		query    string
+		wantLen  int
+		contains string
 	}{
 		{
-			name:      "Chinese characters",
-			query:     "Go 编程语言 最佳实践",
-			wantLen:   1,
+			name:    "Chinese characters",
+			query:   "Go 编程语言 最佳实践",
+			wantLen: 1,
 		},
 		{
-			name:      "Japanese characters",
-			query:     "プログラミング言語 Go 最適化",
-			wantLen:   1,
+			name:    "Japanese characters",
+			query:   "プログラミング言語 Go 最適化",
+			wantLen: 1,
 		},
 		{
-			name:      "Korean characters",
-			query:     "고잉 프로그래밍 언어",
-			wantLen:   1,
+			name:    "Korean characters",
+			query:   "고잉 프로그래밍 언어",
+			wantLen: 1,
 		},
 		{
-			name:      "Arabic script",
-			query:     "لغات البرمجة",
-			wantLen:   1,
+			name:    "Arabic script",
+			query:   "لغات البرمجة",
+			wantLen: 1,
 		},
 		{
-			name:      "Hebrew script",
-			query:     "שפות תכנות",
-			wantLen:   1,
+			name:    "Hebrew script",
+			query:   "שפות תכנות",
+			wantLen: 1,
 		},
 		{
-			name:      "Emoji characters",
-			query:     "🚀🔥💻⚡️",
-			wantLen:   1,
+			name:    "Emoji characters",
+			query:   "🚀🔥💻⚡️",
+			wantLen: 1,
 		},
 		{
-			name:      "Mixed script content",
-			query:     "Go 🇺🇸 Python 🇩🇪 Rust 🇯🇵",
-			wantLen:   1,
+			name:    "Mixed script content",
+			query:   "Go 🇺🇸 Python 🇩🇪 Rust 🇯🇵",
+			wantLen: 1,
 		},
 		{
-			name:      "Right-to-left text",
-			query:     "היי עולם שלום مرحبا",
-			wantLen:   1,
+			name:    "Right-to-left text",
+			query:   "היי עולם שלום مرحبا",
+			wantLen: 1,
 		},
 		{
-			name:      "Surrogate pairs",
-			query:     "🎉😃🚀🏆", // Characters outside BMP require surrogate pairs
-			wantLen:   1,
+			name:    "Surrogate pairs",
+			query:   "🎉😃🚀🏆", // Characters outside BMP require surrogate pairs
+			wantLen: 1,
 		},
 		{
-			name:      "Zero-width characters",
-			query:     "test\u200bunicode\u200ccharacters",
-			wantLen:   1,
+			name:    "Zero-width characters",
+			query:   "test\u200bunicode\u200ccharacters",
+			wantLen: 1,
 		},
 		{
-			name:      "Combining diacritics",
-			query:     "café résumé naïve",
-			wantLen:   1,
+			name:    "Combining diacritics",
+			query:   "café résumé naïve",
+			wantLen: 1,
 		},
 	}
 
@@ -902,7 +902,7 @@ func TestSmartSearchEdgeCases(t *testing.T) {
 				mock := &MockHTTPClient{Body: io.NopCloser(strings.NewReader(`{"Abstract": ""}`))}
 				return map[string]*MockHTTPClient{"duckduckgo": mock}, nil
 			},
-			wantLen:  0,
+			wantLen:    0,
 			wantSource: false,
 		},
 		{
@@ -911,7 +911,7 @@ func TestSmartSearchEdgeCases(t *testing.T) {
 				mock := &MockHTTPClient{Body: io.NopCloser(strings.NewReader(`{"Abstract": "success"}`))}
 				return map[string]*MockHTTPClient{"duckduckgo": mock}, nil
 			},
-			wantLen: 1,
+			wantLen:    1,
 			wantSource: true,
 		},
 		{
@@ -919,7 +919,7 @@ func TestSmartSearchEdgeCases(t *testing.T) {
 			setupMocks: func() (map[string]*MockHTTPClient, map[string]error) {
 				return map[string]*MockHTTPClient{"duckduckgo": &MockHTTPClient{Body: io.NopCloser(strings.NewReader(`{"Abstract": ""}`))}}, nil
 			},
-			wantLen: 1,
+			wantLen:    1,
 			wantSource: true,
 		},
 		{
@@ -927,7 +927,7 @@ func TestSmartSearchEdgeCases(t *testing.T) {
 			setupMocks: func() (map[string]*MockHTTPClient, map[string]error) {
 				return map[string]*MockHTTPClient{"duckduckgo": &MockHTTPClient{Body: io.NopCloser(strings.NewReader(`{"Abstract": ""}`))}}, nil
 			},
-			wantLen: 0, // Will skip Jina AI and Wikipedia with mocks
+			wantLen:    0, // Will skip Jina AI and Wikipedia with mocks
 			wantSource: false,
 		},
 	}
@@ -949,11 +949,11 @@ func TestSmartSearchEdgeCases(t *testing.T) {
 // TestJinaAISearchEdgeCases tests Jina AI search with mock client
 func TestJinaAISearchEdgeCases(t *testing.T) {
 	tests := []struct {
-		name     string
-		body     string
-		status   int
-		wantLen  int
-		wantErr  bool
+		name    string
+		body    string
+		status  int
+		wantLen int
+		wantErr bool
 	}{
 		{
 			name:    "successful Jina AI response",
@@ -1019,11 +1019,11 @@ func TestJinaAISearchEdgeCases(t *testing.T) {
 // TestWikipediaSearchEdgeCases tests Wikipedia search with mock client
 func TestWikipediaSearchEdgeCases(t *testing.T) {
 	tests := []struct {
-		name     string
-		body     string
-		status   int
-		wantLen  int
-		wantErr  bool
+		name    string
+		body    string
+		status  int
+		wantLen int
+		wantErr bool
 	}{
 		{
 			name:    "successful Wikipedia response",
@@ -1054,11 +1054,11 @@ func TestWikipediaSearchEdgeCases(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:     "invalid JSON response",
-			body:     `{invalid json}`,
-			status:   200,
-			wantLen:  0,
-			wantErr:  true,
+			name:    "invalid JSON response",
+			body:    `{invalid json}`,
+			status:  200,
+			wantLen: 0,
+			wantErr: true,
 		},
 	}
 
