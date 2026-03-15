@@ -308,6 +308,31 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		allMsgs = append(allMsgs, baseMsgs...)
 		allMsgs = append(allMsgs, roundMsgs...)
 
+		// In debug mode, show the messages being sent to the LLM
+		if a.config.GetDebugMode() && len(roundMsgs) > 0 {
+			cprint(Gray, fmt.Sprintf("  [debug] Sending %d messages to LLM (round %d):", len(allMsgs), roundNum))
+			for i, m := range allMsgs {
+				preview := m.Content
+				if len(preview) > 300 {
+					preview = preview[:300] + "..."
+				}
+				preview = strings.ReplaceAll(preview, "\n", " ")
+				tcInfo := ""
+				if len(m.ToolCalls) > 0 {
+					names := make([]string, len(m.ToolCalls))
+					for j, tc := range m.ToolCalls {
+						names[j] = tc.Function.Name
+					}
+					tcInfo = fmt.Sprintf(" tool_calls=[%s]", strings.Join(names, ", "))
+				}
+				idInfo := ""
+				if m.ToolCallID != "" {
+					idInfo = fmt.Sprintf(" id=%s", m.ToolCallID)
+				}
+				cprint(Gray, fmt.Sprintf("    [%d] role=%s%s%s: %s", i, m.Role, idInfo, tcInfo, preview))
+			}
+		}
+
 		ctx, cancel := context.WithCancel(context.Background())
 		a.mu.Lock()
 		a.cancelChat = cancel
@@ -328,6 +353,16 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 			return
 		}
 
+		// In debug mode, show summary of what the LLM returned
+		if a.config.GetDebugMode() {
+			cprint(Gray, fmt.Sprintf("  [debug] LLM returned: content=%d chars, thinking=%d chars, native_tool_calls=%d",
+				len(result.ContentText), len(result.ThinkingText), len(result.ToolCalls)))
+			for i, tc := range result.ToolCalls {
+				argsJSON, _ := json.Marshal(tc.Args)
+				cprint(Gray, fmt.Sprintf("    [native %d] %s(%s)", i, tc.Name, string(argsJSON)))
+			}
+		}
+
 		toolCalls := result.ToolCalls
 		textParsed := false
 
@@ -344,6 +379,13 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 			}
 			if len(toolCalls) > 0 {
 				textParsed = true
+				if a.config.GetDebugMode() {
+					cprint(Gray, fmt.Sprintf("  [debug] Text-parsed %d tool call(s):", len(toolCalls)))
+					for i, tc := range toolCalls {
+						argsJSON, _ := json.Marshal(tc.Args)
+						cprint(Gray, fmt.Sprintf("    [text %d] %s(%s)", i, tc.Name, string(argsJSON)))
+					}
+				}
 			}
 		}
 
@@ -441,30 +483,48 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 				continue
 			}
 
-			shortArgs, _ := json.Marshal(args)
-			shortStr := string(shortArgs)
-			if len(shortStr) > 80 {
-				shortStr = shortStr[:80] + "..."
+			debugMode := a.config.GetDebugMode()
+
+			argsJSON, _ := json.Marshal(args)
+			argsStr := string(argsJSON)
+			if debugMode {
+				cprint(Yellow, fmt.Sprintf("  [%s] %s", name, argsStr))
+			} else {
+				shortStr := argsStr
+				if len(shortStr) > 80 {
+					shortStr = shortStr[:80] + "..."
+				}
+				cprint(Yellow, fmt.Sprintf("  [%s] %s", name, shortStr))
 			}
-			cprint(Yellow, fmt.Sprintf("  [%s] %s", name, shortStr))
 
 			resultStr := executeWithTimeout(a.tools, name, args)
 
-			preview := resultStr
-			if len(preview) > 200 {
-				preview = preview[:200] + "..."
-			}
-			preview = strings.ReplaceAll(preview, "\r", "")
-			preview = strings.ReplaceAll(preview, "\n", " ")
-
-			// Display errors prominently in red so the user sees failures
-			if strings.HasPrefix(resultStr, "Error: ") {
-				cprint(Red, fmt.Sprintf("  => %s", preview))
+			if debugMode {
+				// Show full result verbatim
+				color := Gray
+				if strings.HasPrefix(resultStr, "Error: ") {
+					color = Red
+				}
+				cprint(color, fmt.Sprintf("  => %s", resultStr))
 			} else {
-				cprint(Gray, fmt.Sprintf("  => %s", preview))
+				preview := resultStr
+				if len(preview) > 200 {
+					preview = preview[:200] + "..."
+				}
+				preview = strings.ReplaceAll(preview, "\r", "")
+				preview = strings.ReplaceAll(preview, "\n", " ")
+
+				if strings.HasPrefix(resultStr, "Error: ") {
+					cprint(Red, fmt.Sprintf("  => %s", preview))
+				} else {
+					cprint(Gray, fmt.Sprintf("  => %s", preview))
+				}
 			}
 
 			cleanResult := filterToolActivityMarkers(resultStr)
+			if debugMode && cleanResult != resultStr {
+				cprint(Gray, fmt.Sprintf("  [debug] Filtered result sent to agent: %s", cleanResult))
+			}
 			roundMsgs = append(roundMsgs, ChatMessage{
 				Role:       "tool",
 				Content:    cleanResult,
@@ -1315,6 +1375,7 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		cprint(Reset, "  /clear           Clear conversation history")
 		cprint(Reset, "  /status          Agent status")
 		cprint(Reset, "  /cache           Show/clear search cache stats")
+		cprint(Reset, "  /debug [on|off]  Toggle debug mode (show full tool args/results)")
 		cprint(Reset, "  /learn           Run autonomous research for self-improvement")
 		cprint(Reset, "  /restart         Restart YOLO")
 		cprint(Reset, "  /exit, /quit     Exit YOLO")
@@ -1343,6 +1404,27 @@ func (a *YoloAgent) handleCommand(cmd string) {
 			}
 		default:
 			cprint(Red, "  Usage: /terminal [on|off]")
+		}
+
+	case "/debug":
+		switch strings.ToLower(strings.TrimSpace(arg)) {
+		case "on":
+			a.config.SetDebugMode(true)
+			cprint(Green, "  Debug mode enabled — showing full tool args, results, and messages")
+		case "off":
+			a.config.SetDebugMode(false)
+			cprint(Yellow, "  Debug mode disabled — showing truncated previews")
+		case "":
+			// Toggle
+			current := a.config.GetDebugMode()
+			a.config.SetDebugMode(!current)
+			if !current {
+				cprint(Green, "  Debug mode enabled — showing full tool args, results, and messages")
+			} else {
+				cprint(Yellow, "  Debug mode disabled — showing truncated previews")
+			}
+		default:
+			cprint(Red, "  Usage: /debug [on|off]")
 		}
 
 	case "/model":
