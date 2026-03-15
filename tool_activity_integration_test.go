@@ -372,6 +372,20 @@ func TestHybridBracketXMLFormat(t *testing.T) {
 				{Name: "search_files", Args: map[string]any{"query": "crypto/md5", "pattern": "**/*.go"}},
 			},
 		},
+		{
+			name: "parameter value on next line",
+			input: "[run_command]\n<parameter=command>\nls -la\n</parameter>",
+			expected: []ParsedToolCall{
+				{Name: "run_command", Args: map[string]any{"command": "ls -la"}},
+			},
+		},
+		{
+			name: "multi-line parameter value",
+			input: "[run_command]\n<parameter=command>\nfind . -name '*.go' | head -10\n</parameter>",
+			expected: []ParsedToolCall{
+				{Name: "run_command", Args: map[string]any{"command": "find . -name '*.go' | head -10"}},
+			},
+		},
 	}
 
 	a := &YoloAgent{}
