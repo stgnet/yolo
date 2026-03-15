@@ -376,6 +376,10 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 				outPrint(fmt.Sprintf("%s[thinking] ", Gray))
 				inThinking = true
 			}
+			// Strip orphaned closing tags from thinking tokens. The LLM
+			// sometimes emits </parameter></function></tool_call> at the
+			// end of thinking blocks without corresponding open tags.
+			thinking = stripOrphanedCloseTags(thinking)
 			outPrint(thinking)
 			thinkingParts = append(thinkingParts, thinking)
 		}
