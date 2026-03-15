@@ -331,9 +331,17 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		toolCalls := result.ToolCalls
 		textParsed := false
 
-		// Also check for text-based tool calls as fallback
+		// Also check for text-based tool calls as fallback.
+		// Try DisplayText first, then combined thinking+content to catch
+		// tool calls split across thinking/content token boundaries.
 		if len(toolCalls) == 0 {
 			toolCalls = a.parseTextToolCalls(result.DisplayText)
+			if len(toolCalls) == 0 && result.ThinkingText != "" && result.ContentText != "" {
+				toolCalls = a.parseTextToolCalls(result.ThinkingText + "\n" + result.ContentText)
+			}
+			if len(toolCalls) == 0 && result.ThinkingText != "" && result.ContentText == "" {
+				toolCalls = a.parseTextToolCalls(result.ThinkingText)
+			}
 			if len(toolCalls) > 0 {
 				textParsed = true
 			}
@@ -724,6 +732,39 @@ func (a *YoloAgent) parseTextToolCalls(text string) []ParsedToolCall {
 		}
 	}
 
+	// Format 8: [tool_name]\n<parameter=key>value — hybrid bracket-name + XML params
+	// Some models emit tool calls with the name in brackets followed by XML-style
+	// parameter tags, e.g.:
+	//   [run_command]
+	//   <parameter=command>ls -la</parameter>
+	//   [search_files]
+	//   <parameter=query>md5</parameter>
+	//   <parameter=pattern>**/*.go</parameter>
+	if len(calls) == 0 {
+		reFormat8 := regexp.MustCompile(`(?s)\[(\w+)\]\s*\n((?:\s*<parameter=\w+>.*?(?:</parameter>|\n|$))+)`)
+		reParam8 := regexp.MustCompile(`<parameter=(\w+)>\s*([\s\S]*?)(?:</parameter>|$)`)
+		validToolSet := map[string]bool{}
+		for _, t := range validTools {
+			validToolSet[t] = true
+		}
+		for _, match := range reFormat8.FindAllStringSubmatch(text, -1) {
+			toolName := match[1]
+			if validToolSet[toolName] {
+				body := match[2]
+				args := map[string]any{}
+				for _, pm := range reParam8.FindAllStringSubmatch(body, -1) {
+					val := strings.TrimSpace(pm[2])
+					if val != "" {
+						args[pm[1]] = convertParamValue(val)
+					}
+				}
+				if len(args) > 0 {
+					calls = append(calls, ParsedToolCall{Name: toolName, Args: args})
+				}
+			}
+		}
+	}
+
 	return calls
 }
 
@@ -887,6 +928,10 @@ func stripTextToolCalls(text string) string {
 	reUnclosedFunc := regexp.MustCompile(`(?s)<function=\w+>\s*<parameter=.*?\z`)
 	text = reUnclosedFunc.ReplaceAllString(text, "")
 
+	// Remove [tool_name]\n<parameter=...> hybrid format (Format 8)
+	reHybrid := regexp.MustCompile(`(?s)\[\w+\]\s*\n(?:\s*<parameter=\w+>.*?(?:</parameter>|\n))+`)
+	text = reHybrid.ReplaceAllString(text, "")
+
 	// Collapse multiple blank lines into one
 	reBlank := regexp.MustCompile(`\n{3,}`)
 	text = reBlank.ReplaceAllString(text, "\n\n")
@@ -995,6 +1040,12 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 			toolCalls := chatResult.ToolCalls
 			if len(toolCalls) == 0 {
 				toolCalls = a.parseTextToolCalls(chatResult.DisplayText)
+				if len(toolCalls) == 0 && chatResult.ThinkingText != "" && chatResult.ContentText != "" {
+					toolCalls = a.parseTextToolCalls(chatResult.ThinkingText + "\n" + chatResult.ContentText)
+				}
+				if len(toolCalls) == 0 && chatResult.ThinkingText != "" && chatResult.ContentText == "" {
+					toolCalls = a.parseTextToolCalls(chatResult.ThinkingText)
+				}
 			}
 			toolCalls = deduplicateToolCalls(toolCalls)
 
