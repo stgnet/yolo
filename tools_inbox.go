@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -26,80 +27,14 @@ type Email struct {
 	Raw     string
 }
 
-// decodeMIMEWord decodes MIME encoded words (e.g., =?UTF-8?B?...?=)
-func decodeMIMEWord(word string) string {
-	if strings.HasPrefix(word, "=?") && strings.HasSuffix(word, "?=") {
-		// Manual decoding of RFC 2047 MIME encoded words
-		// Format: =?charset?encoding?encoded_text?=
-		start := strings.Index(word, "=?") + 2
-		end := len(word) - 2
-		
-		if start >= end || start < 2 {
-			return word
-		}
-		
-		rest := word[start:end]
-		colon1 := strings.Index(rest, "?")
-		colon2 := strings.LastIndex(rest, "?")
-		
-		if colon1 <= 0 || colon2 <= colon1+1 || colon2 == len(rest)-1 {
-			return word
-		}
-		
-		charset := rest[:colon1]
-		encoding := rest[colon1+1 : colon2]
-		encoded := rest[colon2+1:]
-		
-		var decoded []byte
-		var err error
-		
-		switch strings.ToLower(encoding) {
-		case "q":
-			decoded, err = decodeQ(encoded)
-		case "b":
-			decoded, err = base64.StdEncoding.DecodeString(encoded)
-		default:
-			return word
-		}
-		
-		if err != nil {
-			return word
-		}
-		
-		// Common charsets to decode - all return the same string in Go
-		switch strings.ToLower(charset) {
-		case "utf-8", "utf8", "iso-8859-1", "latin1":
-			return string(decoded)
-		default:
-			return string(decoded)
-		}
+// decodeMIMEHeader decodes MIME encoded words in header fields using mime.WordDecoder
+func decodeMIMEHeader(raw string) string {
+	decoder := &mime.WordDecoder{}
+	decoded, err := decoder.DecodeString(raw)
+	if err != nil {
+		return raw
 	}
-	return word
-}
-
-// decodeQ decodes Quoted-Printable encoding (simplified)
-func decodeQ(encoded string) ([]byte, error) {
-	var result []byte
-	i := 0
-	for i < len(encoded) {
-		if encoded[i] == '_' {
-			result = append(result, ' ')
-			i++
-		} else if encoded[i] == '=' && i+2 < len(encoded) {
-			// Hex escape sequence like =3D
-			hex := encoded[i+1 : i+3]
-			b, err := strconv.ParseUint(hex, 16, 8)
-			if err != nil {
-				return result, fmt.Errorf("invalid hex in quoted-printable: %s", hex)
-			}
-			result = append(result, byte(b))
-			i += 3
-		} else {
-			result = append(result, encoded[i])
-			i++
-		}
-	}
-	return result, nil
+	return decoded
 }
 
 // parseEmail parses raw email content using Go's net/mail package for proper MIME handling
@@ -113,40 +48,51 @@ func parseEmail(raw string) Email {
 		return parseEmailFallback(raw)
 	}
 
-	// Extract From header
+	// Extract From header with proper address parsing and MIME decoding
 	fromAddr := msg.Header.Get("From")
 	if fromAddr != "" {
-		// Parse the address to get just the email part
 		addr, err := mail.ParseAddress(fromAddr)
 		if err == nil {
+			// Use the display name if available (it will be decoded by ParseAddress)
 			email.From = addr.Address
 		} else {
-			email.From = strings.TrimSpace(fromAddr)
+			// Fallback: decode any MIME encoding in the raw address
+			email.From = decodeMIMEHeader(strings.TrimSpace(fromAddr))
 		}
 	}
 
-	// Extract To header
+	// Extract To header with MIME decoding
 	toAddr := msg.Header.Get("To")
 	if toAddr != "" {
-		email.To = strings.TrimSpace(toAddr)
+		email.To = decodeMIMEHeader(strings.TrimSpace(toAddr))
 	}
 
-	// Extract Subject header
+	// Extract Subject header with MIME decoding
 	subject := msg.Header.Get("Subject")
 	if subject != "" {
-		// Decode any MIME encoded words (e.g., =?UTF-8?B?...?=)
-		decoded := decodeMIMEWord(subject)
-		email.Subject = strings.TrimSpace(decoded)
+		email.Subject = decodeMIMEHeader(strings.TrimSpace(subject))
 	}
 
-	// Extract body content - handle multipart emails
-	contentType := msg.Header.Get("Content-Type")
-	if contentType != "" && strings.HasPrefix(contentType, "multipart/") {
+	// Extract body content - handle multipart emails properly
+	contentType, _, err := mime.ParseMediaType(msg.Header.Get("Content-Type"))
+	if err == nil && contentType == "multipart" {
 		// Handle multipart email (could contain both text and attachments)
-		boundary := parseMultipartBoundary(contentType)
+		boundary := msg.Header.Get("Content-Type")
+		if idx := strings.Index(boundary, "boundary="); idx != -1 {
+			boundary = boundary[idx+9:] // Skip "boundary=" prefix
+			// Remove quotes and trailing semicolon
+			boundary = strings.Trim(boundary, "\"; \t")
+		} else if idx := strings.Index(contentType, ";"); idx != -1 {
+			// Try to extract boundary from Content-Type header value
+			contentTypeStr := msg.Header.Get("Content-Type")
+			if mediaType, params, parseErr := mime.ParseMediaType(contentTypeStr); parseErr == nil {
+				boundary = params["boundary"]
+			}
+		}
 		reader := multipart.NewReader(msg.Body, boundary)
 
 		var bodyBuilder strings.Builder
+		hasTextPlain := false
 		for {
 			part, err := reader.NextPart()
 			if err == io.EOF {
@@ -156,9 +102,18 @@ func parseEmail(raw string) Email {
 				break
 			}
 
-			// Only extract text/plain parts for the body
-			if part.Header.Get("Content-Type") == "text/plain" ||
-				strings.HasPrefix(part.Header.Get("Content-Type"), "text/plain") {
+			partContentType := part.Header.Get("Content-Type")
+			contentTypeStr, _, _ := mime.ParseMediaType(partContentType)
+
+			// Prefer text/plain over text/html for the main body
+			if contentTypeStr == "text/plain" && !hasTextPlain {
+				hasTextPlain = true
+				partBody, err := io.ReadAll(part)
+				if err == nil {
+					bodyBuilder.WriteString(string(partBody))
+				}
+			} else if contentTypeStr == "text/html" && bodyBuilder.Len() == 0 {
+				// No text/plain found, use text/html as fallback
 				partBody, err := io.ReadAll(part)
 				if err == nil {
 					bodyBuilder.WriteString(string(partBody))
@@ -167,17 +122,64 @@ func parseEmail(raw string) Email {
 		}
 
 		email.Body = strings.TrimSpace(bodyBuilder.String())
-	} else {
-		// Handle single-part email with quoted-printable encoding
-		decodedReader := quotedprintable.NewReader(msg.Body)
-		body, err := io.ReadAll(decodedReader)
-		if err == nil {
-			email.Body = strings.TrimSpace(string(body))
-		} else {
-			// If decoding fails, read raw body
-			rawBody, _ := io.ReadAll(msg.Body)
-			email.Body = strings.TrimSpace(string(rawBody))
+	} else if contentType == "text/plain" || contentType == "text/html" {
+		// Handle single-part email with proper encoding detection
+		contentTypeValue := msg.Header.Get("Content-Type")
+		if idx := strings.Index(contentTypeValue, ";"); idx != -1 {
+			params, _, parseErr := mime.ParseMediaType(contentTypeValue)
+			if parseErr == nil {
+				// Check for charset and transfer encoding
+				if enc := params["charset"]; enc != "" {
+					// Charset is specified, the body should be UTF-8 or the specified charset
+				}
+
+				transferEnc := strings.ToLower(params["content-transfer-encoding"])
+				switch transferEnc {
+				case "quoted-printable", "qp":
+					decodedReader := quotedprintable.NewReader(msg.Body)
+					body, err := io.ReadAll(decodedReader)
+					if err == nil {
+						email.Body = strings.TrimSpace(string(body))
+					} else {
+						// If decoding fails, read raw body
+						rawBody, _ := io.ReadAll(msg.Body)
+						email.Body = strings.TrimSpace(string(rawBody))
+					}
+				case "base64":
+					buf := new(bytes.Buffer)
+					buf.ReadFrom(msg.Body)
+					decodedBytes, err := base64.StdEncoding.DecodeString(buf.String())
+					if err == nil {
+						email.Body = strings.TrimSpace(string(decodedBytes))
+					} else {
+						rawBody, _ := io.ReadAll(msg.Body)
+						email.Body = strings.TrimSpace(string(rawBody))
+					}
+				default:
+					// Assume raw text, try quoted-printable anyway for safety
+					decodedReader := quotedprintable.NewReader(msg.Body)
+					body, err := io.ReadAll(decodedReader)
+					if err == nil {
+						email.Body = strings.TrimSpace(string(body))
+					} else {
+						rawBody, _ := io.ReadAll(msg.Body)
+						email.Body = strings.TrimSpace(string(rawBody))
+					}
+				}
+			}
 		}
+
+		// If body is still empty, try raw read with fallback
+		if email.Body == "" {
+			msg.Body.Close() // Reset for re-read attempt
+			body, _ := io.ReadAll(msg.Body)
+			email.Body = strings.TrimSpace(string(body))
+		}
+	} else {
+		// Unknown content type, try to read whatever we can get
+		var buf bytes.Buffer
+		io.Copy(&buf, msg.Body)
+		email.Body = strings.TrimSpace(buf.String())
 	}
 
 	return email
