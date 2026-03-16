@@ -12,12 +12,9 @@ type GitExecutor struct {
 	basePath string
 }
 
-// NewToolExecutor creates a new GitExecutor instance
-func NewToolExecutor(basePath string, config interface{}) *GitExecutor {
-	if basePath == "" {
-		basePath = "."
-	}
-	return &GitExecutor{basePath: basePath}
+// NewGitExecutor creates a new GitExecutor instance
+func NewGitExecutor() *GitExecutor {
+	return &GitExecutor{basePath: "."}
 }
 
 // gitListBranches lists all branches in the repository

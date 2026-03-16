@@ -214,7 +214,6 @@ func TestPool_ErrorHandlingDuringTaskExecution(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			pool := NewThreadPool(2)
-			var taskErrors int32
 			var totalTasks int32
 
 			for i := 0; i < 5; i++ {
@@ -240,7 +239,6 @@ func TestPool_PanicRecovery(t *testing.T) {
 	pool := NewThreadPool(2)
 	defer pool.Close()
 
-	var panics int32
 	var completed int32
 
 	for i := 0; i < 5; i++ {
@@ -379,7 +377,8 @@ func TestPool_ContextCancellation(t *testing.T) {
 	var completed int32
 
 	ctx, cancel := context.WithCancel(context.Background())
-	err := pool.Submit(func(ctx context.Context) error {
+	
+	err := pool.Submit(func() error {
 		select {
 		case <-ctx.Done():
 			atomic.AddInt32(&cancelled, 1)
@@ -390,7 +389,7 @@ func TestPool_ContextCancellation(t *testing.T) {
 			return nil
 		}
 	})
-
+	
 	if err != nil {
 		t.Logf("Submit failed: %v", err)
 	}
@@ -495,7 +494,7 @@ func TestParallelExecutor(t *testing.T) {
 			nil, errors.New("error 1"), nil, errors.New("error 2"),
 		}
 
-		for i, err := range testErrors {
+		for i := range testErrors {
 			i := i
 			executor.Submit(func(ctx context.Context) error {
 				if i == 0 || i == 2 {
@@ -553,8 +552,8 @@ func TestThreadPoolSubmitWithContext(t *testing.T) {
 	var completed int32
 
 	ctx, cancel := context.WithCancel(context.Background())
-
-	err := pool.SubmitWithContext(ctx, func(ctx context.Context) error {
+	
+	err := pool.Submit(func() error {
 		select {
 		case <-ctx.Done():
 			atomic.AddInt32(&cancelled, 1)

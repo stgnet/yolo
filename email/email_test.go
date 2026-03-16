@@ -148,7 +148,7 @@ func TestMessageValidation(t *testing.T) {
 // TestMessageStructure tests that messages are properly formatted in sendmail format
 func TestMessageStructure(t *testing.T) {
 	cfg := DefaultConfig()
-	client := New(cfg)
+	_ = New(cfg)
 
 	msg := &Message{
 		To:      []string{"user1@example.com", "user2@example.com"},
