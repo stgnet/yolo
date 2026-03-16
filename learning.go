@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 )
@@ -45,6 +46,7 @@ type LearningManager struct {
 	historyPath string
 	sessions    []LearningSession
 	executor    *ToolExecutor // Reference to tool executor for web/reddit calls
+	mu          sync.RWMutex  // Protects access to sessions
 }
 
 // NewLearningManager creates a new learning manager
@@ -57,6 +59,9 @@ func NewLearningManager(baseDir string, executor *ToolExecutor) *LearningManager
 
 // LoadHistory loads the learning history from disk
 func (lm *LearningManager) LoadHistory() error {
+	lm.mu.Lock()
+	defer lm.mu.Unlock()
+
 	data, err := os.ReadFile(lm.historyPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -75,7 +80,12 @@ func (lm *LearningManager) LoadHistory() error {
 
 // SaveHistory saves the learning history to disk
 func (lm *LearningManager) SaveHistory() error {
-	data, err := json.MarshalIndent(lm.sessions, "", "  ")
+	lm.mu.RLock()
+	sessionsCopy := make([]LearningSession, len(lm.sessions))
+	copy(sessionsCopy, lm.sessions)
+	lm.mu.RUnlock()
+
+	data, err := json.MarshalIndent(sessionsCopy, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -658,12 +668,18 @@ func (lm *LearningManager) analyzeTrends(improvements []Improvement) []string {
 
 // SaveSession saves a completed learning session
 func (lm *LearningManager) SaveSession(session *LearningSession) error {
+	lm.mu.Lock()
 	lm.sessions = append(lm.sessions, *session)
+	lm.mu.Unlock()
+
 	return lm.SaveHistory()
 }
 
 // GetPendingImprovements returns improvements that haven't been implemented yet
 func (lm *LearningManager) GetPendingImprovements(limit int) []Improvement {
+	lm.mu.RLock()
+	defer lm.mu.RUnlock()
+
 	var pending []Improvement
 
 	for _, session := range lm.sessions {
@@ -851,23 +867,22 @@ func (lm *LearningManager) ImplementTopImprovements(maxCount int) error {
 		}
 
 		// Mark as implemented in the session
+		lm.mu.Lock()
 		for _, session := range lm.sessions {
 			for i, sessionImp := range session.Improvements {
 				if sessionImp.ID == imp.ID {
-					lm.sessions = append(lm.sessions, session) // Note: This is a simplification
 					session.Improvements[i].Status = "implemented"
 					implemented++
 					break
 				}
 			}
 		}
+		lm.mu.Unlock()
 
 		// Save history after each implementation
 		if err := lm.SaveHistory(); err != nil {
 			return fmt.Errorf("failed to save learning history: %w", err)
 		}
-
-		implemented++
 	}
 
 	if implemented > 0 {

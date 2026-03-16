@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stgnet/yolo/http"
+	"yolo/http"
 )
 
 // TestIntegrationRealWebSearch tests the actual web search integration

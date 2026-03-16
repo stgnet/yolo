@@ -112,12 +112,12 @@ func sanitizeEmailField(value string) string {
 	// Remove embedded newlines that could enable header injection
 	value = strings.ReplaceAll(value, "\n", " ")
 	value = strings.ReplaceAll(value, "\r", " ")
-	
+
 	// Truncate very long headers to prevent buffer overflow attacks
 	if len(value) > 500 {
 		value = value[:500] + "..."
 	}
-	
+
 	return value
 }
 
@@ -206,7 +206,7 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 		if isBounceMessage(&email) {
 			log.Printf("Skipping bounce message from %s with subject %s", email.From, email.Subject)
 			skipped = append(skipped, file.Name())
-			
+
 			// Still archive these for audit purposes
 			archiveEmail(filePath, file.Name(), "bounce_skipped")
 			continue
@@ -216,17 +216,17 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 		if isRateLimited() {
 			log.Printf("Rate limit exceeded, skipping email %s", file.Name())
 			skipped = append(skipped, file.Name())
-			
+
 			// Archive the email and notify admin
 			archiveEmail(filePath, file.Name(), "rate_limited")
-			
+
 			// Send notification to admin about rate limit
 			t.sendEmail(map[string]any{
 				"to":      RateLimitEmail,
 				"subject": "YOLO Email Rate Limit Exceeded",
 				"body":    fmt.Sprintf("YOLO has reached its hourly email sending limit. %d emails processed, %d skipped due to rate limiting.", totalProcessed, len(skipped)),
 			})
-			
+
 			break // Stop processing remaining emails
 		}
 
@@ -256,7 +256,7 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 
 		// Archive email instead of deleting (preserves audit trail)
 		archiveEmail(filePath, file.Name(), "processed")
-		
+
 		totalProcessed++
 		processed = append(processed, file.Name())
 

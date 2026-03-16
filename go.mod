@@ -1,8 +1,11 @@
 module yolo
 
-go 1.24
+go 1.25.0
 
 require (
+	github.com/PuerkitoBio/goquery v1.12.0
+	github.com/playwright-community/playwright-go v0.5700.1
+	github.com/stretchr/testify v1.11.1
 	golang.org/x/term v0.41.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -11,10 +14,10 @@ require (
 	cloud.google.com/go v0.121.2 // indirect
 	cloud.google.com/go/auth v0.16.5 // indirect
 	cloud.google.com/go/compute/metadata v0.8.0 // indirect
-	github.com/PuerkitoBio/goquery v1.12.0 // indirect
 	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/anthropics/anthropic-sdk-go v1.26.0 // indirect
 	github.com/ccojocar/zxcvbn-go v1.0.4 // indirect
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/deckarep/golang-set/v2 v2.8.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-jose/go-jose/v3 v3.0.4 // indirect
@@ -30,7 +33,7 @@ require (
 	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/openai/openai-go/v3 v3.23.0 // indirect
-	github.com/playwright-community/playwright-go v0.5700.1 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/securego/gosec/v2 v2.24.7 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect

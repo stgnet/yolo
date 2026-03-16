@@ -5,6 +5,7 @@ package concurrency
 
 import (
 	"context"
+	"fmt"
 	"sync"
 )
 
@@ -43,7 +44,15 @@ func (tp *ThreadPool) worker() {
 
 	for job := range tp.jobs {
 		if job != nil {
-			_ = job()
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						// Handle panic gracefully - log and continue with next job
+						fmt.Printf("Worker recovered from panic: %v\n", r)
+					}
+				}()
+				_ = job()
+			}()
 			tp.jobsWg.Done()
 		}
 	}

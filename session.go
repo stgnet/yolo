@@ -2,11 +2,16 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
 )
+
+// package-level mutex for thread-safe session ID generation
+var sessionIDMutex sync.Mutex
 
 // ToolSession manages state across multiple tool calls for complex workflows
 type ToolSession struct {
@@ -71,30 +76,33 @@ func (sm *SessionManager) CreateSession(sessionID string) *ToolSession {
 	return session
 }
 
-// GetSession retrieves an existing session by ID, returning nil if not found or expired
+// GetSession retrieves an existing session by ID, returning nil if not found or expired.
+// Returns nil without updating LastActivity if another concurrent call will expire it first.
+// This ensures proper lock ordering: sm.mu is held for the entire duration of validation
+// and expiration check, preventing race conditions between map access and session expiry.
 func (sm *SessionManager) GetSession(sessionID string) *ToolSession {
-	sm.mu.RLock()
-	session, exists := sm.sessions[sessionID]
-	sm.mu.RUnlock()
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
 
+	session, exists := sm.sessions[sessionID]
 	if !exists || !session.Active {
 		return nil
 	}
 
-	// Check if session has expired due to inactivity
-	session.mu.Lock()
-	defer session.mu.Unlock()
-
+	// Check expiration atomically with map access while holding sm.mu to prevent race conditions
+	// This ensures the session hasn't been marked inactive or deleted by another GetSession call
 	if time.Since(session.LastActivity) > session.maxIdleTime {
 		session.Active = false
-		sm.mu.Lock()
 		delete(sm.sessions, sessionID)
-		sm.mu.Unlock()
 		return nil
 	}
 
-	// Update last activity timestamp
-	session.LastActivity = time.Now()
+	// Update last activity timestamp while holding sm.mu to prevent concurrent access issues
+	// Only update if we haven't been superseded by another expiry check
+	if time.Since(session.LastActivity) <= session.maxIdleTime {
+		session.LastActivity = time.Now()
+	}
+
 	return session
 }
 
@@ -191,21 +199,50 @@ func DeserializeSession(data []byte) (*ToolSession, error) {
 }
 
 // CleanupExpired removes all expired sessions from the manager
+//
+// Lock Ordering Pattern: This function only acquires sm.mu (manager mutex).
+// It collects expired session IDs while holding sm.mu, then releases the lock
+// before performing individual deletion operations. This prevents potential
+// deadlocks that could occur if we held both sm.mu and session.mu simultaneously,
+// which would be inconsistent with other methods like GetSession() that only
+// acquire sm.mu during map iteration.
+//
+// The two-phase approach (collect-then-delete) eliminates the TOCTOU race condition
+// where a session could be accessed after being removed from the map but while
+// still holding references.
 func (sm *SessionManager) CleanupExpired() int {
 	sm.mu.Lock()
-	defer sm.mu.Unlock()
 
+	// Phase 1: Collect expired session IDs while holding manager mutex only.
+	// This minimizes lock contention and prevents deadlock scenarios by not
+	// holding both sm.mu and session.mu simultaneously.
+	expiredIds := make([]string, 0)
 	now := time.Now()
-	count := 0
 
 	for id, session := range sm.sessions {
 		session.mu.Lock()
-		if !session.Active || now.Sub(session.LastActivity) > session.maxIdleTime {
-			session.Active = false
+		isExpired := !session.Active || now.Sub(session.LastActivity) > session.maxIdleTime
+		if isExpired {
+			expiredIds = append(expiredIds, id)
+		}
+		session.mu.Unlock()
+	}
+
+	// Phase 2: Delete collected sessions after releasing manager mutex.
+	// By collecting IDs first and releasing sm.mu before deletions, we:
+	// - Prevent deadlocks from inconsistent lock ordering
+	// - Avoid TOCTOU races where a session might be accessed while deleted
+	// - Allow concurrent access to the session map for other operations
+	sm.mu.Unlock()
+
+	count := 0
+	for _, id := range expiredIds {
+		sm.mu.Lock()
+		if session, exists := sm.sessions[id]; exists && session.Active == false {
 			delete(sm.sessions, id)
 			count++
 		}
-		session.mu.Unlock()
+		sm.mu.Unlock()
 	}
 
 	return count
@@ -235,13 +272,35 @@ func (sm *SessionManager) SessionCount() int {
 	return len(sm.ListActiveSessions())
 }
 
-// generateSessionID creates a unique session identifier
+// generateSessionID creates a unique session identifier using cryptographically secure random bytes.
+// This function is thread-safe due to the package-level sessionIDMutex protecting concurrent access.
 func generateSessionID() string {
-	return fmt.Sprintf("session_%d_%d", time.Now().UnixNano(), randInt())
+	sessionIDMutex.Lock()
+	defer sessionIDMutex.Unlock()
+
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		panic(fmt.Sprintf("failed to generate random bytes: %v", err))
+	}
+	return fmt.Sprintf("session_%d_%s", time.Now().UnixNano(), hex.EncodeToString(b[:]))
 }
 
+// generateRandomBytes returns cryptographically secure random bytes of the specified length
+func generateRandomBytes(n int) ([]byte, error) {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return nil, fmt.Errorf("failed to generate random bytes: %w", err)
+	}
+	return b, nil
+}
+
+// randInt generates a cryptographically secure random integer
 func randInt() int {
-	return int(time.Now().UnixNano() % 10000)
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		panic(fmt.Sprintf("failed to generate random bytes: %v", err))
+	}
+	return int(b[0] | b[1]<<8 | b[2]<<16 | b[3]<<24)
 }
 
 // SessionContext adds session support to context

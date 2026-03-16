@@ -17,7 +17,7 @@ import (
 
 // Security constants for rate limiting and validation
 const (
-	MaxEmailsPerHour   = 10 // Maximum emails per hour
+	MaxEmailsPerHour   = 10              // Maximum emails per hour
 	CooldownPeriod     = time.Second * 5 // Minimum time between email sends
 	AllowedSenderRegex = `^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`
 	DenylistedDomains  = "example.com|test.com|suspicious-domain.org"
@@ -80,16 +80,18 @@ func recordEmailSent() error {
 }
 
 // validateSender checks if sender is allowed (not denylisted)
+// Format validation MUST happen before denylist check to avoid false rejections of invalid emails
 func validateSender(emailAddress string) bool {
-	denyRegex := regexp.MustCompile("(?i)(" + DenylistedDomains + ")")
-	if denyRegex.MatchString(emailAddress) {
-		return false
-	}
-
-	// Basic email format validation
+	// First, validate email format - must be valid before checking denylist
 	formatRegex := regexp.MustCompile(AllowedSenderRegex)
 	if !formatRegex.MatchString(emailAddress) {
-		return false
+		return false // Invalid email format
+	}
+
+	// Only check denylist for properly formatted emails
+	denyRegex := regexp.MustCompile("(?i)(" + DenylistedDomains + ")")
+	if denyRegex.MatchString(emailAddress) {
+		return false // Email domain is denylisted
 	}
 
 	return true
@@ -98,8 +100,8 @@ func validateSender(emailAddress string) bool {
 // sanitizeContent removes potentially malicious content from email body
 // This helps prevent prompt injection attacks
 func sanitizeContent(content string) string {
-	// Remove potential command injection patterns
-	content = regexp.MustCompile(`[;|&$` + "`" + `]\s*`).ReplaceAllString(content, " ")
+	// Remove potential command injection patterns (line breaks and separators only)
+	content = regexp.MustCompile(`[;|&]\s*`).ReplaceAllString(content, " ")
 
 	// Remove potential template injection markers
 	content = regexp.MustCompile(`\{\{.*?\}\}`).ReplaceAllStringFunc(content, func(match string) string {
@@ -107,8 +109,12 @@ func sanitizeContent(content string) string {
 	})
 
 	// Remove shell command patterns that could be interpreted by downstream systems
-	content = regexp.MustCompile(`\$\([^)]*\)`).ReplaceAllString(content, "[COMMAND_REDACTED]")
-	content = regexp.MustCompile("`[^`]+`").ReplaceAllStringFunc(content, func(match string) string {
+	// Process dollar-sign command substitution first: $(...)
+	content = regexp.MustCompile(`\$\([^)]*\)`).ReplaceAllStringFunc(content, func(match string) string {
+		return "[COMMAND_REDACTED]"
+	})
+	// Process backtick command substitution second: `...`
+	content = regexp.MustCompile("`[^`]*`").ReplaceAllStringFunc(content, func(match string) string {
 		return "[COMMAND_REDACTED]"
 	})
 
