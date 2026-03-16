@@ -5,6 +5,7 @@ package main
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"yolo/email"
@@ -27,6 +28,12 @@ func (t *ToolExecutor) sendEmail(args map[string]any) string {
 
 	if subject == "" || body == "" {
 		return "Error: subject and body parameters are required"
+	}
+
+	// Validate email format
+	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
+	if !emailRegex.MatchString(to) {
+		return fmt.Sprintf("Error: invalid email address '%s'", to)
 	}
 
 	// Get email configuration (uses local SMTP relay by default, no auth needed)
@@ -67,6 +74,12 @@ func (t *ToolExecutor) sendReport(args map[string]any) string {
 
 	if body == "" {
 		return "Error: body parameter is required"
+	}
+
+	// Validate email format for recipient
+	matched, _ := regexp.MatchString(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`, to)
+	if !matched {
+		return fmt.Errorf("invalid to address: %s", to).Error()
 	}
 
 	// Append todo list to the report if not already included

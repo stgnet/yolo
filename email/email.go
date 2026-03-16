@@ -62,14 +62,24 @@ func New(config *Config) *Client {
 	return &Client{config: config}
 }
 
-// Send sends an email using the configured transport (sendmail by default)
-func (c *Client) Send(msg *Message) error {
+// ValidateMessage validates an email message without sending it
+func (c *Client) ValidateMessage(msg *Message) error {
 	if len(msg.To) == 0 {
 		return fmt.Errorf("no recipients specified")
 	}
 
 	if msg.Subject == "" || msg.Body == "" {
 		return fmt.Errorf("subject and body are required")
+	}
+
+	return nil
+}
+
+// Send sends an email using the configured transport (sendmail by default)
+func (c *Client) Send(msg *Message) error {
+	// Validate message before sending
+	if err := c.ValidateMessage(msg); err != nil {
+		return err
 	}
 
 	if c.config.UseSendmail {

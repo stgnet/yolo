@@ -97,6 +97,37 @@ func parseEmail(content, filename string) EmailMessage {
 	return email
 }
 
+// isBounceMessage checks if an email appears to be a bounce/delivery failure notification
+func isBounceMessage(email *EmailMessage) bool {
+	bounceIndicators := []string{
+		"delivery failed", "undeliverable", "bounce", "returned mail",
+		"permanent failure", "temporary failure", "postmaster@",
+		"mailer-daemon@", "failure notice", "notification system",
+		"unable to deliver", "recipient rejected", "user unknown",
+	}
+
+	contentLower := strings.ToLower(email.Content)
+	for _, indicator := range bounceIndicators {
+		if strings.Contains(contentLower, indicator) {
+			return true
+		}
+	}
+
+	// Check from address for common bounce senders
+	fromLower := strings.ToLower(email.From)
+	bounceSenders := []string{
+		"postmaster@", "mailer-daemon@", "daemon@", "automated@",
+		"notification@", "nobody@", "no-reply@", "donotreply@",
+	}
+	for _, sender := range bounceSenders {
+		if strings.Contains(fromLower, sender) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // processInboxWithResponse automates the email workflow: read → respond → delete
 func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 	markRead := getBoolArg(args, "mark_read", true)
@@ -117,7 +148,9 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 	}
 
 	totalProcessed := 0
+	totalSkipped := 0
 	var processed []string
+	var skipped []string
 
 	for _, file := range files {
 		if file.IsDir() {
@@ -132,6 +165,13 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 		}
 
 		email := parseEmail(string(content), file.Name())
+
+		// Skip bounce/delivery failure messages to avoid infinite loops
+		if isBounceMessage(&email) {
+			log.Printf("Skipping bounce message from %s with subject %s", email.From, email.Subject)
+			skipped = append(skipped, file.Name())
+			continue
+		}
 
 		// Generate auto-response based on email content
 		response := generateAIResponse(&email)
@@ -167,7 +207,15 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("✅ Processed %d email(s)\n", totalProcessed))
-	sb.WriteString(fmt.Sprintf("🗑️  Deleted: %s\n", strings.Join(processed, ", ")))
+	if len(processed) > 0 {
+		sb.WriteString(fmt.Sprintf("🗑️  Deleted: %s\n", strings.Join(processed, ", ")))
+	}
+	if len(skipped) > 0 {
+		sb.WriteString(fmt.Sprintf("⚠️  Skipped %d potential bounce messages:\n", totalSkipped))
+		for _, name := range skipped {
+			sb.WriteString(fmt.Sprintf("    - %s\n", name))
+		}
+	}
 	if len(processed) > 0 {
 		sb.WriteString("📧 Sent auto-responses to all senders")
 	}

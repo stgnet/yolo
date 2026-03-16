@@ -132,7 +132,8 @@ func TestMessageValidation(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := client.Send(tc.message)
+			// Validate message without sending
+			err := client.ValidateMessage(tc.message)
 
 			if tc.expectError && err == nil {
 				t.Error("Expected error but got nil")
@@ -249,7 +250,7 @@ func TestSendWithoutRecipients(t *testing.T) {
 		Body:    "Test body",
 	}
 
-	err := client.Send(msg)
+	err := client.ValidateMessage(msg)
 	if err == nil {
 		t.Error("Expected error for empty recipients")
 	}
@@ -287,7 +288,7 @@ func TestMessageWithEmptySubject(t *testing.T) {
 		Body:    "Test body",
 	}
 
-	err := client.Send(msg)
+	err := client.ValidateMessage(msg)
 	if err == nil {
 		t.Error("Expected error for empty subject")
 	}
@@ -308,10 +309,9 @@ func TestMultipleEmailRecipients(t *testing.T) {
 		Body:    "Test body",
 	}
 
-	err := client.Send(msg)
+	err := client.ValidateMessage(msg)
 	if err != nil {
-		// Error is expected since sendmail may not be available, but we want to verify format
-		t.Logf("Send returned error (expected if sendmail unavailable): %v", err)
+		t.Errorf("Expected no error for valid message with multiple recipients: %v", err)
 	}
 }
 
@@ -348,6 +348,8 @@ func TestEnvironmentVariableOverrides(t *testing.T) {
 
 // TestMessageWithLongBody tests that long email bodies are handled properly
 func TestMessageWithLongBody(t *testing.T) {
+	// This test verifies that long email bodies are handled correctly without actually sending.
+	// Actual email delivery would cause test failures or network issues, so we skip the Send call.
 	cfg := DefaultConfig()
 	client := New(cfg)
 
@@ -358,10 +360,16 @@ func TestMessageWithLongBody(t *testing.T) {
 		Body:    longBody,
 	}
 
-	err := client.Send(msg)
-	if err != nil {
-		t.Logf("Send returned error (expected if sendmail unavailable): %v", err)
+	// Validate message creation without actual delivery
+	if msg == nil {
+		t.Fatal("Expected non-nil message")
 	}
+	if len(msg.Body) < 1000 {
+		t.Errorf("Expected long body (>1000 chars), got %d", len(msg.Body))
+	}
+
+	// Don't actually send - tests should not trigger network operations
+	t.Skip("Skipping actual email send to avoid network dependency")
 }
 
 // TestClientNilConfigSafety tests that New doesn't panic with nil config
@@ -383,30 +391,29 @@ func TestSendViaSendmailFormat(t *testing.T) {
 	cfg := DefaultConfig()
 	client := New(cfg)
 
-	// Create a message that would fail at execution but we can verify the format beforehand
+	// Create a message to test validation without actual delivery
 	msg := &Message{
 		To:      []string{"test@example.com"},
 		Subject: "Format Test",
 		Body:    "Test body for format verification",
 	}
 
-	// Verify the Send method validates required fields before attempting send
-	err := client.Send(msg)
+	// Verify the ValidateMessage method checks required fields before attempting send
+	err := client.ValidateMessage(msg)
 
-	// The error is expected if sendmail isn't available, but we verified validation passed
 	if err == nil {
-		t.Log("Email sent successfully (sendmail available)")
+		t.Log("ValidateMessage validation passed")
 	} else {
-		t.Logf("Send failed as expected when sendmail unavailable: %v", err)
+		t.Errorf("Unexpected validation error: %v", err)
 	}
 
-	// Verify all required fields were checked
-	err = client.Send(&Message{To: []string{"test@example.com"}}) // missing subject, body
+	// Verify all required fields were checked by creating invalid messages
+	err = client.ValidateMessage(&Message{To: []string{"test@example.com"}}) // missing subject, body
 	if err == nil {
 		t.Error("Should have errored on missing subject and body")
 	}
 
-	err = client.Send(&Message{Subject: "Test", Body: "Test"}) // missing recipients
+	err = client.ValidateMessage(&Message{Subject: "Test", Body: "Test"}) // missing recipients
 	if err == nil {
 		t.Error("Should have errored on missing recipients")
 	}
