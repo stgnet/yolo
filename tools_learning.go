@@ -25,7 +25,7 @@ func (t *ToolExecutor) learn(args map[string]any) string {
 	}
 
 	// Perform research and learning
-	fmt.Println("\n🔍 Starting autonomous research for self-improvement...")
+	rawWrite("\n🔍 Starting autonomous research for self-improvement...\n")
 	session, err := lm.ResearchAndLearn()
 	if err != nil {
 		return fmt.Sprintf("Error during research: %v", err)
@@ -85,7 +85,7 @@ func (t *ToolExecutor) learn(args map[string]any) string {
 
 		// Offer to implement top improvements
 		implCount := 2 // Limit implementation count
-		fmt.Printf("💡 Found %d pending improvements. Implementing top %d...\n", len(pending), implCount)
+		rawWrite(fmt.Sprintf("💡 Found %d pending improvements. Implementing top %d...\n", len(pending), implCount))
 		if err := lm.ImplementTopImprovements(implCount); err != nil {
 			return fmt.Sprintf("Learning completed but implementation failed: %v", err)
 		}
@@ -121,7 +121,7 @@ func (t *ToolExecutor) implement(args map[string]any) string {
 		implCount = count
 	}
 
-	fmt.Printf("\n🔧 Implementing top %d improvements...\n", implCount)
+	rawWrite(fmt.Sprintf("\n🔧 Implementing top %d improvements...\n", implCount))
 
 	err := lm.ImplementTopImprovements(implCount)
 	if err != nil {
