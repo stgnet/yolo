@@ -368,6 +368,12 @@ func TestMessageWithLongBody(t *testing.T) {
 		t.Errorf("Expected long body (>1000 chars), got %d", len(msg.Body))
 	}
 
+	// Validate the message using the client (without sending)
+	err := client.ValidateMessage(msg)
+	if err != nil {
+		t.Errorf("Validation failed for valid long message: %v", err)
+	}
+
 	// Don't actually send - tests should not trigger network operations
 	t.Skip("Skipping actual email send to avoid network dependency")
 }

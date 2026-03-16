@@ -70,7 +70,8 @@ func (t *ToolExecutor) sendReport(args map[string]any) string {
 
 	subject := getStringArg(args, "subject", "YOLO Progress Report")
 	body := getStringArg(args, "body", "")
-	to := getStringArg(args, "to", "") // Get recipient from args
+	to := getStringArg(args, "to", "")                  // Get recipient from args
+	attachTodo := getBoolArg(args, "attach_todo", true) // Default: include todo list
 
 	if body == "" {
 		return "Error: body parameter is required"
@@ -82,9 +83,9 @@ func (t *ToolExecutor) sendReport(args map[string]any) string {
 		return fmt.Errorf("invalid to address: %s", to).Error()
 	}
 
-	// Append todo list to the report if not already included
-	todoOutput := listTodos()
-	if !strings.Contains(body, "📝 TODO LIST") {
+	// Append todo list to the report if not already included and attach_todo is true
+	if attachTodo && !strings.Contains(body, "📝 TODO LIST") {
+		todoOutput := listTodos()
 		body = body + "\n\n" + todoOutput
 	}
 
