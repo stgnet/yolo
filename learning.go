@@ -142,7 +142,7 @@ func (lm *LearningManager) ResearchAndLearn() (*LearningSession, error) {
 	for _, area := range researchAreas {
 		improvements, err := lm.researchArea(area, session)
 		if err != nil {
-			fmt.Printf("Warning: Error researching %s: %v\n", area.Category, err)
+			rawWrite(fmt.Sprintf("Warning: Error researching %s: %v\n", area.Category, err))
 			continue
 		}
 		session.Improvements = append(session.Improvements, improvements...)
@@ -846,7 +846,7 @@ func (lm *LearningManager) ImplementTopImprovements(maxCount int) error {
 	for _, imp := range improvements {
 		err := lm.executeImprovement(imp)
 		if err != nil {
-			fmt.Printf("Warning: Failed to implement improvement '%s': %v", imp.Title, err)
+			rawWrite(fmt.Sprintf("Warning: Failed to implement improvement '%s': %v\n", imp.Title, err))
 			continue
 		}
 
@@ -871,9 +871,9 @@ func (lm *LearningManager) ImplementTopImprovements(maxCount int) error {
 	}
 
 	if implemented > 0 {
-		fmt.Printf("✅ Implemented %d improvement(s)\n", implemented)
+		rawWrite(fmt.Sprintf("✅ Implemented %d improvement(s)\n", implemented))
 	} else {
-		fmt.Println("⚠️ No improvements were implemented")
+		rawWrite("⚠️ No improvements were implemented\n")
 	}
 
 	return nil
@@ -897,18 +897,18 @@ func (lm *LearningManager) executeImprovement(imp Improvement) error {
 
 // executeTestImplementation handles test-related improvements
 func (lm *LearningManager) executeTestImplementation(imp Improvement) error {
-	fmt.Printf("🧪 Executing test improvement: %s\n", imp.Title)
+	rawWrite(fmt.Sprintf("🧪 Executing test improvement: %s\n", imp.Title))
 
 	// Add a TODO item for the specific test to be implemented
 	todoTitle := fmt.Sprintf("Implement tests: %s", imp.Title)
 
-	fmt.Printf("   Added to improvement queue: %s\n", todoTitle)
+	rawWrite(fmt.Sprintf("   Added to improvement queue: %s\n", todoTitle))
 	return nil
 }
 
 // executePerformanceImprovement handles performance-related improvements
 func (lm *LearningManager) executePerformanceImprovement(imp Improvement) error {
-	fmt.Printf("⚡ Executing performance improvement: %s\n", imp.Title)
+	rawWrite(fmt.Sprintf("⚡ Executing performance improvement: %s\n", imp.Title))
 
 	// Identify files that could benefit from optimization
 	files, err := os.ReadDir(".")
@@ -919,28 +919,28 @@ func (lm *LearningManager) executePerformanceImprovement(imp Improvement) error 
 	performanceFiles := 0
 	for _, file := range files {
 		if strings.HasSuffix(file.Name(), ".go") && !strings.HasSuffix(file.Name(), "_test.go") {
-			fmt.Printf("   Analyzing %s for performance opportunities...\n", file.Name())
+			rawWrite(fmt.Sprintf("   Analyzing %s for performance opportunities...\n", file.Name()))
 			performanceFiles++
 		}
 	}
 
-	fmt.Printf("   Found %d Go files to analyze\n", performanceFiles)
+	rawWrite(fmt.Sprintf("   Found %d Go files to analyze\n", performanceFiles))
 	return nil
 }
 
 // executeSecurityEnhancement handles security-related improvements
 func (lm *LearningManager) executeSecurityEnhancement(imp Improvement) error {
-	fmt.Printf("🛡️ Executing security enhancement: %s\n", imp.Title)
+	rawWrite(fmt.Sprintf("🛡️ Executing security enhancement: %s\n", imp.Title))
 
 	// Security checks - validate path handling, input sanitization, etc.
-	fmt.Println("   Reviewing file access patterns for vulnerabilities...")
-	fmt.Println("   Checking input validation coverage...")
+	rawWrite("   Reviewing file access patterns for vulnerabilities...\n")
+	rawWrite("   Checking input validation coverage...\n")
 	return nil
 }
 
 // executeLoggingImprovement handles logging-related improvements
 func (lm *LearningManager) executeLoggingImprovement(imp Improvement) error {
-	fmt.Printf("📊 Executing logging improvement: %s\n", imp.Title)
+	rawWrite(fmt.Sprintf("📊 Executing logging improvement: %s\n", imp.Title))
 
 	// Analyze current logging coverage
 	files, err := os.ReadDir(".")
@@ -958,17 +958,17 @@ func (lm *LearningManager) executeLoggingImprovement(imp Improvement) error {
 		}
 	}
 
-	fmt.Printf("   Reviewed %d files for logging coverage\n", loggedFiles)
+	rawWrite(fmt.Sprintf("   Reviewed %d files for logging coverage\n", loggedFiles))
 	return nil
 }
 
 // executeGeneralImprovement handles improvements that don't fit specific categories
 func (lm *LearningManager) executeGeneralImprovement(imp Improvement) error {
-	fmt.Printf("🔧 Executing general improvement: %s\n", imp.Title)
+	rawWrite(fmt.Sprintf("🔧 Executing general improvement: %s\n", imp.Title))
 
 	// Create implementation notes
 	implement := "Implementing based on discovered best practices..."
-	fmt.Printf("   Action: %s\n", implement)
+	rawWrite(fmt.Sprintf("   Action: %s\n", implement))
 
 	return nil
 }
