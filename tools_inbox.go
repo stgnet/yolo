@@ -1,5 +1,6 @@
-// Email Inbox Processing Tools
+// Email Inbox Processing Tools with Security Hardening
 // Implements check_inbox and process_inbox_with_response for autonomous email handling
+// Includes protection against prompt injection, proper archival, and rate limiting
 
 package main
 
@@ -14,9 +15,18 @@ import (
 )
 
 const (
-	InboxPath = "/var/mail/b-haven.org/yolo/new/"
-	CurDir    = "cur"
+	InboxPath      = "/var/mail/b-haven.org/yolo/new/"
+	CurDir         = "cur"
+	ArchiveDir     = "archive"
+	RateLimitEmail = "admin@b-haven.org" // Email for rate limit notifications
 )
+
+// emailArchived tracks which emails have been archived in this session
+var emailArchived map[string]bool
+
+func init() {
+	emailArchived = make(map[string]bool)
+}
 
 // checkInbox reads emails from the Maildir inbox
 func (t *ToolExecutor) checkInbox(args map[string]any) string {
@@ -67,7 +77,7 @@ func (t *ToolExecutor) checkInbox(args map[string]any) string {
 	return fmt.Sprintf("📧 Found %d email(s):\n\n%s", len(emailList), string(result))
 }
 
-// parseEmail extracts relevant fields from email content
+// parseEmail extracts relevant fields from email content with security validation
 func parseEmail(content, filename string) EmailMessage {
 	email := EmailMessage{
 		Filename:    filename,
@@ -80,15 +90,15 @@ func parseEmail(content, filename string) EmailMessage {
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.HasPrefix(line, "From:") {
-			email.From = strings.TrimSpace(strings.TrimPrefix(line, "From:"))
+			email.From = sanitizeEmailField(strings.TrimSpace(strings.TrimPrefix(line, "From:")))
 		} else if strings.HasPrefix(line, "Subject:") {
-			email.Subject = strings.TrimSpace(strings.TrimPrefix(line, "Subject:"))
+			email.Subject = sanitizeEmailField(strings.TrimSpace(strings.TrimPrefix(line, "Subject:")))
 		} else if strings.HasPrefix(line, "Date:") {
-			email.Date = strings.TrimSpace(strings.TrimPrefix(line, "Date:"))
+			email.Date = sanitizeEmailField(strings.TrimSpace(strings.TrimPrefix(line, "Date:")))
 		} else if strings.HasPrefix(line, "To:") {
 			toAddresses := strings.Split(strings.TrimSpace(strings.TrimPrefix(line, "To:")), ",")
 			for i, addr := range toAddresses {
-				toAddresses[i] = strings.TrimSpace(addr)
+				toAddresses[i] = sanitizeEmailField(strings.TrimSpace(addr))
 			}
 			email.To = toAddresses
 		}
@@ -97,12 +107,26 @@ func parseEmail(content, filename string) EmailMessage {
 	return email
 }
 
+// sanitizeEmailField sanitizes email header fields to prevent injection attacks
+func sanitizeEmailField(value string) string {
+	// Remove embedded newlines that could enable header injection
+	value = strings.ReplaceAll(value, "\n", " ")
+	value = strings.ReplaceAll(value, "\r", " ")
+	
+	// Truncate very long headers to prevent buffer overflow attacks
+	if len(value) > 500 {
+		value = value[:500] + "..."
+	}
+	
+	return value
+}
+
 // isBounceMessage checks if an email appears to be a bounce/delivery failure notification
 func isBounceMessage(email *EmailMessage) bool {
 	bounceIndicators := []string{
 		"delivery failed", "undeliverable", "bounce", "returned mail",
 		"permanent failure", "temporary failure", "postmaster@",
-		"mailer-daemon@", "failure notice", "notification system",
+		"mailer-daemon@", "daemon@", "failure notice", "notification system",
 		"unable to deliver", "recipient rejected", "user unknown",
 	}
 
@@ -128,7 +152,13 @@ func isBounceMessage(email *EmailMessage) bool {
 	return false
 }
 
-// processInboxWithResponse automates the email workflow: read → respond → delete
+// isRateLimited checks if we've exceeded the email sending rate limit
+func isRateLimited() bool {
+	emailCount.Load() // This is a no-op to check current count
+	return emailCount.Load() >= MaxEmailsPerHour
+}
+
+// processInboxWithResponse automates the email workflow: read → respond → archive
 func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 	markRead := getBoolArg(args, "mark_read", true)
 
@@ -152,6 +182,12 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 	var processed []string
 	var skipped []string
 
+	// Create archive directory if it doesn't exist
+	archiveDir := filepath.Join(ArchiveDir)
+	if err := os.MkdirAll(archiveDir, 0755); err != nil {
+		log.Printf("Failed to create archive directory: %v", err)
+	}
+
 	for _, file := range files {
 		if file.IsDir() {
 			continue
@@ -170,17 +206,45 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 		if isBounceMessage(&email) {
 			log.Printf("Skipping bounce message from %s with subject %s", email.From, email.Subject)
 			skipped = append(skipped, file.Name())
+			
+			// Still archive these for audit purposes
+			archiveEmail(filePath, file.Name(), "bounce_skipped")
 			continue
 		}
 
-		// Generate auto-response based on email content
-		response := generateAIResponse(&email)
+		// Check rate limiting before generating response
+		if isRateLimited() {
+			log.Printf("Rate limit exceeded, skipping email %s", file.Name())
+			skipped = append(skipped, file.Name())
+			
+			// Archive the email and notify admin
+			archiveEmail(filePath, file.Name(), "rate_limited")
+			
+			// Send notification to admin about rate limit
+			t.sendEmail(map[string]any{
+				"to":      RateLimitEmail,
+				"subject": "YOLO Email Rate Limit Exceeded",
+				"body":    fmt.Sprintf("YOLO has reached its hourly email sending limit. %d emails processed, %d skipped due to rate limiting.", totalProcessed, len(skipped)),
+			})
+			
+			break // Stop processing remaining emails
+		}
+
+		// Generate safe auto-response based on email content
+		response := generateSafeAIResponse(&email)
 
 		// Send response back to sender
 		sender := email.From
 		if strings.Contains(sender, "<") {
 			parts := strings.SplitN(sender, "<", 2)
 			sender = strings.TrimSpace(strings.TrimSuffix(parts[0], ">"))
+		}
+
+		// Validate sender before responding
+		if !validateSender(sender) {
+			log.Printf("Skipping response to untrusted sender: %s", sender)
+			skipped = append(skipped, file.Name())
+			continue
 		}
 
 		subjectResp := fmt.Sprintf("Re: %s", email.Subject)
@@ -190,8 +254,9 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 			"body":    response,
 		})
 
-		// Delete original email
-		os.Remove(filePath)
+		// Archive email instead of deleting (preserves audit trail)
+		archiveEmail(filePath, file.Name(), "processed")
+		
 		totalProcessed++
 		processed = append(processed, file.Name())
 
@@ -208,10 +273,10 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("✅ Processed %d email(s)\n", totalProcessed))
 	if len(processed) > 0 {
-		sb.WriteString(fmt.Sprintf("🗑️  Deleted: %s\n", strings.Join(processed, ", ")))
+		sb.WriteString(fmt.Sprintf("📁 Archived: %s\n", strings.Join(processed, ", ")))
 	}
 	if len(skipped) > 0 {
-		sb.WriteString(fmt.Sprintf("⚠️  Skipped %d potential bounce messages:\n", totalSkipped))
+		sb.WriteString(fmt.Sprintf("⚠️  Skipped %d messages:\n", totalSkipped))
 		for _, name := range skipped {
 			sb.WriteString(fmt.Sprintf("    - %s\n", name))
 		}
@@ -223,32 +288,58 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 	return sb.String()
 }
 
-// generateAIResponse creates an intelligent auto-response based on email content
-func generateAIResponse(email *EmailMessage) string {
+// archiveEmail moves an email to the archive directory for audit purposes
+func archiveEmail(srcPath, filename string, reason string) error {
+	if emailArchived[filename] {
+		// Already archived in this session
+		return nil
+	}
+
+	archiveDir := filepath.Join(ArchiveDir)
+	if err := os.MkdirAll(archiveDir, 0755); err != nil {
+		log.Printf("Failed to create archive directory: %v", err)
+		return err
+	}
+
+	destPath := filepath.Join(archiveDir, fmt.Sprintf("%s_%s", reason, filename))
+	err := os.Rename(srcPath, destPath)
+	if err == nil {
+		emailArchived[filename] = true
+		log.Printf("Archived email %s to %s: %s", filename, reason, destPath)
+	}
+
+	return err
+}
+
+// generateSafeAIResponse creates a safe auto-response that resists prompt injection
+func generateSafeAIResponse(email *EmailMessage) string {
 	var sb strings.Builder
 
-	// Personalized greeting
-	if email.From != "" {
-		sb.WriteString(fmt.Sprintf("Hello %s,\n\n", truncateString(email.From, 50)))
+	// Sanitized greeting - truncate sender name to prevent injection
+	safeFrom := sanitizeContent(truncateString(email.From, 50))
+	if safeFrom != "" {
+		sb.WriteString(fmt.Sprintf("Hello %s,\n\n", safeFrom))
 	} else {
 		sb.WriteString("Hello,\n\n")
 	}
 
-	// Acknowledge receipt and provide contextual response
-	sb.WriteString(fmt.Sprintf("I've received your message regarding \"%s\".\n", email.Subject))
+	// Sanitized subject acknowledgment
+	safeSubject := sanitizeContent(truncateString(email.Subject, 100))
+	sb.WriteString(fmt.Sprintf("I've received your message regarding \"%s\".\n", safeSubject))
 	sb.WriteString("\n")
 
-	// Provide appropriate auto-response based on content type
-	if strings.Contains(strings.ToLower(email.Content), "hello") ||
-		strings.Contains(strings.ToLower(email.Content), "hi") {
+	// Provide appropriate auto-response based on content type (using sanitized content)
+	contentSanitized := sanitizeContent(strings.ToLower(email.Content))
+	if strings.Contains(contentSanitized, "hello") ||
+		strings.Contains(contentSanitized, "hi") {
 		sb.WriteString("Thank you for reaching out! I'm YOLO, your autonomous AI agent.\n")
 		sb.WriteString("I'm here to help with software development tasks and project automation.\n")
-	} else if strings.Contains(strings.ToLower(email.Subject), "status") ||
-		strings.Contains(strings.ToLower(email.Content), "status") {
+	} else if strings.Contains(safeSubject, "status") ||
+		strings.Contains(contentSanitized, "status") {
 		sb.WriteString("I can provide status updates on my current activities.\n")
 		sb.WriteString("Would you like me to send a detailed progress report?\n")
-	} else if strings.Contains(strings.ToLower(email.Subject), "todo") ||
-		strings.Contains(strings.ToLower(email.Content), "todo") {
+	} else if strings.Contains(safeSubject, "todo") ||
+		strings.Contains(contentSanitized, "todo") {
 		sb.WriteString("I maintain a todo list for tracking tasks and improvements.\n")
 		sb.WriteString("Let me know what specific tasks you'd like to discuss!\n")
 	} else {
