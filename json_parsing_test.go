@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math"
+	"strings"
 	"testing"
 )
 
@@ -204,7 +206,7 @@ func TestJSONMalformedInput(t *testing.T) {
 			}
 
 			if !tt.expectSuccess && tt.errorContains != "" {
-				if !fmt.Sprintf("%v", err).Contains(tt.errorContains) {
+				if !strings.Contains(fmt.Sprintf("%v", err), tt.errorContains) {
 					t.Logf("Error doesn't contain expected text: %s (error was: %v)", tt.errorContains, err)
 				}
 			}

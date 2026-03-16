@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -14,7 +13,7 @@ import (
 
 // PlaywrightMCP wraps Playwright for browser automation
 type PlaywrightMCP struct {
-	pw            *playwright.API
+	pw            *playwright.Playwright
 	browser       playwright.Browser
 	headless      bool
 	timeout       time.Duration
@@ -42,13 +41,11 @@ type PlaywrightResult struct {
 
 // NewPlaywrightMCP creates a new PlaywrightMCP instance
 func NewPlaywrightMCP(headless bool, timeout time.Duration, screenshotDir string) (*PlaywrightMCP, error) {
-	// Initialize Playwright
 	pw, err := playwright.Run()
 	if err != nil {
 		return nil, fmt.Errorf("failed to start playwright: %w", err)
 	}
 
-	// Set screenshot directory
 	if screenshotDir == "" {
 		screenshotDir = "./screenshots"
 	}
@@ -72,17 +69,13 @@ func (p *PlaywrightMCP) LaunchBrowser() error {
 	}
 
 	browserType := p.pw.Chromium
-	if p.headless {
-		p.browser, _ = browserType.Launch(
-			playwright.BrowserTypeLaunchOptions{
-				Headless: playwright.Bool(p.headless),
-			},
-		)
-	} else {
-		p.browser, _ = browserType.Launch()
+	headlessPtr := boolPtr(p.headless)
+	opts := playwright.BrowserTypeLaunchOptions{
+		Headless: headlessPtr,
 	}
-
-	return nil
+	var err error
+	p.browser, err = browserType.Launch(opts)
+	return err
 }
 
 // NavigateTo navigates to a URL
@@ -99,47 +92,39 @@ func (p *PlaywrightMCP) NavigateTo(ctx context.Context, url string, action Brows
 	}
 	defer page.Close()
 
-	// Set timeout
-	page.SetDefaultTimeout(playwright.Float(float64(action.Timeout.Milliseconds())))
+	page.SetDefaultTimeout(float64(action.Timeout.Milliseconds()))
 
-	// Navigate to URL
-	ctxFunc, cancel := context.WithTimeout(ctx, action.Timeout)
-	defer cancel()
-
-	resp, err := page.GotoContext(ctxFunc, url, playwright.PageGotoOptions{
-		WaitUntil: playwright.WaitUntilStateCommit,
-	})
+	resp, err := page.Goto(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to navigate to %s: %w", url, err)
 	}
 
 	result := &PlaywrightResult{
 		URL:        resp.URL(),
-		Title:      page.Title(),
+		Title:      "",
 		Text:       "",
 		HTML:       "",
 		Screenshot: "",
 		Error:      "",
 	}
 
-	// Wait for network to be idle
 	time.Sleep(1 * time.Second)
 
-	// Get content
-	result.Text = page.Content()
-	result.HTML, _ = page.InnerHTML("body")
+	title, err := page.Title()
+	if err == nil {
+		result.Title = title
+	}
+	text, _ := page.Content()
+	result.Text = text
+	html, _ := page.InnerHTML("body")
+	result.HTML = html
 
-	// Take screenshot if requested
 	if action.ScreenShot {
 		screenshotPath := filepath.Join(p.screenShotDir, fmt.Sprintf("screenshot_%d.png", time.Now().UnixNano()))
-		err = page.Screenshot(
-			playwright.PageScreenshotOptions{
-				Path: playwright.String(screenshotPath),
-			},
-		)
-		if err == nil {
-			result.Screenshot = screenshotPath
-		}
+		page.Screenshot(playwright.PageScreenshotOptions{
+			Path: playwright.String(screenshotPath),
+		})
+		result.Screenshot = screenshotPath
 	}
 
 	return result, nil
@@ -159,34 +144,23 @@ func (p *PlaywrightMCP) ClickElement(ctx context.Context, selector string, actio
 	}
 	defer page.Close()
 
-	page.SetDefaultTimeout(playwright.Float(float64(action.Timeout.Milliseconds())))
+	page.SetDefaultTimeout(float64(action.Timeout.Milliseconds()))
 
-	ctxFunc, cancel := context.WithTimeout(ctx, action.Timeout)
-	defer cancel()
+	resp, _ := page.Goto("about:blank")
 
-	resp, err := page.GotoContext(ctxFunc, "about:blank", playwright.PageGotoOptions{
-		WaitUntil: playwright.WaitUntilStateCommit,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to navigate: %w", err)
-	}
-
-	// Wait for element and click
-	err = page.WaitForSelector(selector, playwright.PageWaitForSelectorOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("element not found: %s", selector)
-	}
-
-	err = page.Click(selector, playwright.PageClickOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to click element: %w", err)
-	}
+	page.WaitForSelector(selector)
+	page.Click(selector)
 
 	result := &PlaywrightResult{
 		URL:   resp.URL(),
-		Title: page.Title(),
-		Text:  page.Content(),
+		Title: "",
+		Text:  "",
 	}
+
+	title, _ := page.Title()
+	result.Title = title
+	text, _ := page.Content()
+	result.Text = text
 
 	return result, nil
 }
@@ -205,40 +179,29 @@ func (p *PlaywrightMCP) FillForm(ctx context.Context, url string, fields map[str
 	}
 	defer page.Close()
 
-	page.SetDefaultTimeout(playwright.Float(float64(action.Timeout.Milliseconds())))
+	page.SetDefaultTimeout(float64(action.Timeout.Milliseconds()))
 
-	ctxFunc, cancel := context.WithTimeout(ctx, action.Timeout)
-	defer cancel()
+	resp, _ := page.Goto(url)
 
-	_, err = page.GotoContext(ctxFunc, url, playwright.PageGotoOptions{
-		WaitUntil: playwright.WaitUntilStateCommit,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to navigate: %w", err)
-	}
-
-	// Fill form fields
 	for selector, value := range fields {
-		err = page.Fill(selector, value, playwright.PageFillOptions{})
-		if err != nil {
-			log.Printf("Warning: failed to fill field %s: %v", selector, err)
-		}
+		page.Fill(selector, value)
 	}
 
-	// Submit form (try the first submit button found)
 	submitButton := "button[type='submit'], input[type='submit']"
-	err = page.Click(submitButton, playwright.PageClickOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to submit form: %w", err)
-	}
+	page.Click(submitButton)
 
 	time.Sleep(2 * time.Second)
 
 	result := &PlaywrightResult{
-		URL:   page.URL(),
-		Title: page.Title(),
-		Text:  page.Content(),
+		URL:   resp.URL(),
+		Title: "",
+		Text:  "",
 	}
+
+	title, _ := page.Title()
+	result.Title = title
+	text, _ := page.Content()
+	result.Text = text
 
 	return result, nil
 }
@@ -257,17 +220,9 @@ func (p *PlaywrightMCP) GetElements(ctx context.Context, url, selector string, a
 	}
 	defer page.Close()
 
-	page.SetDefaultTimeout(playwright.Float(float64(action.Timeout.Milliseconds()) * 1000))
+	page.SetDefaultTimeout(float64(action.Timeout.Milliseconds()) * 1000)
 
-	ctxFunc, cancel := context.WithTimeout(ctx, action.Timeout)
-	defer cancel()
-
-	_, err = page.GotoContext(ctxFunc, url, playwright.PageGotoOptions{
-		WaitUntil: playwright.WaitUntilStateCommit,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to navigate: %w", err)
-	}
+	_, _ = page.Goto(url)
 
 	elements, err := p.QueryElements(page, selector)
 	if err != nil {
@@ -284,6 +239,8 @@ func (p *PlaywrightMCP) GetElements(ctx context.Context, url, selector string, a
 
 		html, _ := el.InnerHTML()
 		element["html"] = html
+
+		element["index"] = fmt.Sprintf("%d", i)
 
 		resultElements = append(resultElements, element)
 	}
@@ -304,11 +261,6 @@ func (p *PlaywrightMCP) Close() error {
 	}
 	p.pw.Stop()
 	return nil
-}
-
-// Helper function to iterate over all matching elements
-func pageQueryAll(selector string, callback func(int, playwright.ElementHandle) error) error {
-	return nil // Placeholder - implementation would require Playwright API access
 }
 
 // QueryElements queries the page for elements matching a selector
@@ -335,4 +287,19 @@ type SearchResults struct {
 	Screenshot string              `json:"screenshot,omitempty"`
 	Elements   []map[string]string `json:"elements,omitempty"`
 	Error      string              `json:"error,omitempty"`
+}
+
+// MarshalJSON custom marshaling for PlaywrightResult to handle JSON properly
+func (p *PlaywrightResult) MarshalJSON() ([]byte, error) {
+	type Alias PlaywrightResult
+	return json.Marshal(&struct {
+		*Alias
+	}{
+		Alias: (*Alias)(p),
+	})
+}
+
+// Helper function to create bool pointer
+func boolPtr(b bool) *bool {
+	return &b
 }

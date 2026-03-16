@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -165,6 +166,9 @@ var (
 	// AllowedDirectories are the only directories that can be targeted.
 	// Empty means all paths relative to baseDir are allowed (path validation handles this).
 	AllowedDirectories = []string{} // Default: no restrictions beyond path validation
+
+	// CompiledDangerousPatterns contains pre-compiled regex patterns for dangerous command detection.
+	CompiledDangerousPatterns []*regexp.Regexp
 )
 
 func init() {
@@ -196,6 +200,18 @@ func init() {
 			}
 		}
 	}
+
+	// Pre-compile all dangerous patterns into regex for proper matching
+	CompiledDangerousPatterns = make([]*regexp.Regexp, len(DangerousCommandPatterns))
+	for i, pattern := range DangerousCommandPatterns {
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "WARNING: Failed to compile dangerous pattern %q: %v\n", pattern, err)
+			CompiledDangerousPatterns[i] = nil // Skip invalid patterns
+		} else {
+			CompiledDangerousPatterns[i] = re
+		}
+	}
 }
 
 // ─── Security Functions ──────────────────────────────────────────────────
@@ -209,6 +225,11 @@ func validateSecurity(command string) (string, error) {
 
 	// Normalize command for checking
 	cmdLower := strings.TrimSpace(strings.ToLower(command))
+
+	// Shell injection detection - check for common bypass techniques
+	if err := detectShellInjection(cmdLower); err != nil {
+		return "", fmt.Errorf("shell injection attempt detected: %v", err)
+	}
 
 	// Extract the base command (first word before any spaces or pipes)
 	baseCmd := ""
@@ -233,22 +254,104 @@ func validateSecurity(command string) (string, error) {
 		return "", fmt.Errorf("command '%s' is disabled by security policy", baseCmd)
 	}
 
-	// Check for dangerous patterns in the full command
-	for _, pattern := range DangerousCommandPatterns {
-		if strings.Contains(cmdLower, pattern) {
-			return "", fmt.Errorf("command contains blocked pattern: %s", pattern)
+	// Check for dangerous patterns using proper regex matching (NOT strings.Contains)
+	for _, pattern := range CompiledDangerousPatterns {
+		if pattern != nil && pattern.MatchString(cmdLower) {
+			// Find the original pattern string for the error message
+			idx := 0
+			for i, re := range CompiledDangerousPatterns {
+				if re == pattern {
+					idx = i
+					break
+				}
+			}
+			return "", fmt.Errorf("command contains blocked pattern: %s", DangerousCommandPatterns[idx])
 		}
 	}
 
 	// Validate file paths are within baseDir (if present in command)
 	paths := findFilePathsInCommand(command)
 	for _, path := range paths {
-		if !filepath.IsAbs(path) && filepath.Clean(path) == ".." {
-			return "", fmt.Errorf("path traversal detected: %s", path)
+		if err := validatePathAgainstBaseDir(path); err != nil {
+			return "", fmt.Errorf("path traversal detected: %v", err)
 		}
 	}
 
 	return command, nil
+}
+
+// detectShellInjection checks for various shell injection techniques and bypass methods.
+func detectShellInjection(cmd string) error {
+	// Check for URL-encoded newlines (%0a, %0A, etc.)
+	if strings.Contains(cmd, "%0a") || strings.Contains(cmd, "%0d") {
+		return fmt.Errorf("URL-encoded newline detected")
+	}
+
+	// Check for literal escape sequences
+	if strings.Contains(cmd, "\\n") || strings.Contains(cmd, "\\r") {
+		return fmt.Errorf("Escape sequence injection detected")
+	}
+
+	// Check for command chaining: ; (semicolon)
+	if strings.Contains(cmd, "; ") || strings.HasSuffix(cmd, ";") || strings.HasPrefix(cmd, ";") {
+		return fmt.Errorf("Semicolon command chaining detected")
+	}
+
+	// Check for && and || operators
+	if strings.Contains(cmd, "&& ") || strings.Contains(cmd, "|| ") || strings.HasSuffix(cmd, "&&") || strings.HasSuffix(cmd, "||") {
+		return fmt.Errorf("Logical operator chaining detected")
+	}
+
+	// Check for pipe commands (|) at suspicious positions
+	if strings.Contains(cmd, "| ") || strings.HasPrefix(cmd, "|") {
+		return fmt.Errorf("Pipe command injection detected")
+	}
+
+	// Check for command substitution: $(command)
+	if strings.Contains(cmd, "$(") {
+		return fmt.Errorf("Command substitution $() detected")
+	}
+
+	// Check for backtick command substitution
+	if strings.Contains(cmd, "`") {
+		return fmt.Errorf("Backtick command substitution detected")
+	}
+
+	// Check for variable expansion with command injection: ${VAR:-cmd} or ${VAR:+cmd}
+	reVarExp, _ := regexp.Compile(`\$\{[^}]*[:+\-]`)
+	if reVarExp.MatchString(cmd) {
+		return fmt.Errorf("Variable expansion with potential command substitution detected")
+	}
+
+	// Check for quote injection (single and double quotes)
+	if strings.Contains(cmd, "' ") || strings.HasPrefix(cmd, "'") || strings.HasSuffix(cmd, "'") {
+		return fmt.Errorf("Quote injection attempt detected (single quotes)")
+	}
+	if strings.Contains(cmd, `" `) || strings.HasPrefix(cmd, `"`) || strings.HasSuffix(cmd, `"`) {
+		return fmt.Errorf("Quote injection attempt detected (double quotes)")
+	}
+
+	// Check for newline characters in different forms
+	if strings.Contains(cmd, "\n") || strings.Contains(cmd, "\r") {
+		return fmt.Errorf("Raw newline character detected")
+	}
+
+	// Check for IFS manipulation to bypass filters
+	if reIFs := regexp.MustCompile(`IFS\s*[=:]\s*['"]?\s*\S`); reIFs.MatchString(cmd) {
+		return fmt.Errorf("IFS manipulation detected")
+	}
+
+	// Check for eval-like patterns
+	if strings.Contains(cmd, "eval ") || cmd == "eval" {
+		return fmt.Errorf("Eval command detected")
+	}
+
+	// Check for source/. injection (shell sourcing)
+	if strings.Contains(cmd, "source ") || strings.Contains(cmd, ". ") {
+		return fmt.Errorf("Source/shell sourcing detected")
+	}
+
+	return nil
 }
 
 // findFilePathsInCommand extracts potential file paths from a command string.
@@ -256,29 +359,115 @@ func findFilePathsInCommand(command string) []string {
 	var paths []string
 	tokens := strings.Fields(command)
 
-	for _, token := range tokens {
-		// Look for common path indicators
+	for i, token := range tokens {
+		// Skip shell operators and control characters
 		if strings.HasPrefix(token, "-") || token == "|" || token == ";" ||
-			token == "&" || token == ">" || token == "<" || token == ">>" {
+			token == "&" || token == ">>" || token == ">" || token == "<" ||
+			token == "||" || token == "&&" || token == "(" || token == ")" {
 			continue
 		}
 
-		// Check if it looks like a file path
-		if strings.Contains(token, "/") && !strings.HasPrefix(token, ".") {
+		// Check if it looks like a file path (includes paths starting with .)
+		if isPathLike(token) {
 			paths = append(paths, token)
-		} else if (token == "-" || isPathLike(token)) && len(tokens) > 0 {
-			// Look for next argument which might be a path
 			continue
+		}
+
+		// Look for next argument which might be a path (after -flag options)
+		if len(tokens) > i+1 && isPathLike(tokens[i+1]) {
+			// Check if current token looks like a flag that takes a path argument
+			flagTokens := []string{"-o", "-f", "-d", "-i", "-I", "-c", "-p", "-D"}
+			for _, flag := range flagTokens {
+				if strings.HasPrefix(token, flag) {
+					paths = append(paths, tokens[i+1])
+					break
+				}
+			}
+		}
+
+		// Handle - flag meaning stdin/stdout
+		if token == "-" && len(tokens) > i+1 {
+			nextToken := tokens[i+1]
+			// Check if next token is a path (not another flag)
+			if !strings.HasPrefix(nextToken, "-") && (strings.Contains(nextToken, "/") ||
+				strings.HasPrefix(nextToken, "./") || strings.HasPrefix(nextToken, "../")) {
+				paths = append(paths, nextToken)
+			}
 		}
 	}
 
 	return paths
 }
 
+// isPathLike checks if a string looks like a file path.
 func isPathLike(s string) bool {
-	// Simple heuristic: looks like a relative or absolute path
-	return (strings.HasPrefix(s, "./") || strings.HasPrefix(s, "../") ||
-		strings.HasPrefix(s, "/") || strings.Contains(s, ".") && len(s) > 3)
+	if s == "" {
+		return false
+	}
+
+	// Absolute paths
+	if strings.HasPrefix(s, "/") {
+		return true
+	}
+
+	// Relative paths starting with ./ or ../
+	if strings.HasPrefix(s, "./") || strings.HasPrefix(s, "../") {
+		return true
+	}
+
+	// Paths containing / (like "dir/file.txt" or "a/b/c")
+	if strings.Contains(s, "/") {
+		return true
+	}
+
+	// Symlink notation like -> /path
+	if s == "->" || s == "=>" {
+		return true
+	}
+
+	return false
+}
+
+// validatePathAgainstBaseDir checks if a path escapes outside baseDir.
+func validatePathAgainstBaseDir(path string) error {
+	// First clean the path to remove any .. components and redundant separators
+	cleaned := filepath.Clean(path)
+
+	// Get absolute path by joining with an empty base for validation purposes
+	// This resolves any remaining symbolic links or edge cases
+	absPath, err := filepath.Abs(cleaned)
+	if err != nil {
+		return fmt.Errorf("failed to resolve path: %v", err)
+	}
+
+	// Resolve symlinks if the path exists
+	resolvedPath := absPath
+	if info, err := os.Stat(absPath); err == nil && (info.Mode()&os.ModeSymlink) != 0 {
+		if linkTarget, err := filepath.EvalSymlinks(absPath); err == nil {
+			resolvedPath = linkTarget
+		}
+	}
+
+	// Check if cleaned path tries to escape
+	if cleaned == ".." || strings.HasPrefix(cleaned, "../") || cleaned == "." {
+		return fmt.Errorf("path contains traversal attempts: %s", path)
+	}
+
+	// Ensure the resolved path doesn't escape via symlink attack
+	symlinkEscaped := false
+	parts := strings.Split(resolvedPath, string(filepath.Separator))
+	for _, part := range parts {
+		if part == ".." {
+			symlinkEscaped = true
+			break
+		}
+	}
+
+	if symlinkEscaped {
+		return fmt.Errorf("path resolution escapes base directory: %s", path)
+	}
+
+	return nil
 }
 
 // logCommandExecution logs command execution for audit purposes.
@@ -319,21 +508,45 @@ func validatePathSandbox(args map[string]any, baseDir string) error {
 				pathStr = fmt.Sprintf("%v", v)
 			}
 
-			// Check for path traversal attempts
-			if strings.Contains(pathStr, "..") {
-				fullPath := filepath.Join(baseDir, filepath.Clean(pathStr))
-				baseWithSep := baseDir + string(filepath.Separator)
-				if !strings.HasPrefix(fullPath, baseWithSep) && fullPath != baseDir {
-					return fmt.Errorf("path traversal detected: %s", pathStr)
+			// Full path validation with proper resolution against baseDir
+			cleanedPath := filepath.Clean(pathStr)
+
+			// Check for obvious traversal patterns first
+			if cleanedPath == ".." || strings.HasPrefix(cleanedPath, "../") {
+				return fmt.Errorf("path traversal detected: %s", pathStr)
+			}
+
+			fullPath := filepath.Join(baseDir, cleanedPath)
+
+			// Get the absolute path
+			if !filepath.IsAbs(fullPath) {
+				var err error
+				fullPath, err = filepath.Abs(fullPath)
+				if err != nil {
+					return fmt.Errorf("failed to resolve absolute path: %v", err)
 				}
 			}
 
-			// Ensure relative paths stay within baseDir
-			if !filepath.IsAbs(pathStr) {
-				fullPath := filepath.Join(baseDir, filepath.Clean(pathStr))
-				baseWithSep := baseDir + string(filepath.Separator)
-				if fullPath != baseDir && !strings.HasPrefix(fullPath, baseWithSep) {
-					return fmt.Errorf("path '%s' escapes working directory", pathStr)
+			// Resolve symlinks to catch symlink-based path traversal attacks
+			if info, err := os.Stat(filepath.Dir(fullPath)); err == nil && (info.Mode()&os.ModeSymlink) != 0 {
+				if realPath, err := filepath.EvalSymlinks(fullPath); err == nil {
+					fullPath = realPath
+				}
+			}
+
+			// Verify the resolved path is within baseDir using HasPrefix
+			trimmedBaseDir := strings.TrimRight(baseDir, string(filepath.Separator))
+			baseWithSep := trimmedBaseDir + string(filepath.Separator)
+
+			if !strings.HasPrefix(fullPath, baseWithSep) && fullPath != trimmedBaseDir {
+				return fmt.Errorf("path '%s' escapes working directory (resolved to: %s)", pathStr, fullPath)
+			}
+
+			// Additional check: ensure no .. components remain after resolution
+			parts := strings.Split(fullPath, string(filepath.Separator))
+			for _, part := range parts {
+				if part == ".." {
+					return fmt.Errorf("path '%s' contains unresolved traversal component", pathStr)
 				}
 			}
 		}
