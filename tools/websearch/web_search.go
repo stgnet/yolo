@@ -1,4 +1,4 @@
-package tools
+package websearch
 
 import (
 	"context"
@@ -21,7 +21,11 @@ type WebSearcher struct {
 	Client        *http.Client
 	RetryCount    int
 	BaseTimeout   time.Duration
+	UserAgent     string
 }
+
+// DefaultUserAgent is the default user agent string for web searches.
+const DefaultUserAgent = "YOLO Agent/1.0 (+https://github.com/scottyhr/yolo)"
 
 // SearchResult represents a search result item.
 type SearchResult struct {
@@ -40,17 +44,17 @@ type InstantAnswer struct {
 
 // RelatedTopics represents related topics in search results.
 type RelatedTopics struct {
-	Title   string `json:"title,omitempty"`
-	Href    string `json:"href,omitempty"`
-	Text    string `json:"text,omitempty"`
-	URL     string `json:"url,omitempty"`
+	Title    string `json:"title,omitempty"`
+	Href     string `json:"href,omitempty"`
+	Text     string `json:"text,omitempty"`
+	URL      string `json:"url,omitempty"`
 	FirstURL string `json:"first_url,omitempty"`
 }
 
 // WebSearchResult is the main result structure.
 type WebSearchResult struct {
-	Query        string           `json:"query"`
-	InstantAnswer []InstantAnswer  `json:"instant_answer"`
+	Query         string          `json:"query"`
+	InstantAnswer []InstantAnswer `json:"instant_answer"`
 	RelatedTopics []RelatedTopics `json:"related_topics"`
 	Results       []SearchResult  `json:"results,omitempty"`
 	Error         string          `json:"error,omitempty"`
@@ -69,6 +73,7 @@ func NewWebSearcher() *WebSearcher {
 		},
 		RetryCount:  2,
 		BaseTimeout: 30 * time.Second,
+		UserAgent:   DefaultUserAgent,
 	}
 }
 
@@ -83,6 +88,7 @@ func NewWebSearcherWithConfig(client *http.Client, retryCount int, timeout time.
 		Client:        client,
 		RetryCount:    retryCount,
 		BaseTimeout:   timeout,
+		UserAgent:     DefaultUserAgent,
 	}
 }
 
@@ -137,7 +143,7 @@ func (ws *WebSearcher) tryWikipedia(ctx context.Context, query string) *InstantA
 		return nil
 	}
 
-	req.Header.Set("User-Agent", "YOLO Agent/1.0")
+	req.Header.Set("User-Agent", ws.UserAgent)
 
 	resp, err := ws.Client.Do(req)
 	if err != nil {
@@ -173,7 +179,7 @@ func (ws *WebSearcher) tryWikipedia(ctx context.Context, query string) *InstantA
 // searchWithRetry performs the actual search with retry logic.
 func (ws *WebSearcher) searchWithRetry(ctx context.Context, searchURL, query string, limit int) (*WebSearchResult, error) {
 	var lastErr error
-	
+
 	for attempt := 0; attempt <= ws.RetryCount; attempt++ {
 		result, err := ws.performSearch(ctx, searchURL, query, limit)
 		if err == nil {
@@ -181,7 +187,7 @@ func (ws *WebSearcher) searchWithRetry(ctx context.Context, searchURL, query str
 		}
 
 		lastErr = err
-		
+
 		// Check if it's a transient error that we can retry
 		if isTransientError(err) && attempt < ws.RetryCount {
 			retryTime := time.Duration(attempt+1) * time.Second
@@ -192,7 +198,7 @@ func (ws *WebSearcher) searchWithRetry(ctx context.Context, searchURL, query str
 				return nil, ctx.Err()
 			}
 		}
-		
+
 		return result, err
 	}
 
@@ -213,7 +219,7 @@ func (ws *WebSearcher) performSearch(ctx context.Context, searchURL, query strin
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("User-Agent", "YOLO Agent/1.0")
+	req.Header.Set("User-Agent", ws.UserAgent)
 
 	resp, err := ws.Client.Do(req)
 	if err != nil {
@@ -232,7 +238,7 @@ func (ws *WebSearcher) performSearch(ctx context.Context, searchURL, query strin
 	if err != nil {
 		return &WebSearchResult{
 			Query: query,
-			Error: fmt.Sprintf("failed to read response body: %w", err),
+			Error: fmt.Sprintf("failed to read response body: %s", err.Error()),
 		}, nil
 	}
 
@@ -258,7 +264,7 @@ func (ws *WebSearcher) performSearch(ctx context.Context, searchURL, query strin
 
 	// Parse results from JSON format
 	var searchResults WebSearchResult
-	
+
 	if strings.HasPrefix(string(body), "<!DOCTYPE") {
 		return ws.parseHTMLResults(ctx, string(body), query)
 	}
@@ -267,7 +273,7 @@ func (ws *WebSearcher) performSearch(ctx context.Context, searchURL, query strin
 	var jsonBody struct {
 		RelatedTopics []RelatedTopics `json:"RelatedTopics"`
 	}
-	
+
 	if err := json.Unmarshal(body, &jsonBody); err == nil && len(jsonBody.RelatedTopics) > 0 {
 		searchResults.Query = query
 		searchResults.RelatedTopics = jsonBody.RelatedTopics
@@ -283,20 +289,20 @@ func (ws *WebSearcher) parseHTMLResults(ctx context.Context, htmlContent, query 
 	if err != nil {
 		return &WebSearchResult{
 			Query: query,
-			Error: fmt.Sprintf("failed to parse HTML: %w", err),
+			Error: fmt.Sprintf("failed to parse HTML: %s", err.Error()),
 		}, nil
 	}
 
 	var results []SearchResult
-	
+
 	doc.Find("a.result__a").Each(func(i int, s *goquery.Selection) {
 		if i >= 5 {
 			return // Limit to 5 results
 		}
-		
+
 		title := strings.TrimSpace(s.Text())
 		href, _ := s.Attr("href")
-		
+
 		if title != "" && href != "" {
 			results = append(results, SearchResult{
 				Title: title,
@@ -320,16 +326,16 @@ func (ws *WebSearcher) SearchWithCount(ctx context.Context, query string, limit 
 func isTransientError(err error) bool {
 	errMsg := err.Error()
 	transientPatterns := []string{
-		"timeout", "connection refused", "network unavailable", 
+		"timeout", "connection refused", "network unavailable",
 		"temporary failure", "rate limit", "502", "503", "504",
 	}
-	
+
 	for _, pattern := range transientPatterns {
 		if strings.Contains(strings.ToLower(errMsg), pattern) {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -351,7 +357,7 @@ func (ws *WebSearcher) SetRetryCount(count int) {
 func (ws *WebSearcher) SetUserAgent(ua string) {
 	originalClient := ws.Client
 	var newClient *http.Client
-	
+
 	if originalClient != nil {
 		newClient = &http.Client{
 			Timeout: originalClient.Timeout,
@@ -362,14 +368,24 @@ func (ws *WebSearcher) SetUserAgent(ua string) {
 	} else {
 		newClient = &http.Client{Timeout: ws.BaseTimeout}
 	}
-	
+
 	ws.Client = newClient
-	
-	// Custom transport to set user agent
-	trans := &http.Transport{
-		UserAgent: ua,
+
+	// Custom RoundTripper to set user agent
+	customTransport := &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     90 * time.Second,
 	}
-	newClient.Transport = trans
+	newClient.Transport = customTransport
+	newClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+}
+
+// setRequestUserAgent sets the User-Agent header on a request.
+func (ws *WebSearcher) setRequestUserAgent(req *http.Request) {
+	req.Header.Set("User-Agent", ws.UserAgent)
 }
 
 // ValidateContext checks if the context is valid.
@@ -397,4 +413,9 @@ var globalSearcher *WebSearcher
 // init initializes the global searcher.
 func init() {
 	globalSearcher = NewWebSearcher()
+}
+
+// isValidQuery checks if a query is valid (non-empty and not just whitespace).
+func isValidQuery(query string) bool {
+	return strings.TrimSpace(query) != ""
 }
