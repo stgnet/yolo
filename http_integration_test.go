@@ -126,7 +126,7 @@ func TestHTTPIntegration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			
+
 			server := tt.setupServer()
 			defer server.Close()
 
@@ -163,7 +163,7 @@ func TestHTTPHeaderValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				contentType := r.Header.Get("Content-Type")
-				
+
 				if contentType != "application/json" && tt.contentType == "application/json" {
 					t.Errorf("Expected Content-Type 'application/json', got '%s'", contentType)
 				}
@@ -172,13 +172,13 @@ func TestHTTPHeaderValidation(t *testing.T) {
 				if authHeader != "" && tt.authHeader == "" {
 					t.Error("Unexpected Authorization header")
 				}
-				
+
 				w.WriteHeader(http.StatusOK)
 			}))
 			defer server.Close()
 
 			client := &http.Client{}
-			
+
 			req, err := http.NewRequest("GET", server.URL, nil)
 			if err != nil {
 				t.Fatalf("Failed to create request: %v", err)
@@ -195,7 +195,7 @@ func TestHTTPHeaderValidation(t *testing.T) {
 			if (err == nil) != tt.expectSuccess {
 				t.Errorf("Expected success=%v, got err=%v", tt.expectSuccess, err)
 			}
-			
+
 			if resp != nil {
 				resp.Body.Close()
 			}
@@ -214,45 +214,45 @@ func TestHTTPBodyHandling(t *testing.T) {
 		expectSuccess bool
 	}{
 		{
-			name: "valid_json_object",
-			bodyData: map[string]string{"key": "value"},
-			bodyType: "json",
+			name:          "valid_json_object",
+			bodyData:      map[string]string{"key": "value"},
+			bodyType:      "json",
 			expectSuccess: true,
 		},
 		{
-			name: "empty_json_object",
-			bodyData: map[string]any{},
-			bodyType: "json",
+			name:          "empty_json_object",
+			bodyData:      map[string]any{},
+			bodyType:      "json",
 			expectSuccess: true,
 		},
 		{
-			name: "nested_json_object",
-			bodyData: map[string]any{"outer": map[string]string{"inner": "value"}},
-			bodyType: "json",
+			name:          "nested_json_object",
+			bodyData:      map[string]any{"outer": map[string]string{"inner": "value"}},
+			bodyType:      "json",
 			expectSuccess: true,
 		},
 		{
-			name: "empty_body",
-			bodyData: "",
-			bodyType: "none",
+			name:          "empty_body",
+			bodyData:      "",
+			bodyType:      "none",
 			expectSuccess: true,
 		},
 		{
-			name: "malformed_json_string",
-			bodyData: "{invalid json}",
-			bodyType: "json",
+			name:          "malformed_json_string",
+			bodyData:      "{invalid json}",
+			bodyType:      "json",
 			expectSuccess: false,
 		},
 		{
-			name: "very_large_body",
-			bodyData: strings.Repeat("x", 100000),
-			bodyType: "text",
+			name:          "very_large_body",
+			bodyData:      strings.Repeat("x", 100000),
+			bodyType:      "text",
 			expectSuccess: true,
 		},
 		{
-			name: "unicode_content",
-			bodyData: map[string]string{"message": "你好世界 🌍 مرحبا بالعالم"},
-			bodyType: "json",
+			name:          "unicode_content",
+			bodyData:      map[string]string{"message": "你好世界 🌍 مرحبا بالعالم"},
+			bodyType:      "json",
 			expectSuccess: true,
 		},
 	}
@@ -591,7 +591,7 @@ func TestHTTPRetryLogic(t *testing.T) {
 
 	attemptCount := 0
 	maxAttempts := 3
-	
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attemptCount++
 		if attemptCount < maxAttempts {
@@ -636,7 +636,7 @@ func TestHTTPConcurrency(t *testing.T) {
 	const numRequests = 50
 	successChan := make(chan bool, numRequests)
 	errorChan := make(chan error, numRequests)
-	
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(time.Millisecond * 10) // Simulate some processing
 		w.WriteHeader(http.StatusOK)
@@ -644,15 +644,15 @@ func TestHTTPConcurrency(t *testing.T) {
 	defer server.Close()
 
 	var wg syncWaitGroup
-	
+
 	for i := 0; i < numRequests; i++ {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			
+
 			client := &http.Client{Timeout: time.Second * 5}
 			resp, err := client.Get(server.URL)
-			
+
 			if err != nil {
 				errorChan <- fmt.Errorf("request %d failed: %w", idx, err)
 			} else if resp.StatusCode == http.StatusOK {
@@ -660,13 +660,13 @@ func TestHTTPConcurrency(t *testing.T) {
 			} else {
 				errorChan <- fmt.Errorf("request %d got status %d", idx, resp.StatusCode)
 			}
-			
+
 			if resp != nil {
 				resp.Body.Close()
 			}
 		}(i)
 	}
-	
+
 	wg.Wait()
 	close(successChan)
 	close(errorChan)
@@ -678,7 +678,7 @@ func TestHTTPConcurrency(t *testing.T) {
 	}
 
 	successes := len(successChan)
-	t.Logf("Concurrent test: %d successes, %d errors out of %d requests", 
+	t.Logf("Concurrent test: %d successes, %d errors out of %d requests",
 		successes, errors, numRequests)
 
 	if errors > 5 {
@@ -691,8 +691,6 @@ type syncWaitGroup struct {
 	wg sync.WaitGroup
 }
 
-func (s *syncWaitGroup) Add(delta int)        { s.wg.Add(delta) }
-func (s *syncWaitGroup) Done()                { s.wg.Done() }
-func (s *syncWaitGroup) Wait()                { s.wg.Wait() }
-
-import "sync"
+func (s *syncWaitGroup) Add(delta int) { s.wg.Add(delta) }
+func (s *syncWaitGroup) Done()         { s.wg.Done() }
+func (s *syncWaitGroup) Wait()         { s.wg.Wait() }

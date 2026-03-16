@@ -1,4 +1,4 @@
-package yolo
+package http
 
 import (
 	"net/http"
@@ -19,17 +19,17 @@ func TestHandlerTests(t *testing.T) {
 		expectNotFound bool
 	}{
 		{
-			name:         "GET main page",
-			path:         "/",
-			method:       "GET",
-			expectCode:   http.StatusOK,
+			name:           "GET main page",
+			path:           "/",
+			method:         "GET",
+			expectCode:     http.StatusOK,
 			expectContains: []string{"YOLO API"},
 		},
 		{
-			name:         "GET health check",
-			path:         "/health",
-			method:       "GET",
-			expectCode:   http.StatusOK,
+			name:           "GET health check",
+			path:           "/health",
+			method:         "GET",
+			expectCode:     http.StatusOK,
 			expectContains: []string{"ok"},
 		},
 		{
@@ -40,11 +40,11 @@ func TestHandlerTests(t *testing.T) {
 			expectNotFound: true,
 		},
 		{
-			name:         "POST empty body to chat endpoint",
-			path:         "/api/chat",
-			method:       "POST",
-			body:         `{"messages":[]}`,
-			expectCode:   http.StatusOK,
+			name:           "POST empty body to chat endpoint",
+			path:           "/api/chat",
+			method:         "POST",
+			body:           `{"messages":[]}`,
+			expectCode:     http.StatusOK,
 			expectContains: []string{"response"},
 		},
 		{
@@ -56,11 +56,11 @@ func TestHandlerTests(t *testing.T) {
 			expectNotFound: false, // Should return 400, not 404
 		},
 		{
-			name:         "POST missing messages field",
-			path:         "/api/chat",
-			method:       "POST",
-			body:         `{}`,
-			expectCode:   http.StatusOK, // Handled gracefully
+			name:           "POST missing messages field",
+			path:           "/api/chat",
+			method:         "POST",
+			body:           `{}`,
+			expectCode:     http.StatusOK, // Handled gracefully
 			expectContains: []string{"response"},
 		},
 		{
@@ -174,7 +174,7 @@ func TestHandlerLargeBody(t *testing.T) {
 			largeBody.WriteString(",")
 		}
 		largeBody.WriteString(`{"role":"user","content":"This is message number `)
-		largeBody.WriteString(string(rune('0'+i)))
+		largeBody.WriteString(string(rune('0' + i)))
 		largeBody.WriteString(` with some additional text to make it longer"}}`)
 	}
 
@@ -232,7 +232,7 @@ func TestHandlerInvalidRoutes(t *testing.T) {
 		"/api/nonexistent",
 		"/nonexistent/api/chat",
 		"///triple/slashes",
-		"", // Empty path defaults to root which is valid, so this one is expected to fail
+		"",           // Empty path defaults to root which is valid, so this one is expected to fail
 		"/api/chat/", // With trailing slash - depends on router behavior
 	}
 
@@ -258,10 +258,10 @@ func TestHandlerInvalidRoutes(t *testing.T) {
 // TestHandlerResponseFormat validates that responses are proper JSON
 func TestHandlerResponseFormat(t *testing.T) {
 	tests := []struct {
-		name     string
-		method   string
-		path     string
-		body     string
+		name   string
+		method string
+		path   string
+		body   string
 	}{
 		{"GET root", "GET", "/", ""},
 		{"GET health", "GET", "/health", ""},
