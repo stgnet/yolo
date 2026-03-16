@@ -377,7 +377,7 @@ func TestPool_ContextCancellation(t *testing.T) {
 	var completed int32
 
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	err := pool.Submit(func() error {
 		select {
 		case <-ctx.Done():
@@ -389,7 +389,7 @@ func TestPool_ContextCancellation(t *testing.T) {
 			return nil
 		}
 	})
-	
+
 	if err != nil {
 		t.Logf("Submit failed: %v", err)
 	}
@@ -552,7 +552,7 @@ func TestThreadPoolSubmitWithContext(t *testing.T) {
 	var completed int32
 
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	err := pool.Submit(func() error {
 		select {
 		case <-ctx.Done():
