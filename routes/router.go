@@ -7,10 +7,7 @@ import (
 	"net/http"
 	"os"
 	"sync/atomic"
-
 	"time"
-
-	"yolo/types"
 )
 
 var (
@@ -74,7 +71,7 @@ func (h *Handler) rootHandler(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) statusHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	data := types.Status{
+	status := RouterStatus{
 		Request:       "status",
 		Response:      "ok",
 		Code:          200,
@@ -84,7 +81,7 @@ func (h *Handler) statusHandler(w http.ResponseWriter, r *http.Request) {
 		Version:       "1.0.0",
 	}
 
-	json.NewEncoder(w).Encode(data)
+	json.NewEncoder(w).Encode(status)
 }
 
 // healthHandler performs a simple health check
@@ -99,7 +96,7 @@ func (h *Handler) healthHandler(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) agentStatusHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	status := types.AgentStatus{
+	status := RouterAgentStatus{
 		Status:  "running",
 		Version: "1.0.0",
 		Message: "Agent is operational",
@@ -111,6 +108,24 @@ func (h *Handler) agentStatusHandler(w http.ResponseWriter, r *http.Request) {
 // Config holds the router configuration
 type Config struct {
 	Port int `json:"port"`
+}
+
+// RouterStatus represents a status response for HTTP endpoints
+type RouterStatus struct {
+	Request       string    `json:"request"`
+	Response      string    `json:"response"`
+	Code          int       `json:"code"`
+	Uptime        string    `json:"uptime"`
+	RequestsTotal int64     `json:"requests_total"`
+	ServerTime    time.Time `json:"server_time"`
+	Version       string    `json:"version"`
+}
+
+// RouterAgentStatus represents the status of the YOLO agent
+type RouterAgentStatus struct {
+	Status  string `json:"status"`
+	Version string `json:"version"`
+	Message string `json:"message"`
 }
 
 func main() {

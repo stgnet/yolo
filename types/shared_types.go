@@ -1,10 +1,24 @@
-package yolo
+package types
 
-import (
-	"encoding/json"
-	"fmt"
-	"time"
-)
+import "time"
+
+// Status represents a status response for HTTP endpoints
+type Status struct {
+	Request       string    `json:"request"`
+	Response      string    `json:"response"`
+	Code          int       `json:"code"`
+	Uptime        string    `json:"uptime"`
+	RequestsTotal int64     `json:"requests_total"`
+	ServerTime    time.Time `json:"server_time"`
+	Version       string    `json:"version"`
+}
+
+// AgentStatus represents the status of the YOLO agent
+type AgentStatus struct {
+	Status  string `json:"status"`
+	Version string `json:"version"`
+	Message string `json:"message"`
+}
 
 // PackageInfo holds package metadata from go.mod
 type PackageInfo struct {
@@ -58,15 +72,6 @@ type ProcessState struct {
 	ContextVariables map[string]interface{} `json:"context_variables,omitempty"`
 }
 
-// ModelProvider represents different AI model providers
-type ModelProvider string
-
-const (
-	ModelProviderOllama    ModelProvider = "ollama"
-	ModelProviderOpenAI    ModelProvider = "openai"
-	ModelProviderAnthropic ModelProvider = "anthropic"
-)
-
 // Email represents an email message for processing or sending
 type Email struct {
 	From     string            `json:"from"`
@@ -82,13 +87,13 @@ type Email struct {
 
 // ProgressReport represents a summary of YOLO's progress for external reporting
 type ProgressReport struct {
-	Timestamp      time.Time              `json:"timestamp"`
-	CompletedTasks []string               `json:"completed_tasks"`
-	PendingTasks   []string               `json:"pending_tasks"`
-	IssuesFound    []string               `json:"issues_found,omitempty"`
-	Suggestions    []string               `json:"suggestions,omitempty"`
-	NextSteps      []string               `json:"next_steps"`
-	EmailSummary   map[string]interface{} `json:"email_summary,omitempty"`
+	Timestamp      time.Time   `json:"timestamp"`
+	CompletedTasks []string    `json:"completed_tasks"`
+	PendingTasks   []string    `json:"pending_tasks"`
+	IssuesFound    []string    `json:"issues_found,omitempty"`
+	Suggestions    []string    `json:"suggestions,omitempty"`
+	NextSteps      []string    `json:"next_steps"`
+	EmailSummary   interface{} `json:"email_summary,omitempty"`
 }
 
 // TodoItem represents a task or todo in YOLO's todo list
@@ -102,101 +107,11 @@ type TodoItem struct {
 	Tags        []string  `json:"tags,omitempty"`
 }
 
-// TodoList manages the collection of todo items
-type TodoList struct {
-	Items     []*TodoItem `json:"items"`
-	Version   int         `json:"version"`
-	UpdatedAt time.Time   `json:"updated_at"`
-}
+// ModelProvider represents different AI model providers
+type ModelProvider string
 
-// UnmarshalJSON implements custom unmarshaling for PackageInfo
-func (p *PackageInfo) UnmarshalJSON(data []byte) error {
-	type Alias PackageInfo
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(p),
-	}
-	return json.Unmarshal(data, aux)
-}
-
-// MarshalJSON implements custom marshaling for ToolOutput to handle interface{} fields
-func (t *ToolOutput) MarshalJSON() ([]byte, error) {
-	type Alias ToolOutput
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(t),
-	}
-	return json.Marshal(aux)
-}
-
-// String returns a string representation of ProcessState for logging
-func (p *ProcessState) String() string {
-	return fmt.Sprintf("ProcessState{Status=%s, CurrentTask=%s, Progress=%.1f%%}",
-		p.Status, p.CurrentTask, p.ProgressPercent)
-}
-
-// AddTodo creates a new todo item with the given title
-func (t *TodoList) AddTodo(title string, priority int, tags []string) {
-	item := &TodoItem{
-		Title:     title,
-		Status:    "pending",
-		CreatedAt: time.Now(),
-		Priority:  priority,
-		Tags:      tags,
-	}
-	t.Items = append(t.Items, item)
-	t.Version++
-	t.UpdatedAt = time.Now()
-}
-
-// CompleteTodo marks a todo as completed by title
-func (t *TodoList) CompleteTodo(title string) bool {
-	for _, item := range t.Items {
-		if item.Title == title && item.Status == "pending" {
-			item.Status = "completed"
-			item.CompletedAt = time.Now()
-			t.Version++
-			t.UpdatedAt = time.Now()
-			return true
-		}
-	}
-	return false
-}
-
-// DeleteTodo removes a todo item entirely
-func (t *TodoList) DeleteTodo(title string) bool {
-	newItems := make([]*TodoItem, 0, len(t.Items))
-	for _, item := range t.Items {
-		if item.Title != title {
-			newItems = append(newItems, item)
-		}
-	}
-	if len(newItems) < len(t.Items) {
-		t.Items = newItems
-		t.Version++
-		t.UpdatedAt = time.Now()
-		return true
-	}
-	return false
-}
-
-// GetPendingTodos returns all pending todo items sorted by priority (descending)
-func (t *TodoList) GetPendingTodos() []*TodoItem {
-	var pending []*TodoItem
-	for _, item := range t.Items {
-		if item.Status == "pending" {
-			pending = append(pending, item)
-		}
-	}
-	// Sort by priority (highest first)
-	for i := 0; i < len(pending); i++ {
-		for j := i + 1; j < len(pending); j++ {
-			if pending[j].Priority > pending[i].Priority {
-				pending[i], pending[j] = pending[j], pending[i]
-			}
-		}
-	}
-	return pending
-}
+const (
+	ModelProviderOllama    ModelProvider = "ollama"
+	ModelProviderOpenAI    ModelProvider = "openai"
+	ModelProviderAnthropic ModelProvider = "anthropic"
+)

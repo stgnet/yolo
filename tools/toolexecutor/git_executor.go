@@ -3,7 +3,7 @@ package yolo
 import (
 	"fmt"
 	"os/exec"
-	"strconv"
+	"reflect"
 )
 
 // GitExecutor implements git operations through the tool executor interface
