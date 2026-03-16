@@ -18,8 +18,8 @@ func TestGitExecutor_NewToolExecutor(t *testing.T) {
 	if executor == nil {
 		t.Fatal("Expected non-nil GitExecutor")
 	}
-	if executor.path != tmpDir {
-		t.Errorf("Expected path=%s, got %s", tmpDir, executor.path)
+	if executor.basePath != tmpDir {
+		t.Errorf("Expected basePath=%s, got %s", tmpDir, executor.basePath)
 	}
 }
 
@@ -34,8 +34,8 @@ func TestGitExecutor_PathInitialization(t *testing.T) {
 	for _, testPath := range testPaths {
 		t.Run(testPath, func(t *testing.T) {
 			executor := NewToolExecutor(testPath, nil)
-			if executor.path != testPath {
-				t.Errorf("Expected path=%s, got %s", testPath, executor.path)
+			if executor.basePath != testPath {
+				t.Errorf("Expected basePath=%s, got %s", testPath, executor.basePath)
 			}
 		})
 	}
@@ -59,8 +59,8 @@ func TestGitExecutor_NilConfig(t *testing.T) {
 func TestGitExecutor_StringPath(t *testing.T) {
 	testStr := "test-repo-path-12345"
 	executor := NewToolExecutor(testStr, nil)
-	if executor.path != testStr {
-		t.Errorf("Expected path=%s, got %s", testStr, executor.path)
+	if executor.basePath != testStr {
+		t.Errorf("Expected basePath=%s, got %s", testStr, executor.basePath)
 	}
 }
 
@@ -70,8 +70,8 @@ func TestGitExecutor_EmptyPath(t *testing.T) {
 	if executor == nil {
 		t.Fatal("Expected non-nil GitExecutor with empty path")
 	}
-	if executor.path != "" {
-		t.Errorf("Expected empty path, got %s", executor.path)
+	if executor.basePath != "" {
+		t.Errorf("Expected empty basePath, got %s", executor.basePath)
 	}
 }
 
@@ -135,8 +135,8 @@ func TestGitExecutor_ValidPaths(t *testing.T) {
 			if executor == nil {
 				t.Fatalf("Failed to create executor for path %s", path)
 			}
-			if executor.path != path {
-				t.Errorf("Expected path=%s, got %s", path, executor.path)
+			if executor.basePath != path {
+				t.Errorf("Expected basePath=%s, got %s", path, executor.basePath)
 			}
 		})
 	}
@@ -169,7 +169,7 @@ func TestGitExecutor_UniqueInstances(t *testing.T) {
 		t.Error("Expected different executor instances")
 	}
 
-	if executor1.path != tmpDir || executor2.path != tmpDir {
+	if executor1.basePath != tmpDir || executor2.basePath != tmpDir {
 		t.Error("Both executors should have the same path")
 	}
 }
@@ -180,12 +180,12 @@ func TestGitExecutor_PathImmutability(t *testing.T) {
 	executor := NewToolExecutor(originalPath, nil)
 
 	// Verify the path is stored correctly
-	if executor.path != originalPath {
-		t.Errorf("Expected %s, got %s", originalPath, executor.path)
+	if executor.basePath != originalPath {
+		t.Errorf("Expected %s, got %s", originalPath, executor.basePath)
 	}
 
 	// The path should be accessible and consistent
-	path := executor.path
+	path := executor.basePath
 	if path != originalPath {
 		t.Errorf("Stored path changed: expected %s, got %s", originalPath, path)
 	}

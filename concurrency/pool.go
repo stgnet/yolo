@@ -11,7 +11,7 @@ import (
 // ThreadPool manages a fixed number of worker goroutines
 type ThreadPool struct {
 	numWorkers int
-	jobs       chan func()
+	jobs       chan func() error
 	wg         sync.WaitGroup // tracks worker goroutines
 	jobsWg     sync.WaitGroup // tracks submitted jobs
 	mu         sync.Mutex
@@ -25,7 +25,7 @@ func NewThreadPool(numWorkers int) *ThreadPool {
 	}
 	tp := &ThreadPool{
 		numWorkers: numWorkers,
-		jobs:       make(chan func(), 1000),
+		jobs:       make(chan func() error, 1000),
 	}
 
 	// Start workers
@@ -43,14 +43,14 @@ func (tp *ThreadPool) worker() {
 
 	for job := range tp.jobs {
 		if job != nil {
-			job()
+			_ = job()
 			tp.jobsWg.Done()
 		}
 	}
 }
 
-// Submit adds a job to the queue
-func (tp *ThreadPool) Submit(job func()) error {
+// Submit adds a job to the queue. The returned error is ignored by the ThreadPool but can be used to track failures.
+func (tp *ThreadPool) Submit(job func() error) error {
 	tp.mu.Lock()
 	closed := tp.closed
 	tp.mu.Unlock()
@@ -93,12 +93,13 @@ func (tp *ThreadPool) WorkerCount() int {
 
 // SubmitWithContext submits a job that respects context cancellation
 func (tp *ThreadPool) SubmitWithContext(ctx context.Context, job func(context.Context)) error {
-	wrappedJob := func() {
+	wrappedJob := func() error {
 		select {
 		case <-ctx.Done():
-			return
+			return ctx.Err()
 		default:
 			job(ctx)
+			return nil
 		}
 	}
 
