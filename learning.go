@@ -54,6 +54,7 @@ func NewLearningManager(baseDir string, executor *ToolExecutor) *LearningManager
 	return &LearningManager{
 		historyPath: baseDir + "/" + learningHistoryFile,
 		executor:    executor,
+		sessions:    []LearningSession{}, // Initialize empty slice to prevent nil issues
 	}
 }
 

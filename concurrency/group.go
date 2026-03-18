@@ -201,11 +201,10 @@ func (g *Group) Pipeline(stages ...func(context.Context, <-chan interface{}) <-c
 // Barrier is a synchronization primitive that blocks goroutines until
 // a specified number of goroutines reach the barrier.
 type Barrier struct {
-	count  int32         // Number of goroutines expected
-	arrived atomic.Int32 // Atomic counter of arrivals
-	mu     sync.Mutex    // Protects done channel state
-	done   chan struct{} // Channel closed when all arrive, nil if not initialized
-	closed bool          // Whether done channel has been closed
+	count     int32         // Number of goroutines expected
+	arrived   atomic.Int32  // Atomic counter of arrivals
+	mu        sync.Mutex    // Protects state during initialization
+	done      chan struct{} // Channel closed when all arrive, nil until first Wait()
 }
 
 // NewBarrier creates a new barrier for the specified number of goroutines.
@@ -221,28 +220,29 @@ func NewBarrier(n int) *Barrier {
 // Wait blocks until all goroutines have reached the barrier.
 func (b *Barrier) Wait() {
 	arrivalNum := b.arrived.Add(1)
-	
-	// Lock to check/update channel state safely
+
 	b.mu.Lock()
-	defer b.mu.Unlock()
-	
+
 	// Initialize channel on first arrival if not done yet
 	if b.done == nil {
 		b.done = make(chan struct{})
 	}
-	
+
 	// Check if this is the last goroutine to arrive
 	if arrivalNum >= b.count {
 		// Last one to arrive - close the barrier for everyone
-		if !b.closed {
-			close(b.done)
-			b.closed = true
-		}
+		close(b.done)
+		// Reset channel so Reset() doesn't try to close it again
+		b.done = nil
+		b.mu.Unlock()
 		return
 	}
-	
+
 	// Not the last goroutine - wait on the channel (will be closed by last goroutine)
-	<-b.done
+	doneCh := b.done
+	b.mu.Unlock()
+
+	<-doneCh
 }
 
 // Reset resets the barrier for reuse. Must not be called while goroutines
@@ -251,10 +251,9 @@ func (b *Barrier) Wait() {
 func (b *Barrier) Reset() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	
+
 	// Reset state for reuse
 	b.done = nil
-	b.closed = false
 	b.arrived.Store(0)
 }
 
