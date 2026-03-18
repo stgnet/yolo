@@ -240,6 +240,7 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 		prompt := fmt.Sprintf("You are YOLO, an autonomous AI assistant. You received this email:\n\nFrom: %s\nSubject: %s\n\nMessage:\n%s\n\nPlease generate a friendly, helpful, and concise response (maximum 200 words). Acknowledge their message, address any questions or topics they raised, and sign off as YOLO - Your Own Living Operator. Be conversational but professional.",
 			email.From, email.Subject, email.Content)
 
+		log.Printf("Generating LLM response for email from %s...", email.From)
 		response := strings.TrimSpace(t.generateLLMText(prompt, true)) // Use LLM for response generation and trim whitespace
 		if response == "" {
 			log.Printf("Failed to generate LLM response (empty after trim), using fallback")
@@ -353,7 +354,13 @@ func generateSafeAIResponse(email *EmailMessage) string {
 
 	sb.WriteString("Thank you for your message.\n\n")
 	if email.Subject != "" {
-		sb.WriteString(fmt.Sprintf("I've received your email regarding \"%s\" and will review it shortly.\n", email.Subject))
+		// Sanitize subject before including in response to prevent prompt injection
+		sanitizedSubject := sanitizeInboxContent(email.Subject)
+		// Truncate very long subjects
+		if len(sanitizedSubject) > 200 {
+			sanitizedSubject = sanitizedSubject[:197] + "..."
+		}
+		sb.WriteString(fmt.Sprintf("I've received your email regarding \"%s\" and will review it shortly.\n", sanitizedSubject))
 	} else {
 		sb.WriteString("I've received your email and will review it shortly.\n")
 	}
@@ -417,6 +424,9 @@ func (t *ToolExecutor) generateLLMText(prompt string, streaming bool) string {
 
 	// Use DisplayText which falls back to ThinkingText if ContentText is empty
 	response := strings.TrimSpace(result.DisplayText)
+
+	log.Printf("generateLLMText result - ContentText: %.50s, ThinkingText: %.50s, DisplayText: %.50s", 
+		result.ContentText, result.ThinkingText, result.DisplayText)
 
 	if response == "" {
 		return ""
