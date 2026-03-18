@@ -1,6 +1,6 @@
 # YOLO - Your Own Living Operator
 
-**Version**: 1.0 | **Status**: ✅ Production Ready | **Last Updated**: 2026-03-18T13:37:52-04:00
+**Version**: 1.0 | **Status**: ✅ Production Ready | **Last Updated**: 2026-03-18
 
 [![Go](https://img.shields.io/badge/Go-1.21+-blue.svg)](https://golang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -55,18 +55,27 @@ go build -o yolo
 ./yolo --autonomous
 ```
 
-For detailed setup instructions, see the [Documentation Hub](DOCS/README.md).
+## Documentation
+
+📚 **Complete User Guide**: [DOCS/user-guide.md](DOCS/user-guide.md)
+
+📁 **Documentation Hub**: [DOCS/README.md](DOCS/README.md)
+
+Key guides:
+- [Architecture Overview](ARCHITECTURE.md) - System design and structure
+- [Email Processing](EMAIL_PROCESSING.md) - Email system deep dive
+- [Contributing](CONTRIBUTING.md) - Development guidelines
 
 ## Core Capabilities
 
-| Category | Features | Docs |
-|----------|----------|------|
-| **Self-Improvement** | Auto bug fixes, test coverage, code optimization | [Autonomous Operations](DOCS/AUTONOMOUS_OPERATIONS.md) |
-| **Email System** | Read inbox, auto-respond, send reports | [Email Processing](EMAIL_PROCESSING.md) |
-| **Web Integration** | DuckDuckGo search, Reddit, Google Workspace | [Tools Reference](DOCS/tools.md) |
-| **File Operations** | Read/write/edit files, directory management | [Tools Reference](DOCS/tools.md) |
-| **Task Management** | Todo list with add/complete/delete | [Tools Reference](DOCS/tools.md#task-management) |
-| **Parallel Work** | Spawn sub-agents for concurrent tasks | [Autonomous Operations](DOCS/AUTONOMOUS_OPERATIONS.md#sub-agent-pattern) |
+| Category | Features |
+|----------|----------|
+| **Self-Improvement** | Auto bug fixes, test coverage, code optimization |
+| **Email System** | Read inbox, auto-respond, send reports |
+| **Web Integration** | DuckDuckGo search, Reddit, Google Workspace |
+| **File Operations** | Read/write/edit files, directory management |
+| **Task Management** | Todo list with add/complete/delete |
+| **Parallel Work** | Spawn sub-agents for concurrent tasks |
 
 ## Current Status
 
@@ -76,30 +85,9 @@ For detailed setup instructions, see the [Documentation Hub](DOCS/README.md).
 - **Code Quality**: No data races, formatted, no vet warnings
 - **Git**: Clean working directory, up-to-date with remote
 
-### 📊 Coverage Highlights
+### 🎯 Active Improvements
 
-| Package | Coverage | Status |
-|---------|----------|--------|
-| Concurrency | 95.3% | ✅ Excellent |
-| Email | 90.0% | ✅ Good |
-| Main package | 60.4% | ⚠️ Improving |
-
-### 🎯 Recent Improvements
-
-1. **Fixed data race** in `handoffRemainingTools()` goroutine
-2. **Mock-based tests** for websearch to avoid external dependencies
-3. **Enhanced email processing** with direct LLM generation
-4. **Consolidated documentation** into unified hub
-
-## Documentation
-
-📚 **Complete Documentation Hub**: [DOCS/README.md](DOCS/README.md)
-
-Key guides:
-- [Autonomous Operations Guide](DOCS/AUTONOMOUS_OPERATIONS.md) - How YOLO works autonomously
-- [Tools Reference](DOCS/tools.md) - All available tools with examples
-- [Architecture Overview](ARCHITECTURE.md) - System design and structure
-- [Email Processing](EMAIL_PROCESSING.md) - Email system deep dive
+See [Pending Todos](TODO.md) for current development priorities.
 
 ## Configuration
 
@@ -144,7 +132,7 @@ go build      # Verify build
 
 **Ollama connection failed:**
 ```bash
-ollama serve                # Start server
+ollama serve
 curl http://localhost:11434/api/generate -d '{"model":"qwen3.5:27b","prompt":"test"}'
 ```
 
@@ -154,7 +142,7 @@ go mod download
 go mod tidy
 ```
 
-See [Autonomous Operations Guide](DOCS/AUTONOMOUS_OPERATIONS.md#troubleshooting-common-issues) for more solutions.
+See [User Guide Troubleshooting](DOCS/user-guide.md#troubleshooting) for more solutions.
 
 ## Contributing
 
