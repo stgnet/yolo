@@ -670,10 +670,20 @@ func (lm *LearningManager) analyzeTrends(improvements []Improvement) []string {
 // SaveSession saves a completed learning session
 func (lm *LearningManager) SaveSession(session *LearningSession) error {
 	lm.mu.Lock()
-	lm.sessions = append(lm.sessions, *session)
-	lm.mu.Unlock()
+	defer lm.mu.Unlock()
 
-	return lm.SaveHistory()
+	// Make a deep copy of the session to avoid shared references
+	sessionCopy := *session
+	sessionCopy.Improvements = make([]Improvement, len(session.Improvements))
+	copy(sessionCopy.Improvements, session.Improvements)
+
+	lm.sessions = append(lm.sessions, sessionCopy)
+
+	data, err := json.MarshalIndent(lm.sessions, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal sessions: %w", err)
+	}
+	return os.WriteFile(lm.historyPath, data, 0644)
 }
 
 // GetPendingImprovements returns improvements that haven't been implemented yet
@@ -869,10 +879,10 @@ func (lm *LearningManager) ImplementTopImprovements(maxCount int) error {
 
 		// Mark as implemented in the session
 		lm.mu.Lock()
-		for _, session := range lm.sessions {
-			for i, sessionImp := range session.Improvements {
+		for sIdx := range lm.sessions {
+			for i, sessionImp := range lm.sessions[sIdx].Improvements {
 				if sessionImp.ID == imp.ID {
-					session.Improvements[i].Status = "implemented"
+					lm.sessions[sIdx].Improvements[i].Status = "implemented"
 					implemented++
 					break
 				}
