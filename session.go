@@ -300,7 +300,7 @@ func randInt() int {
 	if _, err := rand.Read(b[:]); err != nil {
 		panic(fmt.Sprintf("failed to generate random bytes: %v", err))
 	}
-	return int(b[0] | b[1]<<8 | b[2]<<16 | b[3]<<24)
+	return int(b[0]) | int(b[1])<<8 | int(b[2])<<16 | int(b[3])<<24
 }
 
 // SessionContext adds session support to context

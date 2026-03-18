@@ -246,7 +246,6 @@ func TestPool_PanicRecovery(t *testing.T) {
 		err := pool.Submit(func() error {
 			if i%2 == 0 {
 				panic("intentional panic")
-				return nil // Won't reach here
 			}
 			atomic.AddInt32(&completed, 1)
 			return nil
@@ -516,24 +515,28 @@ func TestParallelExecutor(t *testing.T) {
 		executor := NewParallelExecutor(2)
 
 		var started int32
-		go func() {
-			for i := 0; i < 10; i++ {
-				executor.Submit(func(ctx context.Context) error {
-					atomic.AddInt32(&started, 1)
-					select {
-					case <-ctx.Done():
-						return ctx.Err()
-					case <-time.After(50 * time.Millisecond):
-						return nil
-					}
-				})
-			}
-		}()
+		
+		// Submit tasks directly from test goroutine (no concurrent submission)
+		for i := 0; i < 10; i++ {
+			executor.Submit(func(ctx context.Context) error {
+				atomic.AddInt32(&started, 1)
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(50 * time.Millisecond):
+					return nil
+				}
+			})
+		}
 
+		// Wait for some tasks to start
 		time.Sleep(10 * time.Millisecond)
+		
+		// Cancel all remaining tasks
 		executor.Cancel()
 
-		time.Sleep(100 * time.Millisecond)
+		// Give tasks time to observe cancellation
+		time.Sleep(50 * time.Millisecond)
 		t.Logf("Tasks started before cancellation: %d", atomic.LoadInt32(&started))
 	})
 
