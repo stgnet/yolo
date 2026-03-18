@@ -6,6 +6,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -235,8 +236,15 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 			break // Stop processing remaining emails
 		}
 
-		// Generate safe auto-response based on email content
-		response := generateSafeAIResponse(&email)
+		// Generate AI response using LLM based on full email context
+		prompt := fmt.Sprintf("You are YOLO, an autonomous AI assistant. You received this email:\n\nFrom: %s\nSubject: %s\n\nMessage:\n%s\n\nPlease generate a friendly, helpful, and concise response (maximum 200 words). Acknowledge their message, address any questions or topics they raised, and sign off as YOLO - Your Own Living Operator. Be conversational but professional.",
+			email.From, email.Subject, email.Content)
+
+		response := t.generateLLMText(prompt, true) // Use LLM for response generation
+		if response == "" {
+			log.Printf("Failed to generate LLM response, using fallback")
+			response = generateSafeAIResponse(&email)
+		}
 
 		// Send response back to sender - extract email address from From header
 		sender := email.From
@@ -341,40 +349,22 @@ func archiveEmail(srcPath, filename string, reason string) error {
 func generateSafeAIResponse(email *EmailMessage) string {
 	var sb strings.Builder
 
-	// Sanitized greeting - truncate sender name to prevent injection
-	safeFrom := sanitizeInboxContent(truncateString(email.From, 50))
-	if safeFrom != "" {
-		sb.WriteString(fmt.Sprintf("Hello %s,\n\n", safeFrom))
+	sb.WriteString("Thank you for your message.\n\n")
+	if email.Subject != "" {
+		sb.WriteString(fmt.Sprintf("I've received your email regarding \"%s\" and will review it shortly.\n", email.Subject))
 	} else {
-		sb.WriteString("Hello,\n\n")
+		sb.WriteString("I've received your email and will review it shortly.\n")
 	}
 
-	// Sanitized subject acknowledgment
-	safeSubject := sanitizeInboxContent(truncateString(email.Subject, 100))
-	sb.WriteString(fmt.Sprintf("I've received your message regarding \"%s\".\n", safeSubject))
-	sb.WriteString("\n")
-
-	// Provide appropriate auto-response based on content type (using sanitized content)
-	contentSanitized := sanitizeInboxContent(strings.ToLower(email.Content))
-	if strings.Contains(contentSanitized, "hello") ||
-		strings.Contains(contentSanitized, "hi") {
-		sb.WriteString("Thank you for reaching out! I'm YOLO, your autonomous AI agent.\n")
-		sb.WriteString("I'm here to help with software development tasks and project automation.\n")
-	} else if strings.Contains(safeSubject, "status") ||
-		strings.Contains(contentSanitized, "status") {
-		sb.WriteString("I can provide status updates on my current activities.\n")
-		sb.WriteString("Would you like me to send a detailed progress report?\n")
-	} else if strings.Contains(safeSubject, "todo") ||
-		strings.Contains(contentSanitized, "todo") {
-		sb.WriteString("I maintain a todo list for tracking tasks and improvements.\n")
-		sb.WriteString("Let me know what specific tasks you'd like to discuss!\n")
-	} else {
-		sb.WriteString("Thank you for your message. I'll review it and get back to you\n")
-		sb.WriteString("with a more detailed response shortly.\n")
+	// Use a template that explicitly mentions the original subject but doesn't
+	// include or repeat any potentially malicious content from the body
+	if strings.Contains(strings.ToLower(email.Subject), "hello") ||
+		strings.Contains(strings.ToLower(email.Subject), "hi ") ||
+		strings.Contains(strings.ToLower(email.Subject), "help") {
+		sb.WriteString("\nI appreciate you reaching out. I'll get back to you with a more detailed response shortly.\n")
 	}
 
-	sb.WriteString("\n")
-	sb.WriteString("Best regards,\n")
+	sb.WriteString("\nBest regards,\n")
 	sb.WriteString("YOLO - Your Own Living Operator\n")
 
 	return sb.String()
@@ -407,4 +397,20 @@ func sanitizeInboxContent(content string) string {
 	}
 
 	return content
+}
+
+// generateLLMText generates an AI response using the Ollama client
+func (t *ToolExecutor) generateLLMText(prompt string, streaming bool) string {
+	// Use agent's ollama client to generate response
+	ctx := context.Background()
+	msgs := []ChatMessage{
+		{Role: "user", Content: prompt},
+	}
+
+	result, err := t.agent.ollama.Chat(ctx, t.agent.config.GetModel(), msgs, nil, nil)
+	if err != nil {
+		log.Printf("Error generating LLM text: %v", err)
+		return ""
+	}
+	return result.ContentText
 }
