@@ -1376,6 +1376,7 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		cprint(Reset, "  /status          Agent status")
 		cprint(Reset, "  /cache           Show/clear search cache stats")
 		cprint(Reset, "  /debug [on|off]  Toggle debug mode (show full tool args/results)")
+		cprint(Reset, "  /auto [on|off]   Toggle autonomous mode (operate without user input)")
 		cprint(Reset, "  /learn           Run autonomous research for self-improvement")
 		cprint(Reset, "  /restart         Restart YOLO")
 		cprint(Reset, "  /exit, /quit     Exit YOLO")
