@@ -240,10 +240,12 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 		prompt := fmt.Sprintf("You are YOLO, an autonomous AI assistant. You received this email:\n\nFrom: %s\nSubject: %s\n\nMessage:\n%s\n\nPlease generate a friendly, helpful, and concise response (maximum 200 words). Acknowledge their message, address any questions or topics they raised, and sign off as YOLO - Your Own Living Operator. Be conversational but professional.",
 			email.From, email.Subject, email.Content)
 
-		response := t.generateLLMText(prompt, true) // Use LLM for response generation
+		response := strings.TrimSpace(t.generateLLMText(prompt, true)) // Use LLM for response generation and trim whitespace
 		if response == "" {
-			log.Printf("Failed to generate LLM response, using fallback")
+			log.Printf("Failed to generate LLM response (empty after trim), using fallback")
 			response = generateSafeAIResponse(&email)
+		} else {
+			log.Printf("Generated LLM response: %d bytes, preview: %.80s", len(response), response)
 		}
 
 		// Send response back to sender - extract email address from From header
