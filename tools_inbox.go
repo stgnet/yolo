@@ -412,5 +412,11 @@ func (t *ToolExecutor) generateLLMText(prompt string, streaming bool) string {
 		log.Printf("Error generating LLM text: %v", err)
 		return ""
 	}
-	return result.ContentText
+	// Use DisplayText which falls back to ThinkingText if ContentText is empty
+	response := strings.TrimSpace(result.DisplayText)
+	if response == "" {
+		log.Printf("Empty LLM response")
+		return ""
+	}
+	return response
 }
