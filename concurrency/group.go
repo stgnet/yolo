@@ -201,12 +201,11 @@ func (g *Group) Pipeline(stages ...func(context.Context, <-chan interface{}) <-c
 // Barrier is a synchronization primitive that blocks goroutines until
 // a specified number of goroutines reach the barrier.
 type Barrier struct {
-	arrived     int32         // Atomic counter of arrivals
-	initialized uint32        // Atomic flag: 1 if channel has been initialized
-	done        chan struct{} // Channel closed when all arrive
-	count       int32         // Number of goroutines expected
-	closed      bool          // Whether done channel has been closed
-	mu          sync.Mutex    // Protects done and closed state
+	count  int32         // Number of goroutines expected
+	arrived atomic.Int32 // Atomic counter of arrivals
+	mu     sync.Mutex    // Protects done channel state
+	done   chan struct{} // Channel closed when all arrive, nil if not initialized
+	closed bool          // Whether done channel has been closed
 }
 
 // NewBarrier creates a new barrier for the specified number of goroutines.
@@ -216,90 +215,47 @@ func NewBarrier(n int) *Barrier {
 	}
 	return &Barrier{
 		count: int32(n),
-		done:  nil, // Created on first Wait call by first goroutine
 	}
 }
 
 // Wait blocks until all goroutines have reached the barrier.
 func (b *Barrier) Wait() {
-	// Atomic check-and-set for channel initialization using compare-and-swap
-	for {
-		if atomic.CompareAndSwapUint32(&b.initialized, 0, 1) {
-			// First goroutine to initialize - create the done channel
-			b.mu.Lock()
-			// Double-check after acquiring lock in case another goroutine initialized while we waited for CAS
-			if b.done == nil {
-				b.done = make(chan struct{})
-				b.closed = false
-			}
-			b.mu.Unlock()
-
-			// Now increment arrival counter and check if this is the last goroutine
-			arrivalNum := atomic.AddInt32(&b.arrived, 1)
-			isLast := arrivalNum == b.count
-
-			if isLast {
-				// Last one to arrive - close the barrier for everyone
-				b.mu.Lock()
-				close(b.done)
-				b.closed = true
-				b.mu.Unlock()
-				return
-			}
-			// Not the last goroutine - just wait on the channel (will be closed by last goroutine)
-			<-b.done
-			return
-		}
-
-		// This goroutine is not first to initialize, so we're waiting for initialization
-		// to complete. Spin until initialized.
-		if atomic.LoadUint32(&b.initialized) == 1 {
-			// Initialization completed, re-check if we were the last one or just wait
-			b.mu.Lock()
-			done := b.done
-			closed := b.closed
-			b.mu.Unlock()
-
-			arrivalNum := atomic.AddInt32(&b.arrived, 1)
-			isLast := arrivalNum == b.count
-
-			if isLast {
-				b.mu.Lock()
-				close(done)
-				closed = true
-				b.closed = closed
-				b.mu.Unlock()
-				return
-			}
-
-			select {
-			case <-done:
-				return
-			default:
-				// Not closed yet, wait for it
-				<-done
-				return
-			}
-		}
-
-		// Still initializing, brief pause before retry
-		time.Sleep(time.Microsecond)
+	arrivalNum := b.arrived.Add(1)
+	
+	// Lock to check/update channel state safely
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	
+	// Initialize channel on first arrival if not done yet
+	if b.done == nil {
+		b.done = make(chan struct{})
 	}
+	
+	// Check if this is the last goroutine to arrive
+	if arrivalNum >= b.count {
+		// Last one to arrive - close the barrier for everyone
+		if !b.closed {
+			close(b.done)
+			b.closed = true
+		}
+		return
+	}
+	
+	// Not the last goroutine - wait on the channel (will be closed by last goroutine)
+	<-b.done
 }
 
 // Reset resets the barrier for reuse. Must not be called while goroutines
-// are waiting at the barrier. This reset is atomic and safe from race conditions
-// as long as no goroutines are actively at Wait() when Reset is called.
+// are waiting at the barrier, as that would cause undefined behavior.
+// Callers must ensure all previous Wait() calls have completed before calling Reset().
 func (b *Barrier) Reset() {
 	b.mu.Lock()
-	if b.done != nil && !b.closed {
-		close(b.done)
-	}
+	defer b.mu.Unlock()
+	
+	// Reset state for reuse
 	b.done = nil
 	b.closed = false
-	atomic.StoreInt32(&b.arrived, 0)
-	atomic.StoreUint32(&b.initialized, 0)
-	b.mu.Unlock()
+	b.arrived.Store(0)
 }
 
 // RetryWithBackoff retries a function with exponential backoff until it succeeds
