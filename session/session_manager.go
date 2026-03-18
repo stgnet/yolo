@@ -1,4 +1,4 @@
-package main
+package session
 
 import (
 	"context"
@@ -224,26 +224,20 @@ func (sm *SessionManager) CleanupExpired() int {
 		isExpired := !session.Active || now.Sub(session.LastActivity) > session.maxIdleTime
 		if isExpired {
 			expiredIds = append(expiredIds, id)
+			// Mark as inactive while holding both locks
+			session.Active = false
 		}
 		session.mu.Unlock()
 	}
 
-	// Phase 2: Delete collected sessions after releasing manager mutex.
-	// By collecting IDs first and releasing sm.mu before deletions, we:
-	// - Prevent deadlocks from inconsistent lock ordering
-	// - Avoid TOCTOU races where a session might be accessed while deleted
-	// - Allow concurrent access to the session map for other operations
-	sm.mu.Unlock()
-
+	// Phase 2: Delete collected sessions from the map
 	count := 0
 	for _, id := range expiredIds {
-		sm.mu.Lock()
-		if session, exists := sm.sessions[id]; exists && session.Active == false {
-			delete(sm.sessions, id)
-			count++
-		}
-		sm.mu.Unlock()
+		delete(sm.sessions, id)
+		count++
 	}
+
+	sm.mu.Unlock()
 
 	return count
 }
