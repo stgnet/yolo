@@ -11,6 +11,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -316,7 +317,7 @@ func generateSafeAIResponse(email *EmailMessage) string {
 	var sb strings.Builder
 
 	// Sanitized greeting - truncate sender name to prevent injection
-	safeFrom := sanitizeContent(truncateString(email.From, 50))
+	safeFrom := sanitizeInboxContent(truncateString(email.From, 50))
 	if safeFrom != "" {
 		sb.WriteString(fmt.Sprintf("Hello %s,\n\n", safeFrom))
 	} else {
@@ -324,12 +325,12 @@ func generateSafeAIResponse(email *EmailMessage) string {
 	}
 
 	// Sanitized subject acknowledgment
-	safeSubject := sanitizeContent(truncateString(email.Subject, 100))
+	safeSubject := sanitizeInboxContent(truncateString(email.Subject, 100))
 	sb.WriteString(fmt.Sprintf("I've received your message regarding \"%s\".\n", safeSubject))
 	sb.WriteString("\n")
 
 	// Provide appropriate auto-response based on content type (using sanitized content)
-	contentSanitized := sanitizeContent(strings.ToLower(email.Content))
+	contentSanitized := sanitizeInboxContent(strings.ToLower(email.Content))
 	if strings.Contains(contentSanitized, "hello") ||
 		strings.Contains(contentSanitized, "hi") {
 		sb.WriteString("Thank you for reaching out! I'm YOLO, your autonomous AI agent.\n")
@@ -352,4 +353,33 @@ func generateSafeAIResponse(email *EmailMessage) string {
 	sb.WriteString("YOLO - Your Own Living Operator\n")
 
 	return sb.String()
+}
+
+// sanitizeContent removes potentially malicious content from email body
+// This helps prevent prompt injection attacks
+func sanitizeInboxContent(content string) string {
+	// Remove potential command injection patterns (line breaks and separators only)
+	content = regexp.MustCompile(`[;|&]\s*`).ReplaceAllString(content, " ")
+
+	// Remove potential template injection markers
+	content = regexp.MustCompile(`\{\{.*?\}\}`).ReplaceAllStringFunc(content, func(match string) string {
+		return "[REDACTED]"
+	})
+
+	// Remove shell command patterns that could be interpreted by downstream systems
+	// Process dollar-sign command substitution first: $(...)
+	content = regexp.MustCompile(`\$\([^)]*\)`).ReplaceAllStringFunc(content, func(match string) string {
+		return "[COMMAND_REDACTED]"
+	})
+	// Process backtick command substitution second: `...`
+	content = regexp.MustCompile("`[^`]*`").ReplaceAllStringFunc(content, func(match string) string {
+		return "[COMMAND_REDACTED]"
+	})
+
+	// Truncate very long content to prevent memory issues
+	if len(content) > 10000 {
+		content = content[:10000] + " [CONTENT TRUNCATED - ORIGINAL EXCEEDED 10KB LIMIT]"
+	}
+
+	return content
 }

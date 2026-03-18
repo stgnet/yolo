@@ -948,6 +948,22 @@ func (t *ToolExecutor) runCommand(args map[string]any) string {
 		return errorMessage("command is required")
 	}
 
+	// VALIDATE COMMAND AGAINST SECURITY RULES
+	validatedCmd, err := validateSecurity(command)
+	if err != nil {
+		return errorMessage("security check failed: %v", err)
+	}
+	command = validatedCmd
+
+	// Additional path validation for args with file paths
+	baseDir := t.baseDir
+	if err := validatePathSandbox(args, baseDir); err != nil {
+		return errorMessage("path sandbox violation: %v", err)
+	}
+
+	// Log command execution for audit trail
+	logCommandExecution(command, args, baseDir)
+
 	cmd := exec.Command("sh", "-c", command)
 	cmd.Dir = t.baseDir
 
