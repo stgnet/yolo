@@ -26,7 +26,7 @@ const (
 
 // emailArchived tracks which emails have been archived in this session
 var (
-	emailArchived  map[string]bool
+	emailArchived   map[string]bool
 	emailArchivedMu sync.Mutex
 )
 
@@ -412,11 +412,30 @@ func (t *ToolExecutor) generateLLMText(prompt string, streaming bool) string {
 		log.Printf("Error generating LLM text: %v", err)
 		return ""
 	}
+
+	// Log what we got for debugging
+	contentPreview := safeTruncate(result.ContentText, 100)
+	thinkingPreview := safeTruncate(result.ThinkingText, 100)
+	displayPreview := safeTruncate(result.DisplayText, 100)
+	log.Printf("LLM response - ContentText: '%s', ThinkingText: '%s', DisplayText: '%s'",
+		contentPreview, thinkingPreview, displayPreview)
+
 	// Use DisplayText which falls back to ThinkingText if ContentText is empty
 	response := strings.TrimSpace(result.DisplayText)
 	if response == "" {
-		log.Printf("Empty LLM response")
+		log.Printf("Empty LLM response after trim")
 		return ""
 	}
 	return response
+}
+
+// safeTruncate safely truncates a string, handling empty strings
+func safeTruncate(s string, maxLen int) string {
+	if len(s) == 0 {
+		return "(empty)"
+	}
+	if len(s) > maxLen {
+		return s[:maxLen] + "..."
+	}
+	return s
 }

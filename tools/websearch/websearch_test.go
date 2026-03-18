@@ -66,8 +66,8 @@ func TestWebSearcherWithMockServer(t *testing.T) {
 // TestWebSearcher_Constructor tests the constructor functions
 func TestWebSearcher_Constructor(t *testing.T) {
 	tests := []struct {
-		name             string
-		expectedBaseURL  string
+		name            string
+		expectedBaseURL string
 	}{
 		{"NewWebSearcher with default", "https://html.duckduckgo.com/html/"},
 		{"NewWebSearcherWithConfig", "https://html.duckduckgo.com/html/"},
@@ -79,11 +79,11 @@ func TestWebSearcher_Constructor(t *testing.T) {
 			if searcher.DuckDuckGoURL != tt.expectedBaseURL {
 				t.Errorf("Expected DuckDuckGoURL %q, got %q", tt.expectedBaseURL, searcher.DuckDuckGoURL)
 			}
-			
+
 			if searcher.Client == nil {
 				t.Error("Expected non-nil HTTP client")
 			}
-			
+
 			if searcher.RetryCount < 0 {
 				t.Errorf("Expected non-negative retry count, got %d", searcher.RetryCount)
 			}
@@ -106,7 +106,7 @@ func TestSearch_QueryValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			query := strings.TrimSpace(tt.query)
-			
+
 			if tt.empty && query == "" {
 				t.Log("Empty query correctly detected")
 			} else if !tt.empty && query != "" {
@@ -127,11 +127,11 @@ func TestSearchResultStructure(t *testing.T) {
 	if result.Title != "Test Title" {
 		t.Errorf("Expected title 'Test Title', got %q", result.Title)
 	}
-	
+
 	if result.Link != "https://example.com" {
 		t.Errorf("Expected link 'https://example.com', got %q", result.Link)
 	}
-	
+
 	if result.Snippet != "Test snippet text" {
 		t.Errorf("Expected snippet 'Test snippet text', got %q", result.Snippet)
 	}
@@ -149,7 +149,7 @@ func TestInstantAnswerStructure(t *testing.T) {
 	if ia.Text != "Direct answer text" {
 		t.Errorf("Expected text 'Direct answer text', got %q", ia.Text)
 	}
-	
+
 	if !ia.IsFeatured {
 		t.Error("Expected IsFeatured to be true")
 	}
@@ -158,7 +158,7 @@ func TestInstantAnswerStructure(t *testing.T) {
 // TestWebSearchResultStructure tests the main result structure
 func TestWebSearchResultStructure(t *testing.T) {
 	result := &WebSearchResult{
-		Query: "test query",
+		Query:         "test query",
 		InstantAnswer: []InstantAnswer{{Text: "answer"}},
 		RelatedTopics: []RelatedTopics{{Title: "topic"}},
 		Results:       []SearchResult{{Title: "result"}},
@@ -168,15 +168,15 @@ func TestWebSearchResultStructure(t *testing.T) {
 	if result.Query != "test query" {
 		t.Errorf("Expected query 'test query', got %q", result.Query)
 	}
-	
+
 	if len(result.InstantAnswer) != 1 {
 		t.Errorf("Expected 1 instant answer, got %d", len(result.InstantAnswer))
 	}
-	
+
 	if len(result.RelatedTopics) != 1 {
 		t.Errorf("Expected 1 related topic, got %d", len(result.RelatedTopics))
 	}
-	
+
 	if len(result.Results) != 1 {
 		t.Errorf("Expected 1 result, got %d", len(result.Results))
 	}

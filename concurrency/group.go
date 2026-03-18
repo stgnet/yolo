@@ -201,10 +201,10 @@ func (g *Group) Pipeline(stages ...func(context.Context, <-chan interface{}) <-c
 // Barrier is a synchronization primitive that blocks goroutines until
 // a specified number of goroutines reach the barrier.
 type Barrier struct {
-	count     int32         // Number of goroutines expected
-	arrived   atomic.Int32  // Atomic counter of arrivals
-	mu        sync.Mutex    // Protects state during initialization
-	done      chan struct{} // Channel closed when all arrive, nil until first Wait()
+	count   int32         // Number of goroutines expected
+	arrived atomic.Int32  // Atomic counter of arrivals
+	mu      sync.Mutex    // Protects state during initialization
+	done    chan struct{} // Channel closed when all arrive, nil until first Wait()
 }
 
 // NewBarrier creates a new barrier for the specified number of goroutines.
