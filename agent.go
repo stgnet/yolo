@@ -14,6 +14,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"yolo/tools/todo"
 )
 
 // ─── Main Agent ───────────────────────────────────────────────────────
@@ -113,8 +115,8 @@ func (a *YoloAgent) getSystemPrompt() string {
 	prompt = strings.ReplaceAll(prompt, "{knowledgeBase}", kbSection)
 
 	// Inject pending todos so the agent is aware of outstanding work
-	todoContext := todoList.RenderPendingContext()
-	prompt += todoContext
+	todoContext := todo.GetGlobalTodoList().FormatPendingTodos()
+	prompt += "\n" + todoContext
 
 	return prompt
 }
