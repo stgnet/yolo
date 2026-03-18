@@ -238,12 +238,28 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 		// Generate safe auto-response based on email content
 		response := generateSafeAIResponse(&email)
 
-		// Send response back to sender
+		// Send response back to sender - extract email address from From header
 		sender := email.From
 		if strings.Contains(sender, "<") {
-			parts := strings.SplitN(sender, "<", 2)
-			sender = strings.TrimSpace(strings.TrimSuffix(parts[0], ">"))
+			// Extract email from within angle brackets: "Name <email>" -> "email"
+			startIdx := strings.Index(sender, "<")
+			endIdx := strings.Index(sender, ">")
+			if startIdx != -1 && endIdx > startIdx {
+				sender = strings.TrimSpace(sender[startIdx+1 : endIdx])
+			} else {
+				// Fallback: try to extract email-like pattern using regex
+				emailPattern := regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
+				if match := emailPattern.FindString(sender); match != "" {
+					sender = match
+				} else {
+					sender = strings.TrimSpace(sender) // Use as-is, let validation handle it
+				}
+			}
+		} else {
+			sender = strings.TrimSpace(sender)
 		}
+
+		log.Printf("Extracted sender email: %s from From header: %s", sender, email.From)
 
 		// Validate sender before responding
 		if !validateSender(sender) {
