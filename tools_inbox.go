@@ -114,8 +114,8 @@ func sanitizeEmailField(value string) string {
 	value = strings.ReplaceAll(value, "\r", " ")
 
 	// Truncate very long headers to prevent buffer overflow attacks
-	if len(value) > 500 {
-		value = value[:500] + "..."
+	if len(value) > 497 {
+		value = value[:497] + "..."
 	}
 
 	return value

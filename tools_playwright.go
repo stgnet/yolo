@@ -264,6 +264,7 @@ const playwright = require('@playwright/test');
 // Helper function to escape JavaScript strings
 func escapeJS(s string) string {
 	s = strings.ReplaceAll(s, "\\", "\\\\")
+	s = strings.ReplaceAll(s, "'", "\\'")
 	s = strings.ReplaceAll(s, "\"", "\\\"")
 	s = strings.ReplaceAll(s, "\n", "\\n")
 	s = strings.ReplaceAll(s, "\r", "\\r")

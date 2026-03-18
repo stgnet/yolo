@@ -75,7 +75,10 @@ func (p *PlaywrightMCP) LaunchBrowser() error {
 	}
 	var err error
 	p.browser, err = browserType.Launch(opts)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to launch browser: %w", err)
+	}
+	return nil
 }
 
 // NavigateTo navigates to a URL
@@ -108,8 +111,6 @@ func (p *PlaywrightMCP) NavigateTo(ctx context.Context, url string, action Brows
 		Error:      "",
 	}
 
-	time.Sleep(1 * time.Second)
-
 	title, err := page.Title()
 	if err == nil {
 		result.Title = title
@@ -131,7 +132,7 @@ func (p *PlaywrightMCP) NavigateTo(ctx context.Context, url string, action Brows
 }
 
 // ClickElement clicks an element by selector
-func (p *PlaywrightMCP) ClickElement(ctx context.Context, selector string, action BrowserAction) (*PlaywrightResult, error) {
+func (p *PlaywrightMCP) ClickElement(ctx context.Context, url, selector string, action BrowserAction) (*PlaywrightResult, error) {
 	if p.browser == nil {
 		if err := p.LaunchBrowser(); err != nil {
 			return nil, err
@@ -146,21 +147,38 @@ func (p *PlaywrightMCP) ClickElement(ctx context.Context, selector string, actio
 
 	page.SetDefaultTimeout(float64(action.Timeout.Milliseconds()))
 
-	resp, _ := page.Goto("about:blank")
-
-	page.WaitForSelector(selector)
-	page.Click(selector)
-
-	result := &PlaywrightResult{
-		URL:   resp.URL(),
-		Title: "",
-		Text:  "",
+	resp, err := page.Goto(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to navigate to %s: %w", url, err)
 	}
 
-	title, _ := page.Title()
-	result.Title = title
+	_, err = page.WaitForSelector(selector)
+	if err != nil {
+		return nil, fmt.Errorf("element not found: %s", selector)
+	}
+
+	err = page.Click(selector)
+	if err != nil {
+		return nil, fmt.Errorf("failed to click element %s: %w", selector, err)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	result := &PlaywrightResult{
+		URL:  resp.URL(),
+		Title: "",
+		Text: "",
+		HTML: "",
+	}
+
+	title, err := page.Title()
+	if err == nil {
+		result.Title = title
+	}
 	text, _ := page.Content()
 	result.Text = text
+	html, _ := page.InnerHTML("body")
+	result.HTML = html
 
 	return result, nil
 }
@@ -181,27 +199,46 @@ func (p *PlaywrightMCP) FillForm(ctx context.Context, url string, fields map[str
 
 	page.SetDefaultTimeout(float64(action.Timeout.Milliseconds()))
 
-	resp, _ := page.Goto(url)
+	resp, err := page.Goto(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to navigate to %s: %w", url, err)
+	}
 
 	for selector, value := range fields {
-		page.Fill(selector, value)
+		err = page.Fill(selector, value)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fill field %s: %w", selector, err)
+		}
 	}
 
 	submitButton := "button[type='submit'], input[type='submit']"
-	page.Click(submitButton)
-
-	time.Sleep(2 * time.Second)
-
-	result := &PlaywrightResult{
-		URL:   resp.URL(),
-		Title: "",
-		Text:  "",
+	_, err = page.WaitForSelector(submitButton)
+	if err != nil {
+		return nil, fmt.Errorf("submit button not found")
 	}
 
-	title, _ := page.Title()
-	result.Title = title
+	err = page.Click(submitButton)
+	if err != nil {
+		return nil, fmt.Errorf("failed to click submit button: %w", err)
+	}
+
+	time.Sleep(1 * time.Second)
+
+	result := &PlaywrightResult{
+		URL:  resp.URL(),
+		Title: "",
+		Text: "",
+		HTML: "",
+	}
+
+	title, err := page.Title()
+	if err == nil {
+		result.Title = title
+	}
 	text, _ := page.Content()
 	result.Text = text
+	html, _ := page.InnerHTML("body")
+	result.HTML = html
 
 	return result, nil
 }
@@ -220,9 +257,12 @@ func (p *PlaywrightMCP) GetElements(ctx context.Context, url, selector string, a
 	}
 	defer page.Close()
 
-	page.SetDefaultTimeout(float64(action.Timeout.Milliseconds()) * 1000)
+	page.SetDefaultTimeout(float64(action.Timeout.Milliseconds()))
 
-	_, _ = page.Goto(url)
+	_, err = page.Goto(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to navigate to %s: %w", url, err)
+	}
 
 	elements, err := p.QueryElements(page, selector)
 	if err != nil {
@@ -258,9 +298,15 @@ func (p *PlaywrightMCP) GetElements(ctx context.Context, url, selector string, a
 func (p *PlaywrightMCP) Close() error {
 	if p.browser != nil {
 		p.browser.Close()
+		p.browser = nil
 	}
 	p.pw.Stop()
 	return nil
+}
+
+// IsBrowserRunning checks if the browser is currently running
+func (p *PlaywrightMCP) IsBrowserRunning() bool {
+	return p.browser != nil
 }
 
 // QueryElements queries the page for elements matching a selector

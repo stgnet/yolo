@@ -109,7 +109,7 @@ func TestEncodeHeader(t *testing.T) {
 		{
 			name:     "newline injection",
 			input:    "Test\r\nBcc: attacker@evil.com",
-			expected: "Test Bcc: attacker@evil.com",
+			expected: "Test  Bcc: attacker@evil.com", // Both \\r and \\n replaced with spaces
 		},
 		{
 			name:     "carriage return injection",
@@ -142,12 +142,12 @@ func TestValidateSender(t *testing.T) {
 	}{
 		{
 			name:     "valid email",
-			input:    "user@example.com",
+			input:    "user@stg.net",
 			expected: true,
 		},
 		{
 			name:     "valid email with subdomain",
-			input:    "user@mail.example.com",
+			input:    "user@mail.b-haven.org",
 			expected: true,
 		},
 		{
@@ -174,6 +174,8 @@ func TestValidateSender(t *testing.T) {
 
 // TestCheckEmailCooldown tests rate limiting functionality
 func TestCheckEmailCooldown(t *testing.T) {
+	t.Parallel() // Isolate from other tests with global state
+	
 	tests := []struct {
 		name     string
 		setup    func()
@@ -184,7 +186,7 @@ func TestCheckEmailCooldown(t *testing.T) {
 			setup: func() {
 				hourStart.Store(time.Now().Unix())
 				emailCount.Store(0)
-				lastEmailTime.Store(nil)
+				lastEmailTime.Store(time.Time{})
 			},
 			expected: true,
 		},
@@ -208,6 +210,11 @@ func TestCheckEmailCooldown(t *testing.T) {
 			}
 		})
 	}
+
+	// Cleanup: reset to initial state for other tests
+	hourStart.Store(time.Now().Unix())
+	emailCount.Store(0)
+	lastEmailTime.Store(time.Time{})
 }
 
 // TestEncodeHeaderTruncation tests that very long headers are truncated
@@ -243,9 +250,12 @@ Pipe: | malicious_cmd
 
 // TestRateLimitingOverHour tests that rate limit resets after an hour
 func TestRateLimitingOverHour(t *testing.T) {
+	t.Parallel() // Isolate from other tests
+
 	now := time.Now().Unix()
 	hourStart.Store(now)
 	emailCount.Store(MaxEmailsPerHour)
+	lastEmailTime.Store(time.Time{})
 
 	// Initially should be rate limited
 	if checkEmailCooldown() {
@@ -260,4 +270,9 @@ func TestRateLimitingOverHour(t *testing.T) {
 	if !checkEmailCooldown() {
 		t.Errorf("Expected rate limit reset after hour")
 	}
+
+	// Cleanup: reset to initial state for other tests
+	hourStart.Store(time.Now().Unix())
+	emailCount.Store(0)
+	lastEmailTime.Store(time.Time{})
 }

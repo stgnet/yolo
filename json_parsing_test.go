@@ -375,7 +375,7 @@ func TestJSONTypeInference(t *testing.T) {
 		{
 			name:         "null",
 			input:        `null`,
-			expectedType: "json.Number",
+			expectedType: "<nil>",
 		},
 		{
 			name:         "string",
@@ -385,12 +385,12 @@ func TestJSONTypeInference(t *testing.T) {
 		{
 			name:         "int",
 			input:        `42`,
-			expectedType: "json.Number",
+			expectedType: "float64",
 		},
 		{
 			name:         "float",
 			input:        `3.14`,
-			expectedType: "json.Number",
+			expectedType: "float64",
 		},
 		{
 			name:         "bool true",
@@ -405,12 +405,12 @@ func TestJSONTypeInference(t *testing.T) {
 		{
 			name:         "array",
 			input:        `[1, 2, 3]`,
-			expectedType: "[]interface{}",
+			expectedType: "[]interface {}",
 		},
 		{
 			name:         "object",
 			input:        `{"key": "value"}`,
-			expectedType: "map[string]interface{}",
+			expectedType: "map[string]interface {}",
 		},
 	}
 

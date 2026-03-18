@@ -165,8 +165,8 @@ func TestSanitizeEmailField(t *testing.T) {
 				t.Errorf("sanitizeEmailField still contains newlines")
 			}
 
-			// Should be truncated if too long
-			if tt.expected && len(result) >= 500 {
+			// Should be truncated if too long (max 500 chars including suffix)
+			if tt.expected && len(result) > 500 {
 				t.Errorf("sanitizeEmailField not properly truncated: length=%d", len(result))
 			}
 		})
