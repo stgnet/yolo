@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 const (
@@ -23,7 +24,10 @@ const (
 )
 
 // emailArchived tracks which emails have been archived in this session
-var emailArchived map[string]bool
+var (
+	emailArchived  map[string]bool
+	emailArchivedMu sync.Mutex
+)
 
 func init() {
 	emailArchived = make(map[string]bool)
@@ -291,10 +295,13 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 
 // archiveEmail moves an email to the archive directory for audit purposes
 func archiveEmail(srcPath, filename string, reason string) error {
+	emailArchivedMu.Lock()
 	if emailArchived[filename] {
 		// Already archived in this session
+		emailArchivedMu.Unlock()
 		return nil
 	}
+	emailArchivedMu.Unlock()
 
 	archiveDir := filepath.Join(ArchiveDir)
 	if err := os.MkdirAll(archiveDir, 0755); err != nil {
@@ -305,7 +312,9 @@ func archiveEmail(srcPath, filename string, reason string) error {
 	destPath := filepath.Join(archiveDir, fmt.Sprintf("%s_%s", reason, filename))
 	err := os.Rename(srcPath, destPath)
 	if err == nil {
+		emailArchivedMu.Lock()
 		emailArchived[filename] = true
+		emailArchivedMu.Unlock()
 		log.Printf("Archived email %s to %s: %s", filename, reason, destPath)
 	}
 
