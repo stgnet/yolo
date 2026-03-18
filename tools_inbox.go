@@ -413,23 +413,13 @@ func (t *ToolExecutor) generateLLMText(prompt string, streaming bool) string {
 		return ""
 	}
 
-	// Log what we got for debugging
-	contentPreview := safeTruncate(result.ContentText, 100)
-	thinkingPreview := safeTruncate(result.ThinkingText, 100)
-	displayPreview := safeTruncate(result.DisplayText, 100)
-	log.Printf("LLM response - ContentText: '%s', ThinkingText: '%s', DisplayText: '%s'",
-		contentPreview, thinkingPreview, displayPreview)
-
 	// Use DisplayText which falls back to ThinkingText if ContentText is empty
 	response := strings.TrimSpace(result.DisplayText)
-	
-	// Additional logging for debugging
-	log.Printf("Final LLM response length: %d bytes, preview: %s", len(response), safeTruncate(response, 200))
-	
+
 	if response == "" {
-		log.Printf("Empty LLM response after trim")
 		return ""
 	}
+
 	return response
 }
 

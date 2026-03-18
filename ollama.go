@@ -613,7 +613,7 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 	// Log for debugging empty responses
 	if contentText == "" && thinkingText != "" {
 		fmt.Printf("[OLLAMA DEBUG] ContentText is empty but ThinkingText has %d bytes\n", len(thinkingText))
-		fmt.Printf("[OLLAMA DEBUG] Thinking preview: %s\n", safeTruncate(thinkingText, 200))
+		fmt.Printf("[OLLAMA DEBUG] Thinking preview: %.200s\n", thinkingText)
 	} else if contentText == "" && thinkingText == "" {
 		fmt.Printf("[OLLAMA DEBUG] Both ContentText and ThinkingText are empty\n")
 	}
