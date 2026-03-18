@@ -1,158 +1,351 @@
-# YOLO Tool Documentation
+# YOLO Tools Reference
 
-## Overview
+Complete catalog of all available tools in YOLO with usage examples and parameters.
 
-YOLO (Your Own Living Operator) has these powerful tools for autonomous software development and web interaction:
+**Quick Start**: See [README.md](../README.md)  
+**Documentation Hub**: [DOCS/README.md](README.md)  
+**Autonomous Operations**: [AUTONOMOUS_OPERATIONS.md](AUTONOMOUS_OPERATIONS.md)
 
 ---
 
-## 🗂️ File Operations
+## 📁 File Operations
 
-| Tool | Description |
-|------|-------------|
-| `read_file` | Read file contents with offset/limit for large files |
-| `write_file` | Create or overwrite files |
-| `edit_file` | Replace text in files (find/replace) |
-| `list_files` | List files matching glob patterns |
-| `search_files` | Search file contents using regex |
-| `make_dir` | Create directories recursively |
-| `remove_dir` | Remove directories and contents |
-| `copy_file` | Copy files with auto-directory creation |
-| `move_file` | Move files with auto-directory creation |
+| Tool | Description | Parameters |
+|------|---|--------|
+| `read_file` | Read file contents | `path`, `offset` (line, 1-based), `limit` (max lines) |
+| `write_file` | Create or overwrite file | `path`, `content` |
+| `edit_file` | Replace text in file | `path`, `old_text`, `new_text` |
+| `list_files` | List files matching glob | `pattern` (default: `*`) |
+| `search_files` | Search file contents with regex | `query` (required), `pattern` |
+| `make_dir` | Create directory recursively | `path` |
+| `remove_dir` | Remove directory and contents | `path` |
+| `copy_file` | Copy file (creates dirs if needed) | `source`, `dest` |
+| `move_file` | Move file (creates dirs if needed) | `source`, `dest` |
+
+### Examples
+
+```json
+// Read first 50 lines of a file
+{
+  "name": "read_file",
+  "arguments": {
+    "path": "src/main.go",
+    "offset": 1,
+    "limit": 50
+  }
+}
+
+// Write new file
+{
+  "name": "write_file",
+  "arguments": {
+    "path": "new_feature.go",
+    "content": "package main\n\nfunc NewFeature() {}"
+  }
+}
+
+// Edit file (replace first occurrence)
+{
+  "name": "edit_file",
+  "arguments": {
+    "path": "config.go",
+    "old_text": "const Timeout = 30",
+    "new_text": "const Timeout = 60"
+  }
+}
+
+// Search for files
+{
+  "name": "list_files",
+  "arguments": {
+    "pattern": "**/*.go"
+  }
+}
+
+// Grep-like search
+{
+  "name": "search_files",
+  "arguments": {
+    "query": "func.*\\(.*context\\.Context",
+    "pattern": "**/*.go"
+  }
+}
+```
 
 ---
 
 ## ⚙️ System & Execution
 
-| Tool | Description |
-|------|-------------|
-| `run_command` | Execute shell commands (30s timeout) |
-| `spawn_subagent` | Run parallel background agents |
-| `list_subagents` | List all active sub-agents |
-| `read_subagent_result` | Get result from specific sub-agent |
-| `summarize_subagents` | Get completion statistics |
+| Tool | Description | Parameters |
+|------|---|--------|
+| `run_command` | Execute shell command (30s timeout) | `command` |
+| `restart` | Rebuild and restart YOLO | (none) |
+| `think` | Record reasoning without action | `thought` |
+
+### Examples
+
+```json
+// Run build command
+{
+  "name": "run_command",
+  "arguments": {
+    "command": "go build -o /tmp/yolo . && echo 'Build successful'"
+  }
+}
+
+// Internal reasoning (for planning)
+{
+  "name": "think",
+  "arguments": {
+    "thought": "Need to check if race condition exists before fixing"
+  }
+}
+
+// Restart after code changes
+{"name": "restart", "arguments": {}}
+```
 
 ---
 
 ## 🤖 AI & Model Management
 
-| Tool | Description |
-|------|-------------|
-| `list_models` | List available Ollama models |
-| `switch_model` | Change the active LLM model |
-| `think` | Record internal reasoning (no action) |
-| `restart` | Rebuild and restart YOLO |
+| Tool | Description | Parameters |
+|------|---|--------|
+| `list_models` | List available Ollama models | (none) |
+| `switch_model` | Change active model | `model` |
+| `learn` | Research improvements online | (optional params) |
+| `implement` | Auto-implement learned improvements | `count` (default: 2) |
+
+### Examples
+
+```json
+// List models
+{"name": "list_models", "arguments": {}}
+
+// Switch model
+{
+  "name": "switch_model", 
+  "arguments": {"model": "llama3.2"}
+}
+
+// Learn about new features
+{"name": "learn", "arguments": {}}
+
+// Implement top improvements
+{
+  "name": "implement",
+  "arguments": {"count": 3}
+}
+```
 
 ---
 
-## 🌐 Web & External APIs
+## 👥 Sub-Agents (Parallel Tasks)
 
-| Tool | Description | Docs |
-|------|-------------|---|
-| `web_search` | Search DuckDuckGo Instant Answer API with Wikipedia fallback | [below](#web_search-tool) |
-| `reddit` | Search Reddit, list subreddit posts, get threads | [reddit-tool.md](./reddit-tool.md) |
-| `gog` | Google Workspace: Gmail, Calendar, Drive, Contacts, Sheets, Docs | [gog-tool.md](./gog-tool.md) |
-| `send_email` | Send emails via sendmail from yolo@b-haven.org (DKIM signed by Postfix) | [below](#email-tools) |
-| `send_report` | Send progress reports to scott@stg.net | [below](#email-tools) |
-| `check_inbox` | Read incoming emails from Maildir inbox | [below](#email-tools) |
+| Tool | Description | Parameters |
+|------|---|--------|
+| `spawn_subagent` | Start background agent | `prompt` (required), `name`, `description` |
+| `list_subagents` | List all active agents | (none) |
+| `read_subagent_result` | Get result by ID | `id` |
+| `summarize_subagents` | Get completion stats | (none) |
+
+### Examples
+
+```json
+// Spawn sub-agent
+{
+  "name": "spawn_subagent",
+  "arguments": {
+    "prompt": "Add test coverage for the email processing functions",
+    "name": "email-tests",
+    "description": "Write unit tests for email package"
+  }
+}
+
+// Check progress
+{"name": "list_subagents", "arguments": {}}
+
+// Get result
+{
+  "name": "read_subagent_result",
+  "arguments": {"id": "email-tests-123"}
+}
+
+// Summary stats
+{"name": "summarize_subagents", "arguments": {}}
+```
 
 ---
 
-## 🔧 Key Tools Deep Dive
+## 🌐 Web Search Tool
 
-### web_search Tool
-Search the internet using DuckDuckGo's Instant Answer API with Wikipedia fallback for comprehensive results.
+Search DuckDuckGo with Wikipedia fallback for comprehensive results.
+
+### Parameters
+
+| Field | Required | Description |
+|-------|----------|------|
+| `query` | Yes | Search query string |
+| `count` | No | Results to return (default: 5, max: 10) |
+
+### Example
 
 ```json
 {
   "name": "web_search",
   "arguments": {
-    "query": "go programming language concurrency",
-    "count": 5
+    "query": "Go concurrency patterns goroutine channels",
+    "count": 7
   }
 }
 ```
 
-**How it works:**
-1. Queries DuckDuckGo's Instant Answer API for direct answers and summaries
-2. Falls back to Wikipedia search if DuckDuckGo returns no results
-3. Combines both sources when available for richer information
+### How It Works
 
-**Use Cases:**
-- Learn about new tools/technologies
-- Find documentation and quick references  
-- Research problems and solutions
-- Stay updated on trends and best practices
-
-**Example Output:**
-```
-Wikipedia results for "golang concurrency patterns":
-
-1. **[Go (programming language)](https://en.wikipedia.org/wiki/Go_(programming_language))**
-   Go is a programming language developed at Google...
-   
-2. **[Goroutine](https://en.wikipedia.org/wiki/Goroutine)**
-   A goroutine is a lightweight thread of execution...
-```
+1. Queries DuckDuckGo Instant Answer API for direct answers
+2. Falls back to Wikipedia if DuckDuckGo returns no results
+3. Combines both sources when available
 
 ---
 
-### reddit Tool
-Access Reddit's public API without authentication.
+## 📰 Reddit Tool
+
+Access Reddit's public API (no authentication required).
+
+### Actions
+
+| Action | Description | Additional Params |
+|--------|---|--|
+| `search` | Search all of Reddit | `query` (required) |
+| `subreddit` | List posts from r/{name} | `subreddit` (required) |
+| `thread` | Get post + comments | `post_id` (required) |
+
+### Examples
 
 ```json
+// Search Reddit
 {
   "name": "reddit",
   "arguments": {
     "action": "search",
-    "query": "gog openclaw",
-    "limit": 10
+    "query": "golang best practices",
+    "limit": 15
+  }
+}
+
+// List subreddit posts
+{
+  "name": "reddit",
+  "arguments": {
+    "action": "subreddit",
+    "subreddit": "golang",
+    "limit": 20
+  }
+}
+
+// Get thread with comments
+{
+  "name": "reddit",
+  "arguments": {
+    "action": "thread",
+    "post_id": "abc123"
   }
 }
 ```
 
-**Actions:**
-- `search` - Query Reddit globally
-- `subreddit` - List posts from r/{name}
-- `thread` - Get post + comments by ID
+See [reddit-tool.md](reddit-tool.md) for detailed documentation.
 
 ---
 
-### gog Tool (Google Workspace)
-Full Google Workspace integration via OAuth.
+## 📧 Google Workspace Tool (gog)
+
+Full Google Workspace integration via OAuth CLI tool.
+
+### Supported Services
+
+- 📧 **Gmail**: Search, send, drafts, labels
+- 📅 **Calendar**: Events CRUD, colors, multiple calendars
+- 📁 **Drive**: List files, search, metadata
+- 👥 **Contacts**: List and search contacts
+- 📊 **Sheets**: Read/write cells and ranges
+- 📝 **Docs/Slides**: Export and view content
+
+### Quick Commands
 
 ```json
+// Search Gmail for unread emails from boss in last 2 days
 {
   "name": "gog",
   "arguments": {
-    "command": "gmail search 'inbox:unread newer_than:1d' --max 5"
+    "command": "gmail search 'from:boss newer_than:2d' --max 10"
+  }
+}
+
+// List calendar events for the week
+{
+  "name": "gog",
+  "arguments": {
+    "command": "calendar events primary --from 2026-03-10T00:00Z --to 2026-03-17T23:59Z"
+  }
+}
+
+// List Drive files
+{
+  "name": "gog",
+  "arguments": {
+    "command": "drive ls --max 20"
+  }
+}
+
+// Search contacts
+{
+  "name": "gog",
+  "arguments": {
+    "command": "contacts list --max 30"
   }
 }
 ```
 
-**Capabilities:**
-- 📧 Gmail: Search, send, drafts, replies
-- 📅 Calendar: Events CRUD, colors
-- 📁 Drive: List, search files
-- 👥 Contacts: List and search
-- 📊 Sheets: Read/write cells
-- 📝 Docs/Slides: Export and view
-
-**Quick Commands:**
-```bash
-gog gmail search 'from:boss newer_than:2d' --max 10
-gog calendar events primary --from 2026-03-10T00:00Z --to 2026-03-17T23:59Z
-gog drive ls --max 20
-gog contacts list --max 30
-```
+See [gog-tool.md](gog-tool.md) for complete reference.
 
 ---
 
-## 📧 Email Tools (send_email, send_report, check_inbox)
+## 📨 Email Tools
 
-Full email system for yolo@b-haven.org with DKIM signing via Postfix.
+Full email system for `yolo@b-haven.org` with DKIM signing via Postfix.
 
-### send_email - Send an Email
+### check_inbox - Read Incoming Emails
+
+Reads Maildir at `/var/mail/b-haven.org/yolo/new/`.
+
+```json
+{
+  "name": "check_inbox",
+  "arguments": {
+    "mark_read": true
+  }
+}
+```
+
+**Parameters:**
+- `mark_read` (optional): If true, move processed emails from `new/` to `cur/`
+
+### process_inbox_with_response - Full Automation
+
+Complete workflow: read → respond → delete.
+
+```json
+{"name": "process_inbox_with_response", "arguments": {}}
+```
+
+**Process:**
+1. Reads all unread emails
+2. Composes intelligent auto-responses using LLM
+3. Sends responses via sendmail (DKIM signed)
+4. Deletes processed messages
+
+### send_email - Send Custom Email
+
 ```json
 {
   "name": "send_email",
@@ -163,83 +356,139 @@ Full email system for yolo@b-haven.org with DKIM signing via Postfix.
   }
 }
 ```
+
 **Parameters:**
-- `to` (optional): Recipient email (default: scott@stg.net)
-- `subject` (required): Email subject line
+- `to` (optional): Recipient (default: scott@stg.net)
+- `subject` (required): Email subject
 - `body` (required): Email content
 
-**How it works:** Uses `/usr/sbin/sendmail` for local delivery. Postfix automatically signs with DKIM. No SMTP authentication required!
-
 ### send_report - Send Progress Report
-Convenience wrapper for reporting to scott@stg.net.
+
+Convenience wrapper for reports to scott@stg.net.
+
 ```json
 {
-  "name": "send_report", 
+  "name": "send_report",
   "arguments": {
     "subject": "Weekly Update",
-    "body": "Completed tasks: 1, 2, 3\n\nNext steps: A, B, C"
+    "body": "Completed: A, B, C\n\nNext: D, E"
   }
 }
 ```
 
-### check_inbox - Read Incoming Emails
+**Parameters:**
+- `subject` (optional): Report subject (default: "YOLO Progress Report")
+- `body` (required): Report content
+
+See [EMAIL_PROCESSING.md](../EMAIL_PROCESSING.md) for architecture details.
+
+---
+
+## 📋 Task Management
+
+Built-in todo system stored in `.todo.json`.
+
+| Tool | Description | Parameters |
+|------|---|--------|
+| `add_todo` | Add new task | `title` (required) |
+| `complete_todo` | Mark as done | `title` (required) |
+| `delete_todo` | Remove entirely | `title` (required) |
+| `list_todos` | View all tasks | (none) |
+
+### Examples
+
+```json
+// Add task
+{
+  "name": "add_todo",
+  "arguments": {
+    "title": "Fix race condition in session manager"
+  }
+}
+
+// Complete task
+{
+  "name": "complete_todo",
+  "arguments": {"title": "Add unit tests for email package"}
+}
+
+// List all tasks (pending and completed)
+{"name": "list_todos", "arguments": {}}
+```
+
+---
+
+## 🌍 Web Page Reading
+
+Read webpage content (HTML converted to plain text).
+
+### read_webpage
+
 ```json
 {
-  "name": "check_inbox",
+  "name": "read_webpage",
   "arguments": {
-    "mark_read": true
+    "url": "https://example.com/documentation"
   }
 }
 ```
+
 **Parameters:**
-- `mark_read` (optional): If true, move processed emails from `new/` to `cur/`
+- `url` (required): URL to fetch (prefixed with https:// if no scheme)
 
-**How it works:** Reads Maildir at `/var/mail/b-haven.org/yolo/new/`. Parses RFC 2822 format with MIME support for multipart messages.
+**Use Cases:**
+- Read documentation pages
+- Extract article content
+- Check API references
 
-**Example Output:**
+---
+
+## Tool Selection Best Practices
+
+### When to Use Sub-Agents
+
+✅ **Good for:**
+- Independent development tasks
+- Parallel code improvements
+- Self-contained features or fixes
+
+❌ **Not ideal for:**
+- Tasks requiring frequent human input
+- Operations with external side effects
+- Very short/simple operations (just do it directly)
+
+### Email Processing Strategy
+
+1. **Check inbox** at startup in autonomous mode
+2. **Process with response** for full automation (`process_inbox_with_response`)
+3. **Send reports** daily max to scott@stg.net
+4. **Avoid responding** to system logs or bounce messages
+
+### Web Search Strategy
+
+1. Use `web_search` for quick information and documentation
+2. Use `read_webpage` to get full content from specific URLs
+3. Combine both: search → find relevant URL → read page
+
+---
+
+## Error Handling
+
+Most tools return structured results or errors. Check tool output before proceeding with dependent actions.
+
+### Common Patterns
+
+```json
+// Think before complex operations
+{"name": "think", "arguments": {"thought": "Plan approach for X"}}
+
+// List models before switching
+{"name": "list_models", "arguments": {}}
+
+// Check sub-agent status before retrieving result
+{"name": "list_subagents", "arguments": {}}
 ```
-📬 Found 2 new email(s)
-   Moved 2 email(s) to cur/ (marked as read)
-
---- Email 1 of 2 ---
-From: user@example.com
-Subject: Test Message
-Date: Wed, 10 Mar 2026 22:36:27 +0000
-Content-Type: text/plain; charset=utf-8
-
-Body:
-This is the email content...
-```
-
-For more details, see: [EMAIL-SYSTEM.md](./EMAIL-SYSTEM.md) and [EMAIL-OPERATIONS.md](./EMAIL-OPERATIONS.md)
 
 ---
 
-## 💡 Best Practices
-
-1. **Use web_search** before implementing new features to research best practices
-2. **Check Reddit** for community discussions on tools/technologies  
-3. **Leverage gog** for Gmail/Calendar automation tasks
-4. **Use email tools** (send_email/send_report/check_inbox) for communication with scott@stg.net
-5. **Spawn subagents** for parallel independent tasks
-6. **Use think tool** for complex planning before action
-
----
-
-## 📚 External Resources
-
-- **GOG Docs**: https://gogcli.sh
-- **GOG Source**: https://github.com/danielmiessler/gog  
-- **Reddit API**: https://www.reddit.com/dev/api/
-- **Wikipedia API**: https://www.mediawiki.org/wiki/API:Main_page
-
----
-
-## 🔄 Self-Improvement Cycle
-
-YOLO should:
-1. Research new tools via web_search
-2. Read documentation and learn usage patterns
-3. Implement or integrate useful capabilities
-4. Document additions for future use
-5. Repeat continuously
+**Note**: Tool implementations may evolve through YOLO's self-improvement cycle. Always verify current behavior via actual execution or checking source code in `yolo/tools.go`.
