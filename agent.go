@@ -1427,6 +1427,27 @@ func (a *YoloAgent) handleCommand(cmd string) {
 			cprint(Red, "  Usage: /debug [on|off]")
 		}
 
+	case "/auto":
+		switch strings.ToLower(strings.TrimSpace(arg)) {
+		case "on":
+			a.config.SetAutoMode(true)
+			cprint(Green, "  Autonomous mode enabled — YOLO will operate without user input")
+		case "off":
+			a.config.SetAutoMode(false)
+			cprint(Yellow, "  Autonomous mode disabled — waiting for user input")
+		case "":
+			// Toggle
+			current := a.config.GetAutoMode()
+			a.config.SetAutoMode(!current)
+			if !current {
+				cprint(Green, "  Autonomous mode enabled — YOLO will operate without user input")
+			} else {
+				cprint(Yellow, "  Autonomous mode disabled — waiting for user input")
+			}
+		default:
+			cprint(Red, "  Usage: /auto [on|off]")
+		}
+
 	case "/model":
 		cprint(Cyan, fmt.Sprintf("  Model: %s", a.config.GetModel()))
 
@@ -1658,12 +1679,11 @@ func (a *YoloAgent) Run() {
 			}
 
 		case <-time.After(100 * time.Millisecond):
-			// No user input — immediately enter autonomous thinking
-			// (the agent is always thinking unless spoken to)
+			// Only enter autonomous thinking if auto mode is enabled
 			a.inputMgr.mu.Lock()
 			bufEmpty := len(a.inputMgr.buf) == 0
 			a.inputMgr.mu.Unlock()
-			if bufEmpty {
+			if bufEmpty && a.config.GetAutoMode() {
 				a.inputMgr.ClearLine()
 
 				a.mu.Lock()

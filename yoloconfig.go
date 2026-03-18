@@ -20,6 +20,7 @@ type YoloConfigData struct {
 	Model        string `json:"model,omitempty"`         // currently selected Ollama model
 	TerminalMode bool   `json:"terminal_mode,omitempty"` // true = classic split-screen UI; false (default) = buffer mode
 	DebugMode    *bool  `json:"debug_mode,omitempty"`    // false (default) = cleaner output; true = show full tool args/results verbatim
+	AutoMode     *bool  `json:"auto_mode,omitempty"`     // false (default) = wait for user input; true = enable autonomous mode
 }
 
 // YoloConfig owns the in-memory config and handles reading/writing to disk.
@@ -122,6 +123,25 @@ func (c *YoloConfig) GetDebugMode() bool {
 func (c *YoloConfig) SetDebugMode(enabled bool) {
 	c.mu.Lock()
 	c.Data.DebugMode = &enabled
+	c.mu.Unlock()
+	c.Save()
+}
+
+// GetAutoMode returns whether autonomous mode is enabled. Defaults to false
+// when not explicitly set, requiring user input for operation.
+func (c *YoloConfig) GetAutoMode() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.Data.AutoMode == nil {
+		return false // default off
+	}
+	return *c.Data.AutoMode
+}
+
+// SetAutoMode updates the auto mode setting and persists to disk.
+func (c *YoloConfig) SetAutoMode(enabled bool) {
+	c.mu.Lock()
+	c.Data.AutoMode = &enabled
 	c.mu.Unlock()
 	c.Save()
 }
