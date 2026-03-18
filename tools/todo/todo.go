@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"yolo/errors"
 	"yolo/utils"
 )
 
@@ -113,23 +114,18 @@ func (t *TodoList) Save() error {
 // validateTitle checks that a title is non-empty, within length limits,
 // and not a duplicate of an existing pending todo.
 func (t *TodoList) validateTitle(title string) error {
-	errs := map[string]string{}
-
 	trimmed := strings.TrimSpace(title)
 	if trimmed == "" {
-		errs["title"] = "cannot be empty"
-		return fmt.Errorf("validation failed: title %s", errs["title"])
+		return &errors.TodoValidationError{Field: "title", Title: title, Errors: map[string]string{"title": "cannot be empty"}}
 	}
 	if len(trimmed) > maxTitleLength {
-		errs["title"] = fmt.Sprintf("exceeds maximum length of %d characters", maxTitleLength)
-		return fmt.Errorf("validation failed: title %s", errs["title"])
+		return &errors.TodoValidationError{Field: "title", Title: title, Errors: map[string]string{"title": fmt.Sprintf("exceeds maximum length of %d characters", maxTitleLength)}}
 	}
 
 	// Check for duplicates among pending todos (caller must hold at least RLock)
 	for _, todo := range t.todos {
 		if !todo.Done && strings.EqualFold(todo.Title, trimmed) {
-			errs["title"] = "duplicate of existing pending todo"
-			return fmt.Errorf("validation failed: title %s", errs["title"])
+			return &errors.TodoValidationError{Field: "title", Title: title, Errors: map[string]string{"title": "duplicate of existing pending todo"}}
 		}
 	}
 
@@ -298,12 +294,12 @@ func (t *TodoList) BatchAdd(titles []string) ([]TodoItem, []error) {
 	defer t.mu.Unlock()
 
 	results := make([]TodoItem, 0, len(titles))
-	errors := make([]error, 0, len(titles))
+	batchErrors := make([]error, 0, len(titles))
 
 	for _, title := range titles {
 		trimmed := strings.TrimSpace(title)
 		if err := t.validateTitle(trimmed); err != nil {
-			errors = append(errors, fmt.Errorf("adding %q: %w", trimmed, err))
+			batchErrors = append(batchErrors, fmt.Errorf("adding %q: %w", trimmed, err))
 			continue
 		}
 
@@ -319,7 +315,7 @@ func (t *TodoList) BatchAdd(titles []string) ([]TodoItem, []error) {
 		t.saveLocked()
 	}
 
-	return results, errors
+	return results, batchErrors
 }
 
 // FormatPendingTodos returns a formatted string of pending todos for display.
