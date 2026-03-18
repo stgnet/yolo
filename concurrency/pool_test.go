@@ -515,7 +515,7 @@ func TestParallelExecutor(t *testing.T) {
 		executor := NewParallelExecutor(2)
 
 		var started int32
-		
+
 		// Submit tasks directly from test goroutine (no concurrent submission)
 		for i := 0; i < 10; i++ {
 			executor.Submit(func(ctx context.Context) error {
@@ -531,7 +531,7 @@ func TestParallelExecutor(t *testing.T) {
 
 		// Wait for some tasks to start
 		time.Sleep(10 * time.Millisecond)
-		
+
 		// Cancel all remaining tasks
 		executor.Cancel()
 

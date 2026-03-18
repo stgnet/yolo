@@ -165,10 +165,10 @@ func (p *PlaywrightMCP) ClickElement(ctx context.Context, url, selector string, 
 	time.Sleep(500 * time.Millisecond)
 
 	result := &PlaywrightResult{
-		URL:  resp.URL(),
+		URL:   resp.URL(),
 		Title: "",
-		Text: "",
-		HTML: "",
+		Text:  "",
+		HTML:  "",
 	}
 
 	title, err := page.Title()
@@ -225,10 +225,10 @@ func (p *PlaywrightMCP) FillForm(ctx context.Context, url string, fields map[str
 	time.Sleep(1 * time.Second)
 
 	result := &PlaywrightResult{
-		URL:  resp.URL(),
+		URL:   resp.URL(),
 		Title: "",
-		Text: "",
-		HTML: "",
+		Text:  "",
+		HTML:  "",
 	}
 
 	title, err := page.Title()

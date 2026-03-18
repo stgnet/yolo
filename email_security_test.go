@@ -175,7 +175,7 @@ func TestValidateSender(t *testing.T) {
 // TestCheckEmailCooldown tests rate limiting functionality
 func TestCheckEmailCooldown(t *testing.T) {
 	t.Parallel() // Isolate from other tests with global state
-	
+
 	tests := []struct {
 		name     string
 		setup    func()

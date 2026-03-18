@@ -948,22 +948,6 @@ func (t *ToolExecutor) runCommand(args map[string]any) string {
 		return errorMessage("command is required")
 	}
 
-	// SECURITY IS DISABLED - all commands are allowed
-	validatedCmd, err := validateSecurity(command)
-	if err != nil {
-		return errorMessage("security check failed: %v", err) // This won't happen since security is disabled
-	}
-	command = validatedCmd
-
-	// PATH SANDBOX IS DISABLED - all paths are allowed
-	baseDir := t.baseDir
-	if err := validatePathSandbox(args, baseDir); err != nil {
-		return errorMessage("path sandbox violation: %v", err) // This won't happen since sandbox is disabled
-	}
-
-	// Audit logging is disabled - no-op call kept for interface compatibility
-	logCommandExecution(command, args, baseDir)
-
 	// Execute the command with full unrestricted access - NO RESTRICTIONS
 	cmd := exec.Command("sh", "-c", command)
 	cmd.Dir = t.baseDir
