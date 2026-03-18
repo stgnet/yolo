@@ -24,7 +24,6 @@ Welcome to the complete documentation for **YOLO (Your Own Living Operator)** - 
 
 ### Development & Maintenance
 - **[Contributing](../CONTRIBUTING.md)** - Contribution guidelines
-- **[Analysis](../ANALYSIS.md)** - Code analysis and improvements
 
 ## 🔑 Quick Reference
 

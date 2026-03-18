@@ -1,173 +1,174 @@
 package playwright
 
 import (
-	"context"
 	"testing"
 	"time"
 )
 
-// TestPlaywright_SkipExternalTests skips tests requiring browser driver
-func TestPlaywright_SkipExternalTests(t *testing.T) {
-	t.Skip("Skipping Playwright tests - requires browser driver installation and external network access")
+// TestNewPlaywrightMCPSkip skips the test that requires external browser driver
+func TestNewPlaywrightMCPSkip(t *testing.T) {
+	t.Skip("Skipping PlaywrightMCP constructor test - requires browser drivers to be installed")
 }
 
-// TestPlaywrightMCP_Constructor tests the constructor parameters
-func TestPlaywrightMCP_Constructor(t *testing.T) {
+// TestBoolPtr tests the helper function for bool pointers
+func TestBoolPtr(t *testing.T) {
 	tests := []struct {
-		name        string
-		headless    bool
-		timeout     time.Duration
-		screenshotDir string
+		name     string
+		input    bool
+		expected *bool
 	}{
-		{"Headless mode", true, 5000*time.Millisecond, "/tmp/screenshots"},
-		{"Non-headless mode", false, 10000*time.Millisecond, ""},
+		{"true value", true, func() *bool { v := true; return &v }()},
+		{"false value", false, func() *bool { v := false; return &v }()},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Test that we can at least validate parameters
-			// Actual construction requires browser driver which may not be available
-			
-			if tt.timeout <= 0 {
-				t.Error("Timeout should be positive")
+			result := boolPtr(tt.input)
+			if result == nil {
+				t.Fatal("Expected non-nil pointer")
 			}
-			
-			if tt.headless {
-				t.Log("Headless mode configured for CI environments")
+			if *result != tt.input {
+				t.Errorf("Expected %v, got %v", tt.input, *result)
 			}
 		})
 	}
 }
 
-// TestBrowserAction_Validation tests browser action configuration
-func TestBrowserAction_Validation(t *testing.T) {
-	tests := []struct {
-		name    string
-		action  BrowserAction
-		timeout time.Duration
-	}{
-		{"Default timeout", BrowserAction{Timeout: 5000 * time.Millisecond}, 5000 * time.Millisecond},
-		{"Large timeout", BrowserAction{Timeout: 30000 * time.Millisecond}, 30000 * time.Millisecond},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.action.Timeout != tt.timeout {
-				t.Errorf("Expected timeout %v, got %v", tt.timeout, tt.action.Timeout)
-			}
-		})
-	}
-}
-
-// TestPlaywrightResult_Structure tests result structure fields
-func TestPlaywrightResult_Structure(t *testing.T) {
+// TestPlaywrightResultError tests error result creation
+func TestPlaywrightResultError(t *testing.T) {
+	err := "test error"
 	result := &PlaywrightResult{
-		Title:      "Test Page",
-		URL:        "https://example.com",
-		Text:       "<!DOCTYPE html><html>...</html>",
-		HTML:       "<body>Content</body>",
-		Screenshot: "/tmp/screenshot.png",
-		Error:      "",
-		Caption:    "Page loaded successfully",
+		Error: err,
+	}
+
+	if result.Error != err {
+		t.Errorf("Expected error %q, got %q", err, result.Error)
+	}
+	if result.Title != "" {
+		t.Error("Expected empty title")
+	}
+	if result.URL != "" {
+		t.Error("Expected empty URL")
+	}
+}
+
+// TestPlaywrightResultSuccess tests successful result creation
+func TestPlaywrightResultSuccess(t *testing.T) {
+	result := &PlaywrightResult{
+		Title:  "Test Page",
+		URL:    "https://example.com",
+		Text:   "Sample text",
+		Caption: "A test caption",
 	}
 
 	if result.Title != "Test Page" {
-		t.Errorf("Expected Title 'Test Page', got %q", result.Title)
+		t.Errorf("Expected title 'Test Page', got %q", result.Title)
 	}
-
 	if result.URL != "https://example.com" {
 		t.Errorf("Expected URL 'https://example.com', got %q", result.URL)
 	}
+}
 
-	if result.Error != "" {
-		t.Errorf("Expected empty Error, got %q", result.Error)
+// TestBrowserActionDefaults tests BrowserAction with default values
+func TestBrowserActionDefaults(t *testing.T) {
+	action := BrowserAction{}
+
+	if action.Timeout != 0 {
+		t.Errorf("Expected default timeout to be 0, got %v", action.Timeout)
+	}
+	if action.ScreenShot != false {
+		t.Error("Expected default ScreenShot to be false")
+	}
+	if action.OutputDir != "" {
+		t.Error("Expected default OutputDir to be empty")
 	}
 }
 
-// TestContextCancellation tests context handling
-func TestContextCancellation(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
+// TestBrowserActionWithOptions tests BrowserAction with custom options
+func TestBrowserActionWithOptions(t *testing.T) {
+	timeout := 10 * time.Second
+	outputDir := "/tmp/test"
+	action := BrowserAction{
+		Timeout:   timeout,
+		ScreenShot: true,
+		OutputDir: outputDir,
+	}
 
-	done := make(chan bool)
-	go func() {
-		<-ctx.Done()
-		done <- true
-	}()
-
-	select {
-	case <-done:
-		t.Log("Context cancelled as expected")
-	case <-time.After(500 * time.Millisecond):
-		t.Error("Context should have been cancelled by timeout")
+	if action.Timeout != timeout {
+		t.Errorf("Expected timeout %v, got %v", timeout, action.Timeout)
+	}
+	if !action.ScreenShot {
+		t.Error("Expected ScreenShot to be true")
+	}
+	if action.OutputDir != outputDir {
+		t.Errorf("Expected OutputDir %q, got %q", outputDir, action.OutputDir)
 	}
 }
 
-// TestTimeoutValues tests various timeout configurations
-func TestTimeoutValues(t *testing.T) {
-	tests := []struct {
-		name  string
-		value time.Duration
-		valid bool
-	}{
-		{"Small timeout", 1000 * time.Millisecond, true},
-		{"Default timeout", 5000 * time.Millisecond, true},
-		{"Large timeout", 30000 * time.Millisecond, true},
-		{"Zero timeout", 0, false},
-		{"Negative timeout", -1000 * time.Millisecond, false},
+// TestPlaywrightMCPFields tests PlaywrightMCP struct field initialization
+func TestPlaywrightMCPFields(t *testing.T) {
+	// We can't fully initialize the struct without a real playwright instance,
+	// but we can verify the fields exist and have expected types
+	mcp := &PlaywrightMCP{
+		headless:      true,
+		timeout:       30 * time.Second,
+		screenShotDir: "/tmp/screenshots",
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			timeout := tt.value
-			
-			if timeout <= 0 && tt.valid {
-				t.Errorf("Timeout %v should be invalid", timeout)
-			}
-			
-			if timeout > 0 && !tt.valid {
-				t.Errorf("Timeout %v should be valid", timeout)
-			}
-		})
+	if !mcp.headless {
+		t.Error("Expected headless to be true")
+	}
+	if mcp.timeout != 30*time.Second {
+		t.Errorf("Expected timeout %v, got %v", 30*time.Second, mcp.timeout)
+	}
+	if mcp.screenShotDir != "/tmp/screenshots" {
+		t.Errorf("Expected screenShotDir %q, got %q", "/tmp/screenshots", mcp.screenShotDir)
 	}
 }
 
-// TestBoolPtr tests the bool pointer helper function
-func TestBoolPtr(t *testing.T) {
-	trueVal := true
-	falseVal := false
+// TestPlaywrightMCPZeroValues tests PlaywrightMCP with zero values
+func TestPlaywrightMCPZeroValues(t *testing.T) {
+	mcp := &PlaywrightMCP{}
 
-	if boolPtr(trueVal) == nil || *boolPtr(trueVal) != true {
-		t.Error("boolPtr(true) should return pointer to true")
+	if mcp.headless != false {
+		t.Error("Expected default headless to be false")
 	}
-
-	if boolPtr(falseVal) == nil || *boolPtr(falseVal) != false {
-		t.Error("boolPtr(false) should return pointer to false")
+	if mcp.timeout != 0 {
+		t.Errorf("Expected default timeout to be 0, got %v", mcp.timeout)
+	}
+	if mcp.screenShotDir != "" {
+		t.Errorf("Expected default screenShotDir to be empty, got %q", mcp.screenShotDir)
 	}
 }
 
-// TestScreenshotDirectory tests screenshot directory handling
-func TestScreenshotDirectory(t *testing.T) {
-	tests := []struct {
-		name  string
-		dir   string
-		want  string
-	}{
-		{"Empty directory", "", "./screenshots"},
-		{"Custom directory", "/tmp/screenshots", "/tmp/screenshots"},
-		{"Relative path", "test/screenshots", "test/screenshots"},
+// TestPlaywrightResultElements tests the elements field in result
+func TestPlaywrightResultElements(t *testing.T) {
+	elements := []map[string]string{
+		{"tag": "div", "class": "container"},
+		{"tag": "span", "id": "title"},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			resultDir := tt.dir
-			if resultDir == "" {
-				resultDir = "./screenshots"
-			}
-			
-			if resultDir != tt.want {
-				t.Errorf("Expected %q, got %q", tt.want, resultDir)
-			}
-		})
+	result := &PlaywrightResult{
+		Elements: elements,
+	}
+
+	if len(result.Elements) != 2 {
+		t.Errorf("Expected 2 elements, got %d", len(result.Elements))
+	}
+	if result.Elements[0]["tag"] != "div" {
+		t.Errorf("Expected first element tag 'div', got %q", result.Elements[0]["tag"])
+	}
+}
+
+// TestPlaywrightResultWithScreenshot tests result with screenshot path
+func TestPlaywrightResultWithScreenshot(t *testing.T) {
+	screenshotPath := "/tmp/test.png"
+	result := &PlaywrightResult{
+		Screenshot: screenshotPath,
+		Title:      "Test Page",
+	}
+
+	if result.Screenshot != screenshotPath {
+		t.Errorf("Expected screenshot path %q, got %q", screenshotPath, result.Screenshot)
 	}
 }
