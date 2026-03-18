@@ -127,8 +127,8 @@ func TestGenerateSafeAIResponseWithLongContent(t *testing.T) {
 	response := generateSafeAIResponse(email)
 
 	// Response should still contain basic structure
-	if !strings.Contains(response, "I've received your message") {
-		t.Errorf("Response missing expected content structure")
+	if !strings.Contains(response, "Thank you for your message") {
+		t.Errorf("Response missing expected content structure: %s", response)
 	}
 }
 
