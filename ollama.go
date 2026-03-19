@@ -610,12 +610,14 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 	contentText := strings.Join(contentParts, "")
 	thinkingText := strings.Join(thinkingParts, "")
 	
-	// Log for debugging empty responses
+	// Log for debugging empty responses - both to terminal and syslog
 	if contentText == "" && thinkingText != "" {
 		fmt.Printf("[OLLAMA DEBUG] ContentText is empty but ThinkingText has %d bytes\n", len(thinkingText))
 		fmt.Printf("[OLLAMA DEBUG] Thinking preview: %.200s\n", thinkingText)
+		fmt.Printf("[WARN] Ollama returned empty ContentText but ThinkingText has %d bytes - using ThinkingText as fallback\n", len(thinkingText))
 	} else if contentText == "" && thinkingText == "" {
 		fmt.Printf("[OLLAMA DEBUG] Both ContentText and ThinkingText are empty\n")
+		fmt.Printf("[ERROR] Ollama returned both empty ContentText and ThinkingText - model may be failing to generate responses\n")
 	}
 	
 	displayText := contentText
