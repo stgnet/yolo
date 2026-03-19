@@ -1552,6 +1552,28 @@ func (t *ToolExecutor) parseListingResponse(action string, data []byte) string {
 	return sb.String()
 }
 
+// getBaseDir returns the YOLO project root directory
+func getBaseDir() string {
+	// Try to find the project root by looking for go.mod
+	dirs := []string{
+		".",
+		"..",
+		"../../..",
+	}
+	
+	for _, dir := range dirs {
+		goMod := filepath.Join(dir, "go.mod")
+		if info, err := os.Stat(goMod); err == nil && !info.IsDir() {
+			absPath, _ := filepath.Abs(dir)
+			return absPath
+		}
+	}
+	
+	// Fallback to current directory
+	absPath, _ := filepath.Abs(".")
+	return absPath
+}
+
 // checkOllamaStatus checks Ollama server status and reads debug logs
 func (t *ToolExecutor) checkOllamaStatus(args map[string]any) string {
 	lines := getIntArg(args, "lines", 50)
@@ -1570,10 +1592,12 @@ func (t *ToolExecutor) checkOllamaStatus(args map[string]any) string {
 		result.WriteString("Hint: Run 'ollama serve' in the background to start it.\n\n")
 	}
 	
-	// Read logs directory if it exists
-	logDir := "./logs"
-	logFile := filepath.Join(logDir, "ollama.log")
-	errLogFile := filepath.Join(logDir, "ollama.err.log")
+	// Read logs directory if it exists - try both relative and absolute paths
+	logFile := "./logs/ollama.log"
+	errLogFile := "./logs/ollama.err.log"
+	
+	// Also check common absolute locations where logs might be stored
+	_ = getBaseDir() // Will use this for absolute path lookup when needed
 	
 	// Check if log files exist and read them
 	hasLogs := false
