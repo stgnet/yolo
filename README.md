@@ -244,7 +244,7 @@ curl http://localhost:11434/api/generate -d '{"model":"qwen3.5:27b","prompt":"te
 
 **Verbose [OLLAMA DEBUG] messages appearing in terminal:**
 
-The `OLLAMA_DEBUG` environment variable causes Ollama to output debug logs. If you're seeing these, you have three options:
+The `OLLAMA_DEBUG` environment variable causes Ollama to output debug logs directly to your terminal. To capture these logs so YOLO can read them for self-diagnosis:
 
 ```bash
 # Option 1: Disable debug mode (recommended for normal use)
@@ -252,18 +252,31 @@ unset OLLAMA_DEBUG
 # or
 export OLLAMA_DEBUG=0
 
-# Option 2: Use the YOLO script with logging enabled (best for debugging)
-./scripts/yolo-ollama-start.sh --log
+# Option 2: Enable YOLO-managed logging (best for debugging)
+# Set either of these before starting YOLO, and it will automatically:
+#   - Stop any existing ollama process
+#   - Restart ollama with output redirected to log files
+#   - Make logs readable via check_ollama_status tool
+export OLLAMA_DEBUG=1    # Enables ollama's verbose debug output
+export YOLO_OLLAMA_LOG=1 # Tells YOLO to redirect output to files
 
-# Then monitor logs in real-time:
-tail -f logs/ollama.log
+# Then start/restart YOLO
+./yolo
 
-# Option 3: Let YOLO read the logs automatically
-# If you have logs/ollama.log, YOLO can check Ollama status using:
-# Tool: check_ollama_status(lines=50)  # Reads last 50 lines from log file
+# Logs will be written to:
+#   - logs/ollama.log      (stdout)
+#   - logs/ollama.err.log  (stderr, includes [OLLAMA DEBUG] messages)
+
+# Monitor logs in real-time:
+tail -f logs/ollama.err.log
+
+# YOLO can automatically check Ollama health by calling:
+# Tool: check_ollama_status(lines=50)  # Reads last 50 lines from log files
 ```
 
-**Why this changed:** YOLO no longer automatically restarts your Ollama server at startup. You now have full control over how Ollama is configured and run. This prevents accidental interruptions to your development workflow.
+**How it works:** When you set `OLLAMA_DEBUG=1` or `YOLO_OLLAMA_LOG=1`, YOLO detects this at startup and automatically restarts the Ollama server with output redirected to log files. This allows YOLO to read the logs using the `check_ollama_status` tool for self-diagnosis of connection issues, timeouts, and other problems.
+
+**Why this approach:** Logging to files instead of your terminal keeps your screen clean while still capturing all debug information. YOLO can then autonomously diagnose Ollama-related issues by reading these logs.
 
 **Build fails:**
 ```bash

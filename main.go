@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
 
 	"golang.org/x/term"
 )
@@ -16,12 +15,12 @@ import (
 // ─── Ollama Log Management ────────────────
 
 // setupOllamaLogging ensures ollama is running with output logged to a file.
-// If OLLAMA_DEBUG is set, it redirects ollama to logs/ollama.log so YOLO can read it.
+// If OLLAMA_DEBUG or YOLO_OLLAMA_LOG is set, it redirects ollama to logs/ollama.log so YOLO can read it.
 func setupOllamaLogging() {
-	// Check if OLLAMA_DEBUG is set or if we want logging enabled
-	debugSet := os.Getenv("OLLAMA_DEBUG") != "" || os.Getenv("YOLO_OLLAMA_LOG") == "1"
+	// Check if logging is enabled
+	logEnabled := os.Getenv("YOLO_OLLAMA_LOG") == "1" || os.Getenv("OLLAMA_DEBUG") != ""
 
-	if !debugSet {
+	if !logEnabled {
 		return
 	}
 
@@ -33,48 +32,60 @@ func setupOllamaLogging() {
 	}
 
 	logFile := logDir + "/ollama.log"
+	errLogFile := logDir + "/ollama.err.log"
 
-	// Check if ollama is already running
+	// Always restart ollama with logging when requested
+	// This ensures we capture all output including [OLLAMA DEBUG] messages
 	cmd := exec.Command("pgrep", "-f", "ollama serve")
 	ollamaRunning := cmd.Run() == nil
 
-	if !ollamaRunning {
-		// Ollama not running, start it with logging
-		fmt.Println("Starting ollama server with logging...")
-
-		// Kill any stale ollama processes first
+	if ollamaRunning {
+		fmt.Println("Stopping existing ollama server to enable logging...")
 		exec.Command("pkill", "-f", "ollama serve").Run()
-
-		// Give it a moment to fully stop
-		exec.Command("sleep", "1").Run()
-
-		// Start new ollama with output redirected to log file
-		// We disable debug mode to reduce log noise since we're logging anyway
-		newEnv := os.Environ()
-		for i, env := range newEnv {
-			if strings.HasPrefix(env, "OLLAMA_DEBUG") {
-				newEnv[i] = "OLLAMA_DEBUG=0"
-			}
-		}
-
-		ollamaCmd := exec.Command("nohup", "ollama", "serve")
-		ollamaCmd.Env = newEnv
-		ollamaCmd.Stdout, _ = os.Create(logFile)
-		ollamaCmd.Stderr, _ = os.Create(logFile+".err")
-		ollamaCmd.Start() // Don't block waiting for it
-
-		fmt.Println("Ollama started. Logs will be written to", logFile)
-
-		// Give ollama time to start
-		exec.Command("sleep", "3").Run()
-	} else {
-		// Ollama is already running - we can't redirect its output easily
-		// Just inform the user and suggest they restart manually if needed
-		fmt.Println("Ollama is already running. To enable logging:")
-		fmt.Println("  1. Run: pkill -f 'ollama serve'")
-		fmt.Println("  2. Then run: nohup ollama serve > logs/ollama.log 2>&1 &")
-		fmt.Println("  3. Or restart YOLO after killing ollama to have it auto-start with logging")
+		exec.Command("sleep", "2").Run() // Wait for it to fully stop
 	}
+
+	fmt.Println("Starting ollama server with logging enabled...")
+
+	// Prepare environment - keep OLLAMA_DEBUG if set so we capture those messages
+	newEnv := os.Environ()
+	
+	// Start new ollama with output redirected to log files
+	ollamaCmd := exec.Command("ollama", "serve")
+	ollamaCmd.Env = newEnv
+	
+	// Redirect both stdout and stderr to log files
+	stdoutFile, err := os.Create(logFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Could not create stdout log file: %v\n", err)
+		return
+	}
+	
+	stderrFile, err := os.OpenFile(errLogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Could not create stderr log file: %v\n", err)
+		stdoutFile.Close()
+		return
+	}
+
+	ollamaCmd.Stdout = stdoutFile
+	ollamaCmd.Stderr = stderrFile
+	
+	err = ollamaCmd.Start()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error starting ollama: %v\n", err)
+		stdoutFile.Close()
+		stderrFile.Close()
+		return
+	}
+
+	fmt.Printf("Ollama started with logging enabled.\n")
+	fmt.Printf("  Standard output: %s\n", logFile)
+	fmt.Printf("  Error output: %s\n", errLogFile)
+	fmt.Println("YOLO can now read these logs to diagnose Ollama issues.")
+
+	// Give ollama time to start
+	exec.Command("sleep", "3").Run()
 }
 
 // ─── Entry Point ────────────────
