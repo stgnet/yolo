@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sync"
+	"sync/atomic"
 )
 
 // ─── Configuration ────────────────────────────────────────────────────
@@ -52,25 +54,102 @@ const (
 	DefaultInputDelay = 10
 )
 
+// ─── Configuration ───────────────────────────────────────────────────────
+
+var yoloConfig = &Config{}
+
+// Config holds all mutable configuration with thread-safe access.
+type Config struct {
+	historyFile    atomic.Value // stores string
+	ollamaURL      atomic.Value // stores string
+	numCtxOverride atomic.Value // stores string
+	subagentDir    atomic.Value // stores string
+	fileNameRegex  *regexp.Regexp
+	mu             sync.RWMutex // for future use if needed
+}
+
+// GetHistoryFile returns the current history file path.
+func (c *Config) GetHistoryFile() string {
+	if v, ok := c.historyFile.Load().(string); ok {
+		return v
+	}
+	return filepath.Join(YoloDir, "history.json")
+}
+
+// SetHistoryFile updates the history file path.
+func (c *Config) SetHistoryFile(path string) {
+	c.historyFile.Store(path)
+}
+
+// GetOllamaURL returns the current Ollama API URL.
+func (c *Config) GetOllamaURL() string {
+	if v, ok := c.ollamaURL.Load().(string); ok {
+		return v
+	}
+	return "http://localhost:11434"
+}
+
+// SetOllamaURL updates the Ollama API URL.
+func (c *Config) SetOllamaURL(url string) {
+	c.ollamaURL.Store(url)
+}
+
+// GetNumCtxOverride returns the current context window override.
+func (c *Config) GetNumCtxOverride() string {
+	if v, ok := c.numCtxOverride.Load().(string); ok {
+		return v
+	}
+	return ""
+}
+
+// SetNumCtxOverride updates the context window override.
+func (c *Config) SetNumCtxOverride(val string) {
+	c.numCtxOverride.Store(val)
+}
+
+// GetSubagentDir returns the current subagent directory path.
+func (c *Config) GetSubagentDir() string {
+	if v, ok := c.subagentDir.Load().(string); ok {
+		return v
+	}
+	return filepath.Join(YoloDir, "subagents")
+}
+
+// SetSubagentDir updates the subagent directory path.
+func (c *Config) SetSubagentDir(path string) {
+	c.subagentDir.Store(path)
+}
+
+// GetFileNameRegex returns the file name regex pattern.
+func (c *Config) GetFileNameRegex() *regexp.Regexp {
+	return c.fileNameRegex
+}
+
+// fileNameRegex matches sub-agent result files (agent_1.json, agent_test_123.json, etc.).
+var filePattern = regexp.MustCompile(`agent_(\S+)\.json`)
+
+// Legacy global variables for backward compatibility (deprecated)
 var (
-	// HistoryFile is the default path to the conversation history JSON file.
-	HistoryFile = filepath.Join(YoloDir, "history.json")
-
-	// OllamaURL is the Ollama API base URL, overridable via the OLLAMA_URL
-	// environment variable.
-	OllamaURL = getEnvDefault("OLLAMA_URL", "http://localhost:11434")
-
-	// NumCtxOverride, when non-empty, forces the context-window size sent
-	// to Ollama instead of auto-detecting from the model metadata.
-	NumCtxOverride = os.Getenv("YOLO_NUM_CTX")
-
-	// SubagentDir is the directory where sub-agent result JSON files are
-	// written (one file per spawned sub-agent).
-	SubagentDir = filepath.Join(YoloDir, "subagents")
-
-	// fileNameRegex matches sub-agent result files (agent_1.json, agent_test_123.json, etc.).
-	fileNameRegex = regexp.MustCompile(`agent_(\S+)\.json`)
+	HistoryFile    string
+	OllamaURL      string
+	NumCtxOverride string
+	SubagentDir    string
 )
+
+// Initialize global config with proper atomic values
+func init() {
+	yoloConfig.historyFile.Store(filepath.Join(YoloDir, "history.json"))
+	yoloConfig.ollamaURL.Store(getEnvDefault("OLLAMA_URL", "http://localhost:11434"))
+	yoloConfig.numCtxOverride.Store(os.Getenv("YOLO_NUM_CTX"))
+	yoloConfig.subagentDir.Store(filepath.Join(YoloDir, "subagents"))
+	yoloConfig.fileNameRegex = filePattern
+	
+	// Initialize legacy globals from config after config is ready
+	HistoryFile = yoloConfig.GetHistoryFile()
+	OllamaURL = yoloConfig.GetOllamaURL()
+	NumCtxOverride = yoloConfig.GetNumCtxOverride()
+	SubagentDir = yoloConfig.GetSubagentDir()
+}
 
 // getEnvDefault returns the value of the environment variable key, or
 // fallback if the variable is unset or empty.

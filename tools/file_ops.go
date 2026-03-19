@@ -79,8 +79,8 @@ func (t *MoveFileTool) Execute(ctx context.Context, args map[string]interface{})
 // Helper functions for copy/move operations
 
 func copyFile(source, dest string) error {
-	sourcePath := filepath.Join(config.WorkingDir(), source)
-	destPath := filepath.Join(config.WorkingDir(), dest)
+	sourcePath := filepath.Join(config.GetYoloDir(), source)
+	destPath := filepath.Join(config.GetYoloDir(), dest)
 	
 	// Create destination directory if needed
 	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
@@ -112,8 +112,8 @@ func copyFile(source, dest string) error {
 }
 
 func moveFile(source, dest string) error {
-	sourcePath := filepath.Join(config.WorkingDir(), source)
-	destPath := filepath.Join(config.WorkingDir(), dest)
+	sourcePath := filepath.Join(config.GetYoloDir(), source)
+	destPath := filepath.Join(config.GetYoloDir(), dest)
 	
 	// Copy first
 	if err := copyFile(source, dest); err != nil {

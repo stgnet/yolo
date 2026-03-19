@@ -10,8 +10,9 @@ import (
 func TestFileReadTool(t *testing.T) {
 	tool := &FileReadTool{}
 	
+	// Use README.md from repo root (relative to tools directory)
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
-		"path": "go.mod",
+		"path": "../README.md",
 	})
 	
 	if err != nil {
@@ -184,12 +185,12 @@ func TestListModelsTool(t *testing.T) {
 
 func TestCopyFileTool(t *testing.T) {
 	tool := &CopyFileTool{}
-	source := "go.mod"
+	source := "../go.mod"
 	dest := "test_tools/test_copy_file.go.mod"
 	
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
 		"source": source,
-		"dest": dest,
+		"dest":   dest,
 	})
 	
 	if err != nil {
@@ -202,18 +203,18 @@ func TestCopyFileTool(t *testing.T) {
 	
 	// Cleanup
 	defer func() {
-		_ = executeCommand("rm -f", []string{dest})
+		_ = os.Remove(dest)
 	}()
 }
 
 func TestMoveFileTool(t *testing.T) {
 	tool := &MoveFileTool{}
-	source := "go.mod"
+	source := "../go.mod"
 	dest := "test_tools/test_move_file.go.mod"
 	
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
 		"source": source,
-		"dest": dest,
+		"dest":   dest,
 	})
 	
 	if err != nil {
@@ -224,10 +225,9 @@ func TestMoveFileTool(t *testing.T) {
 		t.Errorf("Expected success, got error: %s", result.Error)
 	}
 	
-	// Move back for cleanup
-	_ = executeCommand("mv", []string{dest, "temp.go.mod"})
+	// Cleanup - remove the moved file
 	defer func() {
-		_ = executeCommand("mv", []string{"temp.go.mod", source})
+		_ = os.Remove(dest)
 	}()
 }
 

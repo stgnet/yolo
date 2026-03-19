@@ -189,6 +189,9 @@ var validTools = []string{
 	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "read_webpage", "learn", "implement", "send_email", "send_report", "check_inbox", "process_inbox_with_response", "add_todo", "complete_todo", "delete_todo", "list_todos", "playwright_mcp",
 }
 
+// fileNameRegex extracts the agent ID from filenames like "agent_1.json"
+var fileNameRegex = regexp.MustCompile(`^agent_(\d+)\.json$`)
+
 // subagentTools is the subset of ollamaTools exposed to sub-agents.
 // Excluded: spawn_subagent (no nesting), list_subagents, read_subagent_result,
 // summarize_subagents, list_models, switch_model, restart, learn,

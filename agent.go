@@ -55,6 +55,7 @@ type YoloAgent struct {
 	pendingHandoffs []*handoffResult   // in-flight background tool executions
 	mu              sync.Mutex         // protects busy, cancelChat, subagentCounter, handoffCounter, pendingHandoffs
 	cancelChat      context.CancelFunc // cancels the in-flight Chat HTTP request
+	yoloCfg         *config.Config     // thread-safe configuration
 }
 
 // cfg is the global configuration instance (temporary during migration).
@@ -83,10 +84,11 @@ func NewYoloAgent() *YoloAgent {
 	a := &YoloAgent{
 		baseDir:    baseDir,
 		scriptPath: execPath,
-		ollama:     NewOllamaClient(cfg.GetOllamaURL()),
-		history:    NewHistoryManager(cfg.GetYoloDir()),
-		config:     NewYoloConfig(cfg.GetYoloDir()),
+		ollama:     NewOllamaClient(cfg.GetOllamaEndpoint()),
+		history:    NewHistoryManager(baseDir),
+		config:     NewYoloConfig(baseDir),
 		running:    true,
+		yoloCfg:    cfg,
 	}
 	a.tools = NewToolExecutor(baseDir, a)
 	return a
