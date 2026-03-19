@@ -16,8 +16,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	"yolo/config"
 )
 
 // EmailMessage represents a parsed email from the mailbox
