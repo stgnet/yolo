@@ -3,15 +3,13 @@ package tools
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 	
-	"yolo/config"
+	"yolo/tools/todo"
 )
 
 // Email-related helpers
@@ -157,75 +155,39 @@ func switchToModel(model string) error {
 
 // Todo helpers
 
-type Todo struct {
-	Title      string    `json:"title"`
-	Created    time.Time `json:"created"`
-	Completed  bool      `json:"completed"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
-}
-
 func addTodoItem(title string) error {
-	todos, err := loadTodos()
-	if err != nil {
-		return err
-	}
-	
-	newTodo := Todo{
-		Title:     title,
-		Created:   time.Now(),
-		Completed: false,
-	}
-	
-	todos = append(todos, newTodo)
-	return saveTodos(todos)
+	_, err := todo.GetGlobalTodoList().Add(title)
+	return err
 }
 
 func completeTodoItem(title string) error {
-	todos, err := loadTodos()
-	if err != nil {
-		return err
+	found, err := todo.GetGlobalTodoList().Complete(title)
+	if !found {
+		return fmt.Errorf("todo not found: %s", title)
 	}
-	
-	for i := range todos {
-		if todos[i].Title == title && !todos[i].Completed {
-			now := time.Now()
-			todos[i].Completed = true
-			todos[i].CompletedAt = &now
-			return saveTodos(todos)
-		}
-	}
-	
-	return fmt.Errorf("todo not found: %s", title)
+	return err
 }
 
 func deleteTodoItem(title string) error {
-	todos, err := loadTodos()
-	if err != nil {
-		return err
+	found, err := todo.GetGlobalTodoList().Delete(title)
+	if !found {
+		return fmt.Errorf("todo not found: %s", title)
 	}
-	
-	for i := range todos {
-		if todos[i].Title == title {
-			todos = append(todos[:i], todos[i+1:]...)
-			return saveTodos(todos)
-		}
-	}
-	
-	return fmt.Errorf("todo not found: %s", title)
+	return err
 }
 
-func listAllTodos() ([]Todo, error) {
-	return loadTodos()
+func listAllTodos() ([]todo.Todo, error) {
+	return todo.GetGlobalTodoList().GetAllTodos(), nil
 }
 
-func formatTodos(todos []Todo) string {
+func formatTodos(todos []todo.Todo) string {
 	var sb strings.Builder
 	
 	pendingCount := 0
 	completedCount := 0
 	
-	for _, todo := range todos {
-		if todo.Completed {
+	for _, t := range todos {
+		if t.Completed {
 			completedCount++
 		} else {
 			pendingCount++
@@ -236,10 +198,10 @@ func formatTodos(todos []Todo) string {
 	
 	if pendingCount > 0 {
 		sb.WriteString("--- PENDING ---\n")
-		for _, todo := range todos {
-			if !todo.Completed {
+		for _, t := range todos {
+			if !t.Completed {
 				sb.WriteString(fmt.Sprintf("- [ ] %s (created: %s)\n", 
-					todo.Title, todo.Created.Format("Jan 2, 2006 3:04PM")))
+					t.Title, t.CreatedAt.Format("Jan 2, 2006 3:04PM")))
 			}
 		}
 		sb.WriteString("\n")
@@ -247,53 +209,15 @@ func formatTodos(todos []Todo) string {
 	
 	if completedCount > 0 {
 		sb.WriteString("--- COMPLETED ---\n")
-		for _, todo := range todos {
-			if todo.Completed {
-				completedStr := "N/A"
-				if todo.CompletedAt != nil {
-					completedStr = todo.CompletedAt.Format("Jan 2, 2006 3:04PM")
-				}
-				sb.WriteString(fmt.Sprintf("- [x] %s (completed: %s)\n", 
-					todo.Title, completedStr))
+		for _, t := range todos {
+			if t.Completed {
+				sb.WriteString(fmt.Sprintf("- [x] %s (created: %s, updated: %s)\n", 
+					t.Title, t.CreatedAt.Format("Jan 2, 2006 3:04PM"), t.UpdatedAt.Format("Jan 2, 2006 3:04PM")))
 			}
 		}
 	}
 	
 	return sb.String()
-}
-
-func loadTodos() ([]Todo, error) {
-	todoPath := filepath.Join(config.WorkingDir(), ".todo.json")
-	
-	data, err := os.ReadFile(todoPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return []Todo{}, nil
-		}
-		return nil, fmt.Errorf("failed to read todos: %w", err)
-	}
-	
-	var todos []Todo
-	if err := json.Unmarshal(data, &todos); err != nil {
-		return nil, fmt.Errorf("failed to parse todos: %w", err)
-	}
-	
-	return todos, nil
-}
-
-func saveTodos(todos []Todo) error {
-	todoPath := filepath.Join(config.WorkingDir(), ".todo.json")
-	
-	data, err := json.MarshalIndent(todos, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to serialize todos: %w", err)
-	}
-	
-	if err := os.WriteFile(todoPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write todos: %w", err)
-	}
-	
-	return nil
 }
 
 // Helper function for running send_command with buffering

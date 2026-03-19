@@ -234,3 +234,13 @@ func (tl *TodoList) SortByCreation() {
 		return tl.todos[i].CreatedAt.Before(tl.todos[j].CreatedAt)
 	})
 }
+
+// GetAllTodos returns a copy of all todos (thread-safe).
+func (tl *TodoList) GetAllTodos() []Todo {
+	tl.mu.RLock()
+	defer tl.mu.RUnlock()
+	
+	result := make([]Todo, len(tl.todos))
+	copy(result, tl.todos)
+	return result
+}
