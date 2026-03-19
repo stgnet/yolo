@@ -117,7 +117,8 @@ func parseEmail(content, filename string) EmailMessage {
 	body := strings.Join(bodyLines, "\n")
 	
 	// Set Content to just the body text (not headers)
-	email.Content = sanitizeEmailField(truncateString(strings.TrimSpace(body), 500))
+	// Preserve newlines in body - only sanitize header fields for security
+	email.Content = truncateString(strings.TrimSpace(body), 500)
 
 	// Now parse headers from the first part of content
 	scanner := bufio.NewScanner(strings.NewReader(content))
