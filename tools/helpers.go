@@ -118,7 +118,8 @@ func parseEmail(content, filename string) EmailMessage {
 	}
 
 	// Set Content to just the body text, preserving newlines
-	email.Content = truncateString(strings.TrimSpace(body.String()), 500)
+	// DO NOT truncate - preserve full email content for proper LLM context and response generation
+	email.Content = strings.TrimSpace(body.String())
 
 	if email.Content == "" {
 		simpleEmail := parseEmailSimple(content, filename)
@@ -162,7 +163,8 @@ func parseEmailSimple(content, filename string) EmailMessage {
 	body := strings.Join(bodyLines, "\n")
 	
 	// Set Content to just the body text (not headers)
-	email.Content = truncateString(strings.TrimSpace(body), 500)
+	// DO NOT truncate - preserve full email content for proper LLM context and response generation
+	email.Content = strings.TrimSpace(body)
 
 	// Now parse headers from the first part of content
 	scanner := bufio.NewScanner(strings.NewReader(content))
