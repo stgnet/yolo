@@ -35,7 +35,7 @@ type YoloConfig struct {
 func NewYoloConfig(yoloDir string) *YoloConfig {
 	return &YoloConfig{
 		yoloDir:    yoloDir,
-		configFile: filepath.Join(yoloDir, "config.json"),
+		configFile: filepath.Join(yoloDir, ".yolo", "config.json"),
 		Data:       YoloConfigData{Version: 1},
 	}
 }
@@ -61,7 +61,7 @@ func (c *YoloConfig) Save() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if err := os.MkdirAll(c.yoloDir, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(c.configFile), 0o755); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
 	}
 	data, err := json.MarshalIndent(c.Data, "", "  ")

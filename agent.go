@@ -84,7 +84,7 @@ func NewYoloAgent() *YoloAgent {
 	a := &YoloAgent{
 		baseDir:    baseDir,
 		scriptPath: execPath,
-		ollama:     NewOllamaClient(cfg.GetOllamaEndpoint()),
+		ollama:     NewOllamaClient(cfg.GetOllamaURL()),
 		history:    NewHistoryManager(baseDir),
 		config:     NewYoloConfig(baseDir),
 		running:    true,
@@ -339,8 +339,8 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 					tcInfo = fmt.Sprintf(" tool_calls=[%s]", strings.Join(names, ", "))
 				}
 				idInfo := ""
-				if m.ToolCallID != "" {
-					idInfo = fmt.Sprintf(" id=%s", m.ToolCallID)
+				if m.ToolName != "" {
+					idInfo = fmt.Sprintf(" tool=%s", m.ToolName)
 				}
 				cprint(Gray, fmt.Sprintf("    [%d] role=%s%s%s: %s", i, m.Role, idInfo, tcInfo, preview))
 			}
@@ -436,10 +436,9 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 
 		// Build proper assistant message with tool_calls
 		var nativeTCs []ToolCall
-		for i, tc := range toolCalls {
+		for _, tc := range toolCalls {
 			argsJSON, _ := json.Marshal(tc.Args)
 			nativeTCs = append(nativeTCs, ToolCall{
-				ID: fmt.Sprintf("call_%d_%d", roundNum, i),
 				Function: ToolCallFunc{
 					Name:      tc.Name,
 					Arguments: json.RawMessage(argsJSON),
@@ -478,7 +477,7 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		// can see the error and adjust before continuing.
 		userInterjected := false
 		fileMutationFailed := false
-		for i, call := range toolCalls {
+		for _, call := range toolCalls {
 			name := call.Name
 			args := call.Args
 			if args == nil {
@@ -494,7 +493,7 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 				roundMsgs = append(roundMsgs, ChatMessage{
 					Role:       "tool",
 					Content:    abortMsg,
-					ToolCallID: fmt.Sprintf("call_%d_%d", roundNum, i),
+					ToolName: name,
 				})
 				toolLog = append(toolLog, toolLogEntry{name: name, args: args, result: abortMsg})
 				continue
@@ -543,9 +542,9 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 				cprint(Gray, fmt.Sprintf("  [debug] Filtered result sent to agent: %s", cleanResult))
 			}
 			roundMsgs = append(roundMsgs, ChatMessage{
-				Role:       "tool",
-				Content:    cleanResult,
-				ToolCallID: fmt.Sprintf("call_%d_%d", roundNum, i),
+				Role:     "tool",
+				Content:  cleanResult,
+				ToolName: name,
 			})
 			toolLog = append(toolLog, toolLogEntry{name: name, args: args, result: cleanResult})
 
@@ -1170,10 +1169,9 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 
 			// Build assistant message with tool_calls
 			var nativeTCs []ToolCall
-			for i, tc := range toolCalls {
+			for _, tc := range toolCalls {
 				argsJSON, _ := json.Marshal(tc.Args)
 				nativeTCs = append(nativeTCs, ToolCall{
-					ID: fmt.Sprintf("sa%d_call_%d_%d", aid, round, i),
 					Function: ToolCallFunc{
 						Name:      tc.Name,
 						Arguments: json.RawMessage(argsJSON),
@@ -1188,7 +1186,7 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 
 			// Execute each tool — abort remaining if a file-mutation tool fails
 			saFileMutationFailed := false
-			for i, call := range toolCalls {
+			for _, call := range toolCalls {
 				args := call.Args
 				if args == nil {
 					args = map[string]any{}
@@ -1201,7 +1199,7 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 					roundMsgs = append(roundMsgs, ChatMessage{
 						Role:       "tool",
 						Content:    abortMsg,
-						ToolCallID: fmt.Sprintf("sa%d_call_%d_%d", aid, round, i),
+						ToolName: call.Name,
 					})
 					continue
 				}
@@ -1230,9 +1228,9 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 
 				cleanResult := filterToolActivityMarkers(resultStr)
 				roundMsgs = append(roundMsgs, ChatMessage{
-					Role:       "tool",
-					Content:    cleanResult,
-					ToolCallID: fmt.Sprintf("sa%d_call_%d_%d", aid, round, i),
+					Role:     "tool",
+					Content:  cleanResult,
+					ToolName: call.Name,
 				})
 
 				if strings.HasPrefix(resultStr, "Error: ") && isFileMutationTool(call.Name) {
