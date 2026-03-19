@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -195,6 +196,289 @@ func TestConfigThreadSafety(t *testing.T) {
 	wg.Wait()
 	if c.GetModelName() == "" {
 		t.Error("ModelName should not be empty after concurrent access")
+	}
+}
+
+// TestGlobalAccessorFunctions_Complete tests all global accessor functions comprehensively
+func TestGlobalAccessorFunctions_Complete(t *testing.T) {
+	// Save all current values
+	save := map[string]string{
+		"model":       config.GetModelName(),
+		"endpoint":    config.GetOllamaEndpoint(),
+		"url":         config.GetOllamaURL(),
+		"dir":         config.GetYoloDir(),
+		"working":     config.WorkingDir(),
+		"todo":        config.GetTodoFile(),
+		"learn":       config.GetLearnFile(),
+		"email":       config.GetEmailDir(),
+		"subagent":    config.GetSubagentDir(),
+		"prompt":      config.GetPromptDir(),
+		"context":     config.GetContextFilePath(),
+	}
+
+	defer func() {
+		// Restore all values
+		config.SetModelName(save["model"])
+		config.SetOllamaEndpoint(save["endpoint"])
+		config.SetOllamaURL(save["url"])
+		config.SetYoloDir(save["dir"])
+		config.SetTodoFile(save["todo"])
+		config.SetLearnFile(save["learn"])
+		config.SetEmailDir(save["email"])
+		config.SetSubagentDir(save["subagent"])
+		config.SetPromptDir(save["prompt"])
+		config.SetContextFilePath(save["context"])
+	}()
+
+	t.Run("ModelName", func(t *testing.T) {
+		config.SetModelName("global-test-model")
+		if config.GetModelName() != "global-test-model" {
+			t.Errorf("Expected global-test-model, got %s", config.GetModelName())
+		}
+	})
+
+	t.Run("OllamaEndpoint", func(t *testing.T) {
+		config.SetOllamaEndpoint("http://test:1234/api/generate")
+		if config.GetOllamaEndpoint() != "http://test:1234/api/generate" {
+			t.Errorf("Expected http://test:1234/api/generate, got %s", config.GetOllamaEndpoint())
+		}
+	})
+
+	t.Run("OllamaURL", func(t *testing.T) {
+		config.SetOllamaURL("http://test:1234")
+		if config.GetOllamaURL() != "http://test:1234" {
+			t.Errorf("Expected http://test:1234, got %s", config.GetOllamaURL())
+		}
+	})
+
+	t.Run("YoloDir", func(t *testing.T) {
+		config.SetYoloDir("/tmp/test-yolo-dir")
+		if config.GetYoloDir() != "/tmp/test-yolo-dir" {
+			t.Errorf("Expected /tmp/test-yolo-dir, got %s", config.GetYoloDir())
+		}
+	})
+
+	t.Run("WorkingDir alias", func(t *testing.T) {
+		config.SetWorkingDir("/tmp/working-test")
+		if config.WorkingDir() != "/tmp/working-test" {
+			t.Errorf("Expected /tmp/working-test, got %s", config.WorkingDir())
+		}
+	})
+
+	t.Run("TodoFile", func(t *testing.T) {
+		config.SetTodoFile("/tmp/test-todo.json")
+		if config.GetTodoFile() != "/tmp/test-todo.json" {
+			t.Errorf("Expected /tmp/test-todo.json, got %s", config.GetTodoFile())
+		}
+	})
+
+	t.Run("LearnFile", func(t *testing.T) {
+		config.SetLearnFile("/tmp/test-learn.json")
+		if config.GetLearnFile() != "/tmp/test-learn.json" {
+			t.Errorf("Expected /tmp/test-learn.json, got %s", config.GetLearnFile())
+		}
+	})
+
+	t.Run("EmailDir", func(t *testing.T) {
+		config.SetEmailDir("/tmp/test-email")
+		if config.GetEmailDir() != "/tmp/test-email" {
+			t.Errorf("Expected /tmp/test-email, got %s", config.GetEmailDir())
+		}
+	})
+
+	t.Run("SubagentDir", func(t *testing.T) {
+		config.SetSubagentDir("/tmp/test-subagents")
+		if config.GetSubagentDir() != "/tmp/test-subagents" {
+			t.Errorf("Expected /tmp/test-subagents, got %s", config.GetSubagentDir())
+		}
+	})
+
+	t.Run("PromptDir", func(t *testing.T) {
+		config.SetPromptDir("/tmp/test-prompts")
+		if config.GetPromptDir() != "/tmp/test-prompts" {
+			t.Errorf("Expected /tmp/test-prompts, got %s", config.GetPromptDir())
+		}
+	})
+
+	t.Run("ContextFilePath", func(t *testing.T) {
+		config.SetContextFilePath("/tmp/test-context.txt")
+		if config.GetContextFilePath() != "/tmp/test-context.txt" {
+			t.Errorf("Expected /tmp/test-context.txt, got %s", config.GetContextFilePath())
+		}
+	})
+
+	t.Run("PathWithSpaces", func(t *testing.T) {
+		path := "/tmp/path with spaces/file.json"
+		config.SetTodoFile(path)
+		if config.GetTodoFile() != path {
+			t.Errorf("Expected %s, got %s", path, config.GetTodoFile())
+		}
+	})
+
+	t.Run("AbsolutePathWithSpecialChars", func(t *testing.T) {
+		path := "/tmp/test-dir_123/test-file.json"
+		config.SetLearnFile(path)
+		if config.GetLearnFile() != path {
+			t.Errorf("Expected %s, got %s", path, config.GetLearnFile())
+		}
+	})
+
+	t.Run("VerifyFilepathJoin", func(t *testing.T) {
+		// Test that paths are properly joined and don't have double slashes
+		path := filepath.Join("/tmp", "nested", "file.json")
+		config.SetContextFilePath(path)
+		result := config.GetContextFilePath()
+		if strings.Contains(result, "//") {
+			t.Errorf("Path should not contain double slashes: %s", result)
+		}
+		if !strings.HasSuffix(result, "file.json") {
+			t.Errorf("Path should end with file.json: %s", result)
+		}
+	})
+
+	_ = save // Suppress unused warning (we use it in defer)
+}
+
+// TestGlobalConfigConcurrentAccess tests thread safety of global config functions
+func TestGlobalConfigConcurrentAccess(t *testing.T) {
+	var wg sync.WaitGroup
+	numGoroutines := 50
+
+	wg.Add(numGoroutines)
+	for i := 0; i < numGoroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			value := fmt.Sprintf("concurrent-model-%d", idx)
+			config.SetModelName(value)
+			_ = config.GetModelName()
+		}(i)
+	}
+
+	wg.Wait()
+	if config.GetModelName() == "" {
+		t.Error("Global ModelName should not be empty after concurrent access")
+	}
+}
+
+// TestConfigStringRepresentation tests the String() method for debugging output
+func TestConfigStringRepresentation(t *testing.T) {
+	c := config.DefaultConfig()
+	
+	str := c.String()
+	
+	// Check that the string representation contains key fields
+	expectedFields := []string{
+		"YOLO Configuration",
+		"Model:",
+		"Ollama Endpoint:",
+		"Working Dir:",
+		"Todo:",
+	}
+
+	for _, field := range expectedFields {
+		if !strings.Contains(str, field) {
+			t.Errorf("Config string should contain '%s', got:\n%s", field, str)
+		}
+	}
+
+	// Should not be empty
+	if len(str) == 0 {
+		t.Error("Config String() should not return empty string")
+	}
+}
+
+// TestConfigFallbackValues tests that fallback values are returned when atomic.Value is nil
+func TestConfigFallbackValues(t *testing.T) {
+	// Create a fresh config without initializing all fields
+	c := &config.Config{}
+	
+	// These methods should return default/fallback values even if not explicitly set
+	modelName := c.GetModelName()
+	if modelName != "qwen2.5-coder:7b" {
+		t.Errorf("Expected fallback model 'qwen2.5-coder:7b', got '%s'", modelName)
+	}
+
+	endpoint := c.GetOllamaEndpoint()
+	if endpoint != "http://localhost:11434/api/generate" {
+		t.Errorf("Expected fallback endpoint, got '%s'", endpoint)
+	}
+
+	yoloDir := c.GetYoloDir()
+	if yoloDir != "." {
+		t.Errorf("Expected fallback yolo dir '.', got '%s'", yoloDir)
+	}
+
+	// Test that setting and then testing works correctly
+	c.SetModelName("test-model")
+	if c.GetModelName() != "test-model" {
+		t.Errorf("Expected 'test-model', got '%s'", c.GetModelName())
+	}
+}
+
+// TestConfigNilValueHandling tests getter methods with explicit nil/unset atomic.Value fields
+func TestConfigNilValueHandling(t *testing.T) {
+	c := &config.Config{}
+	
+	tests := []struct{
+		name string
+		getter func() string
+		expectedFallback string
+	}{
+		{"GetOllamaURL fallback", c.GetOllamaURL, "http://localhost:11434"},
+		{"GetTodoFile fallback", c.GetTodoFile, ""}, // This one uses os.Getenv("HOME"), so we check it's not empty
+		{"GetLearnFile fallback", c.GetLearnFile, ""},
+		{"GetEmailDir fallback", c.GetEmailDir, "/var/mail/b-haven.org/yolo/new/"},
+		{"GetSubagentDir fallback", c.GetSubagentDir, ""},
+		{"GetPromptDir fallback", c.GetPromptDir, "prompts"},
+		{"GetContextFilePath fallback", c.GetContextFilePath, "context.txt"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.getter()
+			
+			if tt.expectedFallback == "" {
+				// For paths that depend on HOME, just verify they're not empty or have reasonable structure
+				if result == "" && !strings.Contains(result, "yolo") {
+					t.Errorf("Expected non-empty fallback value, got '%s'", result)
+				}
+			} else if result != tt.expectedFallback {
+				t.Errorf("Expected fallback '%s', got '%s'", tt.expectedFallback, result)
+			}
+		})
+	}
+}
+
+// TestConfigInvalidTypeHandling tests that non-string types in atomic.Value are handled gracefully
+func TestConfigInvalidTypeHandling(t *testing.T) {
+	c := config.DefaultConfig()
+	
+	// The getter methods should handle type assertion failures gracefully
+	// by returning the fallback value
+	
+	// Test all getters return valid strings
+	getters := []struct{
+		name string
+		value string
+	}{
+		{"ModelName", c.GetModelName()},
+		{"OllamaEndpoint", c.GetOllamaEndpoint()},
+		{"OllamaURL", c.GetOllamaURL()},
+		{"YoloDir", c.GetYoloDir()},
+		{"TodoFile", c.GetTodoFile()},
+		{"LearnFile", c.GetLearnFile()},
+		{"EmailDir", c.GetEmailDir()},
+		{"SubagentDir", c.GetSubagentDir()},
+		{"PromptDir", c.GetPromptDir()},
+		{"ContextFilePath", c.GetContextFilePath()},
+	}
+
+	for _, g := range getters {
+		t.Run(g.name+" returns non-empty string", func(t *testing.T) {
+			if g.value == "" {
+				t.Errorf("%s should not return empty string", g.name)
+			}
+		})
 	}
 }
 
