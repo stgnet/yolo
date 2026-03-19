@@ -43,6 +43,7 @@ type toolExecResult struct {
 type YoloAgent struct {
 	baseDir         string             // working directory; all file operations are relative to this
 	scriptPath      string             // path to the running binary (used for self-restart)
+	binaryModTime   time.Time          // modification time of the binary at startup (for freshness check)
 	ollama          *OllamaClient      // LLM communication
 	history         *HistoryManager    // persistent conversation and evolution log
 	config          *YoloConfig        // persistent configuration (model, etc.)
@@ -81,14 +82,21 @@ func NewYoloAgent() *YoloAgent {
 		}
 	}
 
+	// Track binary modification time for freshness checking
+	binaryModTime := time.Now()
+	if info, err := os.Stat(execPath); err == nil {
+		binaryModTime = info.ModTime()
+	}
+
 	a := &YoloAgent{
-		baseDir:    baseDir,
-		scriptPath: execPath,
-		ollama:     NewOllamaClient(cfg.GetOllamaURL()),
-		history:    NewHistoryManager(baseDir),
-		config:     NewYoloConfig(baseDir),
-		running:    true,
-		yoloCfg:    cfg,
+		baseDir:     baseDir,
+		scriptPath:  execPath,
+		binaryModTime: binaryModTime,
+		ollama:      NewOllamaClient(cfg.GetOllamaURL()),
+		history:     NewHistoryManager(baseDir),
+		config:      NewYoloConfig(baseDir),
+		running:     true,
+		yoloCfg:     cfg,
 	}
 	a.tools = NewToolExecutor(baseDir, a)
 	return a
@@ -130,6 +138,36 @@ func (a *YoloAgent) getSystemPrompt() string {
 	prompt += "\n" + todoContext
 
 	return prompt
+}
+
+// checkBinaryFreshness checks if any .go source files are newer than the binary.
+// If so, it returns a warning message to inject into autonomous mode prompts.
+// It also prints the warning to stdout so the user can see it.
+func (a *YoloAgent) checkBinaryFreshness() string {
+	// Find all .go files in the project
+	goFiles, err := filepath.Glob("*.go")
+	if err != nil {
+		return ""
+	}
+
+	var newerFiles []string
+	for _, file := range goFiles {
+		info, err := os.Stat(file)
+		if err != nil {
+			continue
+		}
+		if info.ModTime().After(a.binaryModTime) {
+			newerFiles = append(newerFiles, file)
+		}
+	}
+
+	if len(newerFiles) > 0 {
+		warning := fmt.Sprintf("⚠️ STALE BINARY DETECTED: Source files are newer than the binary: %s. Code changes have not been compiled. You should compile and restart to apply your changes.", strings.Join(newerFiles, ", "))
+		cprint(Yellow, fmt.Sprintf("\n%s\n", warning))
+		return warning
+	}
+
+	return ""
 }
 
 // restart rebuilds the binary from source and replaces the running process
@@ -290,13 +328,21 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 	}
 
 	if autonomous {
-		a.history.AddMessage("system",
-			"No new user input. You are in autonomous mode. "+
-				"Continue making progress on your own — do NOT ask the user "+
-				"for input or confirmation. Pick the most impactful next task "+
-				"and execute it using tools. Focus on: code quality, bug fixes, "+
-				"tests, self-improvement, or new features. "+
-				"Act decisively. Do the work, then move to the next thing.", nil)
+		// Build the base autonomous message
+		baseMsg := "No new user input. You are in autonomous mode. " +
+			"Continue making progress on your own — do NOT ask the user " +
+			"for input or confirmation. Pick the most impactful next task " +
+			"and execute it using tools. Focus on: code quality, bug fixes, " +
+			"tests, self-improvement, or new features. " +
+			"Act decisively. Do the work, then move to the next thing."
+		
+		// Check if binary is stale and prepend warning if needed
+		freshnessWarning := a.checkBinaryFreshness()
+		if freshnessWarning != "" {
+			baseMsg = freshnessWarning + "\n\n" + baseMsg
+		}
+		
+		a.history.AddMessage("system", baseMsg, nil)
 	}
 
 	// Base context from persistent history
