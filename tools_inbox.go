@@ -6,15 +6,19 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
+
+	"github.com/emersion/go-message/mail"
 )
 
 const (
@@ -83,8 +87,92 @@ func (t *ToolExecutor) checkInbox(args map[string]any) string {
 	return fmt.Sprintf("📧 Found %d email(s):\n\n%s", len(emailList), string(result))
 }
 
-// parseEmail extracts relevant fields from email content with security validation
+// parseEmail extracts relevant fields from email content using proper MIME parsing
 func parseEmail(content, filename string) EmailMessage {
+	email := EmailMessage{
+		Filename:    filename,
+		ContentType: "text/plain",
+		Size:        int64(len(content)),
+	}
+
+	// Parse the email as a MIME message using go-message library
+	reader, err := mail.CreateReader(bytes.NewReader([]byte(content)))
+	if err != nil {
+		log.Printf("Error creating MIME reader for %s: %v - falling back to simple parsing", filename, err)
+		return parseEmailSimple(content, filename)
+	}
+
+	// Extract headers safely with sanitization
+	email.From = sanitizeEmailField(reader.Header.Get("From"))
+	email.Subject = sanitizeEmailField(reader.Header.Get("Subject"))
+	email.Date = sanitizeEmailField(reader.Header.Get("Date"))
+	
+	// Get To addresses
+	toHeader := reader.Header.Get("To")
+	if toHeader != "" {
+		toAddresses := strings.Split(toHeader, ",")
+		for _, addr := range toAddresses {
+			email.To = append(email.To, sanitizeEmailField(strings.TrimSpace(addr)))
+		}
+	}
+
+	// Extract the plain text body using the reader's part iterator
+	var body strings.Builder
+	
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Printf("Error reading part from %s: %v", filename, err)
+			break
+		}
+
+		// Get content type
+		contentType := part.Header.Get("Content-Type")
+		
+		// Skip attachments (application, image types) and HTML if we can get plain text first
+		if strings.HasPrefix(contentType, "application/") || 
+		   strings.HasPrefix(contentType, "image/") {
+			continue
+		}
+
+		if strings.Contains(contentType, "html") {
+			// Skip HTML parts - prefer plain text
+			continue
+		}
+
+		// Read the content of this part (Part has a Body field that is io.Reader)
+		data, err := io.ReadAll(part.Body)
+		if err != nil {
+			log.Printf("Error reading part data from %s: %v", filename, err)
+			continue
+		}
+
+		body.WriteString(string(data))
+		
+		// Stop after finding a text/plain body (first match wins)
+		if strings.HasPrefix(contentType, "text/plain") {
+			break
+		}
+	}
+
+	// Set Content to just the body text, preserving newlines
+	// Only truncate, don't sanitize (sanitization is for headers only)
+	email.Content = truncateString(strings.TrimSpace(body.String()), 500)
+
+	if email.Content == "" {
+		log.Printf("No content extracted from MIME message %s - falling back to simple parsing", filename)
+		simpleEmail := parseEmailSimple(content, filename)
+		email.Content = simpleEmail.Content
+	}
+
+	return email
+}
+
+// parseEmailSimple provides a fallback parser for non-MIME or corrupted emails
+func parseEmailSimple(content, filename string) EmailMessage {
 	email := EmailMessage{
 		Filename:    filename,
 		ContentType: "text/plain",
