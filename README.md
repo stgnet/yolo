@@ -73,7 +73,7 @@ YOLO consists of several key components that work together:
       │           YoloAgent                 │
       │  ┌────────────┬────────────────────┤
       │  │ History    │ ToolExecutor       │
-      │  │ Manager    │  (37 tools)        │
+      │  │ Manager    │  (27 tools)        │
       │  └────────────┴────────────────────┘
       └───────────┬──────────────┬──────────┘
                   │              │
@@ -89,14 +89,14 @@ YOLO consists of several key components that work together:
 
 - **YoloAgent** (`agent.go`): Central orchestrator handling chat loops and commands
 - **OllamaClient** (`ollama.go`): HTTP client for Ollama REST API with streaming support
-- **ToolExecutor** (`tools.go`): Dispatches tool calls to 37 concrete implementations
+- **ToolExecutor** (`tools.go`): Dispatches tool calls to 27 concrete implementations
 - **HistoryManager** (`history.go`): Thread-safe persistence in `.yolo/history.json`
 - **InputManager** (`input.go`): Raw terminal input handling in separate goroutine
 - **TerminalUI** (`terminal.go`): Split-screen layout with scrollable output
 
 ## Tools Reference
 
-YOLO has 37 built-in tools that the LLM can call:
+YOLO has 27 built-in tools that the LLM can call:
 
 ### File Operations
 | Tool | Description |
