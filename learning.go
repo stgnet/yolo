@@ -279,7 +279,7 @@ func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result 
 		}
 
 		// Skip if too short or contains generic patterns
-		if len(content) < 50 || containsGenericPattern(content, genericPatterns) {
+		if len(content) < 40 || containsGenericPattern(content, genericPatterns) {
 			continue
 		}
 
@@ -341,7 +341,7 @@ func (lm *LearningManager) extractCompleteSentences(text string) []string {
 		part = strings.TrimSpace(part)
 
 		// Skip very short fragments or too long (likely multiple sentences)
-		if len(part) < 60 || len(part) > 300 {
+		if len(part) < 40 || len(part) > 350 {
 			continue
 		}
 
@@ -753,11 +753,11 @@ func containsGenericPattern(text string, patterns []string) bool {
 }
 
 // containsActionableContent checks if text has actionable improvement content
+// Uses stricter filtering to reject generic statements and marketing language
 func containsActionableContent(text string) bool {
 	actionableKeywords := []string{
 		"should", "recommend", "best practice", "improve", "optimize",
 		"implement", "use case", "pattern", "solution", "approach",
-		"tip", "trick", "hack", "feature", "enhancement",
 		"consider", "important", "critical", "essential", "necessary",
 		"method", "technique", "strategy", "framework", "architecture",
 		"handle", "manage", "process", "validate", "verify",
@@ -771,14 +771,41 @@ func containsActionableContent(text string) bool {
 		"concurrency", "parallel", "asynchronous", "synchronous",
 		"security", "authentication", "authorization", "encryption",
 		"deployment", "infrastructure", "container", "orchestration",
+		"state management", "context window", "token limit", "rate limiting",
+		"error recovery", "retry logic", "timeout handling", "graceful degradation",
 	}
+	
+	marketingPhrases := []string{
+		"provides features", "designed to optimize", "increase productivity",
+		"setapp", "software suite", "subscription", "platform offers",
+		"ai has also been used", "attempts to make", "workplace safety",
+		"click here", "learn more", "find out", "discover how",
+		"cutting-edge technology", "revolutionary", "game-changing",
+		"state-of-the-art", "next generation", "world-class",
+	}
+	
 	textLower := strings.ToLower(text)
+	actionableCount := 0
+	
 	for _, kw := range actionableKeywords {
 		if strings.Contains(textLower, kw) {
-			return true
+			actionableCount++
 		}
 	}
-	return false
+	
+	// Require at least 1 actionable signal but ensure content length suggests substance
+	if actionableCount < 1 || len(text) < 80 {
+		return false
+	}
+	
+	// Reject if contains marketing language
+	for _, phrase := range marketingPhrases {
+		if strings.Contains(textLower, phrase) {
+			return false
+		}
+	}
+	
+	return true
 }
 
 // removeDuplicateImprovements removes duplicate or near-duplicate improvements

@@ -77,9 +77,14 @@ func (c *HTTPClient) Do(req Request) (*Response, error) {
 
 		lastErr = err
 
-		// Check if we should retry (5xx errors, timeout, connection refused)
+		// Check if we should retry (5xx errors, 429 rate limit, timeout, connection refused)
 		httpErr, isHTTPErr := err.(*HTTPError)
-		if !isHTTPErr || httpErr.Code < 500 {
+		if !isHTTPErr {
+			break
+		}
+
+		// Retry on server errors (5xx) and rate limiting (429)
+		if httpErr.Code != 429 && httpErr.Code < 500 {
 			break
 		}
 
@@ -133,8 +138,23 @@ func (c *HTTPClient) doRequest(req Request, startTime time.Time) (*Response, err
 	if rateLimited {
 		if rt := resp.Header.Get("Retry-After"); rt != "" {
 			retryAfter, _ = time.ParseDuration(rt + "s")
-		} else if retryAfter == 0 {
+		} else {
 			retryAfter = DefaultRetryAfter
+		}
+		
+		// Return error for rate-limited responses to trigger retry logic
+		return nil, &HTTPError{
+			Code:       resp.StatusCode,
+			Message:    fmt.Sprintf("rate limited: %s", string(bodyBytes)),
+			RetryAfter: retryAfter,
+		}
+	}
+
+	if resp.StatusCode >= 500 {
+		return nil, &HTTPError{
+			Code:       resp.StatusCode,
+			Message:    string(bodyBytes),
+			RetryAfter: 0, // No explicit Retry-For for server errors
 		}
 	}
 
