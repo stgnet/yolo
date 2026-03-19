@@ -16,6 +16,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"yolo/config"
 )
 
 // EmailMessage represents a parsed email from the mailbox
@@ -1022,7 +1024,7 @@ func (t *ToolExecutor) runCommand(args map[string]any) string {
 }
 
 func (t *ToolExecutor) listSubagents(args map[string]any) string {
-	files, err := filepath.Glob(filepath.Join(SubagentDir, "agent_*.json"))
+	files, err := filepath.Glob(filepath.Join(cfg.GetSubagentDir(), "agent_*.json"))
 	if err != nil {
 		return errorMessage("could not read subagent directory: %v", err)
 	}
@@ -1072,7 +1074,7 @@ func (t *ToolExecutor) readSubagentResult(args map[string]any) string {
 		return errorMessage("required parameter 'id' is missing")
 	}
 
-	resultFile := filepath.Join(SubagentDir, fmt.Sprintf("agent_%d.json", agentID))
+	resultFile := filepath.Join(cfg.GetSubagentDir(), fmt.Sprintf("agent_%d.json", agentID))
 	data, err := os.ReadFile(resultFile)
 	if err != nil {
 		return errorMessage("could not read subagent result: %v", err)
@@ -1098,7 +1100,7 @@ func (t *ToolExecutor) readSubagentResult(args map[string]any) string {
 }
 
 func (t *ToolExecutor) summarizeSubagents(args map[string]any) string {
-	files, err := filepath.Glob(filepath.Join(SubagentDir, "agent_*.json"))
+	files, err := filepath.Glob(filepath.Join(cfg.GetSubagentDir(), "agent_*.json"))
 	if err != nil {
 		return errorMessage("could not read subagent directory: %v", err)
 	}

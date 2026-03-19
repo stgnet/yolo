@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"yolo/config"
 	"yolo/tools/todo"
 )
 
@@ -56,8 +57,16 @@ type YoloAgent struct {
 	cancelChat      context.CancelFunc // cancels the in-flight Chat HTTP request
 }
 
+// cfg is the global configuration instance (temporary during migration).
+// TODO: Remove this and use dependency injection throughout.
+var cfg *config.Config
+
+func init() {
+	cfg = config.DefaultConfig()
+}
+
 // NewYoloAgent creates an agent rooted in the current working directory
-// and connects to the Ollama instance at OllamaURL.
+// and connects to the Ollama instance at cfg.GetOllamaURL().
 func NewYoloAgent() *YoloAgent {
 	baseDir, _ := os.Getwd()
 	execPath, _ := os.Executable()
@@ -65,7 +74,7 @@ func NewYoloAgent() *YoloAgent {
 	// Clear stale subagent results from any prior run so that
 	// listSubagents/readSubagentResult don't return leftover data and the
 	// monotonic ID counter (starting at 0) doesn't collide with old files.
-	if files, err := filepath.Glob(filepath.Join(SubagentDir, "agent_*.json")); err == nil {
+	if files, err := filepath.Glob(filepath.Join(cfg.GetSubagentDir(), "agent_*.json")); err == nil {
 		for _, f := range files {
 			os.Remove(f)
 		}
@@ -74,9 +83,9 @@ func NewYoloAgent() *YoloAgent {
 	a := &YoloAgent{
 		baseDir:    baseDir,
 		scriptPath: execPath,
-		ollama:     NewOllamaClient(OllamaURL),
-		history:    NewHistoryManager(YoloDir),
-		config:     NewYoloConfig(YoloDir),
+		ollama:     NewOllamaClient(cfg.GetOllamaURL()),
+		history:    NewHistoryManager(cfg.GetYoloDir()),
+		config:     NewYoloConfig(cfg.GetYoloDir()),
 		running:    true,
 	}
 	a.tools = NewToolExecutor(baseDir, a)
@@ -1078,8 +1087,8 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 	if useModel == "" {
 		useModel = a.config.GetModel()
 	}
-	os.MkdirAll(SubagentDir, 0o755)
-	resultFile := filepath.Join(SubagentDir, fmt.Sprintf("agent_%d.json", aid))
+	os.MkdirAll(cfg.GetSubagentDir(), 0o755)
+	resultFile := filepath.Join(cfg.GetSubagentDir(), fmt.Sprintf("agent_%d.json", aid))
 
 	// Write an initial "in-progress" result file so the parent agent can
 	// see that this subagent exists and is still working.
