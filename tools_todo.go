@@ -131,11 +131,31 @@ func (te *ToolExecutor) checkOllamaStatus(args map[string]any) string {
 		return result.String() + "Ollama is not running. YOLO cannot function without Ollama.\n"
 	}
 
-	// Read the log file if it exists
-	logFile := "logs/ollama.log"
-	data, err := os.ReadFile(logFile)
+	// Try multiple log file locations
+	logPaths := []string{
+		"./logs/ollama.log",
+		"/tmp/ollama.log",
+		"./logs/ollama.log.err",
+	}
+
+	var logFile string
+	var data []byte
+	var err error
+
+	for _, path := range logPaths {
+		data, err = os.ReadFile(path)
+		if err == nil {
+			logFile = path
+			break
+		}
+	}
+
 	if err != nil {
-		return result.String() + fmt.Sprintf("Could not read log file %s: %v\n", logFile, err)
+		result.WriteString("Note: No Ollama log file found.\n")
+		result.WriteString("To enable logging:\n")
+		result.WriteString("  1. Set YOLO_OLLAMA_LOG=1 before starting YOLO\n")
+		result.WriteString("  2. Or restart ollama manually with: nohup ollama serve > logs/ollama.log 2>&1 &\n")
+		return result.String()
 	}
 
 	lines := strings.Split(string(data), "\n")
@@ -150,7 +170,7 @@ func (te *ToolExecutor) checkOllamaStatus(args map[string]any) string {
 	var errors []string
 	var warnings []string
 	for i, line := range logLines {
-		if strings.Contains(line, "ERROR") || strings.Contains(line, "error") || strings.Contains(line, "failed") {
+		if strings.Contains(line, "ERROR") || strings.Contains(line, "error") || strings.Contains(line, "failed") || strings.Contains(line, "panic") {
 			errors = append(errors, fmt.Sprintf("Line %d: %s", startIdx+i+1, line))
 		} else if strings.Contains(line, "WARN") || strings.Contains(line, "warning") {
 			warnings = append(warnings, fmt.Sprintf("Line %d: %s", startIdx+i+1, line))
