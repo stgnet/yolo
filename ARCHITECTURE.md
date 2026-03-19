@@ -1,210 +1,153 @@
-# Architecture
+# Architecture Deep Dive
 
-This document describes the internal design of YOLO, how the major components
-interact, and where to find key logic in the source tree.
+This document provides detailed technical specifications for YOLO's internal design and components. For general usage information, see [README.md](README.md).
 
-## High-level overview
+## High-level Architecture
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                      Terminal (raw mode)                  │
-│  ┌──────────────────────┐  ┌───────────────────────────┐ │
-│  │   Output (scrolling) │  │   Input (fixed bottom)    │ │
-│  │   TerminalUI         │  │   InputManager            │ │
-│  └──────────┬───────────┘  └─────────┬─────────────────┘ │
-└─────────────┼────────────────────────┼───────────────────┘
-              │                        │
-              ▼                        ▼
-        ┌───────────────────────────────────┐
-        │            YoloAgent              │
-        │  ┌─────────┐  ┌───────────────┐  │
-        │  │ History  │  │ ToolExecutor  │  │
-        │  │ Manager  │  │  (21 tools)   │  │
-        │  └────┬─────┘  └───────┬───────┘  │
-        │       │                │           │
-        └───────┼────────────────┼───────────┘
-                │                │
-                ▼                ▼
-        ┌──────────────┐  ┌──────────────┐
-        │ .yolo/       │  │ OllamaClient │
-        │ history.json │  │ /api/chat    │
-        │ subagents/   │  │ /api/tags    │
-        └──────────────┘  └──────────────┘
+┌───────────────────────────────────────────┐
+│              Terminal (raw mode)          │
+│  ┌───────────────────────┬───────────────┤
+│  │   Output (scrolling)  │   Input area  │
+│  │   TerminalUI          │   InputManager│
+│  └──────────┬────────────┴───────┬───────┘
+└─────────────┼────────────────────┼────────┘
+              │                    │
+              ▼                    ▼
+      ┌─────────────────────────────────────┐
+      │           YoloAgent                 │
+      │  ┌────────────┬────────────────────┤
+      │  │ History    │ ToolExecutor       │
+      │  │ Manager    │  (21 tools)        │
+      │  └────────────┴────────────────────┘
+      └───────────┬──────────────┬──────────┘
+                  │              │
+                  ▼              ▼
+      ┌──────────────────┐  ┌────────────────┐
+      │ .yolo/          │  │ OllamaClient   │
+      │ history.json    │  │ /api/chat      │
+      │ subagents/      │  │ /api/tags      │
+      └──────────────────┘  └────────────────┘
 ```
 
-## Components
+## Component Specifications
 
 ### YoloAgent (`agent.go`)
 
-The central orchestrator.  `Run()` is the main entry point called from
-`main()`.  It:
+The central orchestrator. `Run()` is the main entry point called from `main()`. It:
 
-1. Loads or creates session history.
-2. Initialises the terminal UI and input manager.
-3. Registers signal handlers (SIGINT for cancel, SIGWINCH for resize).
-4. Enters an event loop that processes user input and autonomous thinking.
+1. Loads or creates session history
+2. Initializes terminal UI and input manager
+3. Registers signal handlers (SIGINT for cancel, SIGWINCH for resize)
+4. Enters event loop processing user input and autonomous thinking
 
-Key methods:
+**Key Methods:**
 
-| Method | Purpose |
-|---|---|
-| `chatWithAgent` | Send a user message (or autonomous prompt) to the LLM. Loops: call LLM, parse tool calls, execute tools, feed results back, repeat until the model produces a text-only reply. |
-| `parseTextToolCalls` | Fallback parser for five text-based tool-call formats when the model doesn't use native `tool_calls`. |
-| `handleCommand` | Process interactive slash commands (`/help`, `/model`, `/clear`, etc.). |
-| `spawnSubagent` | Launch a background goroutine that runs a one-shot LLM call and writes results to `.yolo/subagents/`. |
-| `switchModel` | Validate and switch to a different Ollama model. |
+- `chatWithAgent(msg string, autonomous bool)`: Send message to LLM, loops tool calls until text-only reply
+- `parseTextToolCalls(response string)`: Fallback parser for 5 text-based tool-call formats
+- `handleCommand(cmd string)`: Process `/help`, `/model`, `/clear`, etc.
+- `spawnSubagent(task string, model string)`: Launch background goroutine, returns monotonic ID
+- `switchModel(modelName string)`: Validate and switch active model
 
 ### OllamaClient (`ollama.go`)
 
-HTTP client for the Ollama REST API.
+HTTP client for Ollama REST API with streaming support.
+
+**Endpoints:**
 
 | Method | Endpoint | Purpose |
-|---|---|---|
-| `ListModels` | `GET /api/tags` | Enumerate available models |
-| `GetModelContextLength` | `POST /api/show` | Detect a model's context window size |
-| `Chat` | `POST /api/chat` | Streaming chat completion with tool definitions |
+|------|-|---|--|
+| `ListModels()` | `GET /api/tags` | Enumerate available models |
+| `GetModelContextLength(model string) int` | `POST /api/show` | Detect context window size |
+| `Chat(ctx, model, messages, tools)` | `POST /api/chat` | Streaming chat with tools |
 
-`Chat` reads the response line-by-line, printing display text to the
-terminal as it arrives, and accumulates tool calls for the agent to execute.
+**Streaming Behavior:** Reads response line-by-line, prints display text to terminal as it arrives, accumulates tool calls for agent execution. Handles thinking models with `content.text` vs `content.thinking`.
 
 ### ToolExecutor (`tools.go`)
 
-Dispatches tool calls from the LLM to concrete implementations.  All file
-operations are sandboxed under the working directory via `safePath()`, which
-rejects absolute paths and directory-traversal attempts.
+Dispatches tool calls from LLM to concrete implementations. All file operations sandboxed under working directory via `safePath()` which rejects absolute paths and directory traversal.
 
-The 21 built-in tools:
-
-| Tool | Description |
-|---|---|
-| `read_file` | Read file contents with optional offset/limit |
-| `write_file` | Create or overwrite a file |
-| `edit_file` | First-occurrence string replacement |
-| `list_files` | Glob matching, including recursive `**/` patterns |
-| `search_files` | Regex search across file contents |
-| `run_command` | Execute a shell command (stdin is /dev/null, timeout enforced) |
-| `make_dir` | Create directories recursively |
-| `remove_dir` | Remove a directory tree |
-| `copy_file` | Copy a file, creating destination directories |
-| `move_file` | Move/rename, with cross-filesystem fallback |
-| `spawn_subagent` | Create a background sub-agent |
-| `list_subagents` | List sub-agent statuses |
-| `read_subagent_result` | Retrieve a sub-agent's output |
-| `summarize_subagents` | Aggregate sub-agent statistics |
-| `list_models` | List available Ollama models |
-| `switch_model` | Change the active model |
-| `think` | Record reasoning without side effects |
-| `restart` | Rebuild from source and `exec` the new binary |
-| `reddit` | Fetch Reddit posts (search, subreddit, thread) |
-| `gog` | Google Workspace integration (Gmail, Calendar, Drive) |
-| `web_search` | Search web via DuckDuckGo IA API + Wikipedia with caching |
-
-### web_search details
-
-The `web_search` tool provides intelligent web search with the following features:
-
-- **Primary source**: DuckDuckGo Instant Answer API (`api.duckduckgo.com`) for quick facts and summaries
-- **Fallback**: Wikipedia Search API when DuckDuckGo has no instant answer
-- **Caching**: 5-minute TTL in-memory cache to avoid redundant API calls
-- **Parameters**: `query` (required), `count` (1-10, default: 5)
-
-The DuckDuckGo IA API only returns data for well-known topics with Wikipedia entries. For specific queries without instant answers, the tool automatically falls back to Wikipedia search which provides broader coverage.
-
-Example usage:
-```json
-{
-  "name": "web_search",
-  "arguments": {
-    "query": "go programming language history",
-    "count": 3
-  }
-}
-```
+**Safety Mechanisms:**
+- `safePath(path string)`: Rejects paths starting with `/` or containing `..`
+- Shell commands: stdin=/dev/null, 30s timeout
+- File operations relative to configured working directory only
 
 ### HistoryManager (`history.go`)
 
-Thread-safe persistence layer for conversation messages and evolution events.
-Data is stored as JSON in `.yolo/history.json`.
+Thread-safe persistence layer for conversation messages. Data stored as JSON in `.yolo/history.json`.
 
-- **Atomic writes**: saves to a `.tmp` file then renames.
-- **Corruption recovery**: if the JSON is malformed on load, resets to empty.
-- **Context conversion**: `GetContextMessages` maps internal roles (tool,
-  system) to `user`-role messages with prefixes so the LLM can understand them.
+**Features:**
+- **Atomic writes**: Save to `.tmp` file then rename (prevents corruption on crash)
+- **Corruption recovery**: Malformed JSON resets to empty rather than crashing
+- **Context conversion**: Maps internal roles (tool, system) to prefixed user messages for LLM understanding
+- **Mutex protection**: All reads/writes synchronized via `sync.RWMutex`
 
 ### InputManager (`input.go`)
 
 Handles terminal input in raw mode, running in its own goroutine:
 
-- Reads stdin byte-by-byte.
-- Assembles UTF-8 multi-byte characters from individual bytes.
-- Handles control characters (backspace, Ctrl-C, Ctrl-D, Ctrl-U, Ctrl-W).
-- Consumes ANSI escape sequences (arrow keys, function keys) without leaking
-  bytes into the input buffer.
-- Sends completed lines to the agent via a buffered channel.
+- Reads stdin byte-by-byte
+- Assembles UTF-8 multi-byte characters from individual bytes
+- Handles control chars: backspace, Ctrl-C (cancel), Ctrl-D (EOF), Ctrl-U (clear line), Ctrl-W (delete word)
+- Consumes ANSI escape sequences (arrow keys, function keys) without leaking bytes
+- Sends completed lines to agent via `buffered channel` with input delay (default 10s for multiline paste handling)
 
 ### TerminalUI (`terminal.go`)
 
-Manages a split-screen terminal layout with a dynamically sized bottom area:
+Manages split-screen layout with dynamic bottom area:
 
-- **Output region** (top): scrollable, with word wrapping and ANSI-aware
-  cursor tracking. The scroll region shrinks/grows automatically as the
-  bottom area changes size.
-- **Divider**: a horizontal line labelled `──you──` separating output from
-  the input area. Moves up when the input area grows.
-- **Input area** (bottom): multiline editing buffer. The user types freely,
-  including multiple lines via Enter. Long input expands upward instead of
-  horizontal scrolling. The total bottom area is capped at half the
-  terminal height. After the user presses Enter and pauses for a
-  configurable delay (`DefaultInputDelay`, default 10s), the entire buffer
-  is sent to the agent as one block, preventing pasted multiline text from
-  being split.
+**Output region (top):** Scrollable, word-wrapped, ANSI-aware cursor tracking. Region shrinks/grows as bottom area changes.
 
-Also provides:
-- `cprint` / `cprintNoNL`: colour-aware output helpers.
-- `stripAnsiCodes`: removes ANSI escapes for width calculations.
+**Divider:** Horizontal line labelled `──you──` separating output from input. Moves up when input grows.
+
+**Input area (bottom):** Multiline editing buffer. Expands upward instead of horizontal scroll. Capped at 50% terminal height. After user presses Enter and pauses for configured delay (`DefaultInputDelay`, default 10s), entire buffer sent as one block to prevent multiline paste splitting.
+
+**Helpers:** `cprint`/`cprintNoNL` (colour-aware output), `stripAnsiCodes` (removes escapes for width calculations)
 
 ### Configuration (`config.go`)
 
-Compile-time constants and environment-variable overrides:
+Compile-time constants and environment-variable overrides with thread-safe access:
 
-| Constant | Default | Env var | Purpose |
-|---|---|---|---|
-| `YoloDir` | `.yolo` | — | State directory |
-| `IdleThinkDelay` | 30s | — | Idle time before autonomous thinking |
-| `ThinkLoopDelay` | 120s | — | Interval between think cycles |
-| `MaxContextMessages` | 40 | — | Max messages in LLM context |
-| `CommandTimeout` | 30s | — | Shell command timeout |
-| `DefaultNumCtx` | 8192 | — | Default context window size |
-| `OllamaURL` | `localhost:11434` | `OLLAMA_URL` | Ollama API endpoint |
-| `NumCtxOverride` | (auto) | `YOLO_NUM_CTX` | Force context window size |
+| Variable | Default | Env Var | Purpose | Access Method |
+|----------|----------|-|-|---|
+| `YoloDir` | `.yolo` | — | State directory | `GetYoloDir()` |
+| `IdleThinkDelay` | 30s | — | Idle time before autonomous thinking | `GetIdleThinkDelay()` |
+| `ThinkLoopDelay` | 120s | — | Interval between think cycles | `GetThinkLoopDelay()` |
+| `MaxContextMessages` | 40 | — | Max messages in LLM context | `GetMaxContextMessages()` |
+| `CommandTimeout` | 30s | — | Shell command timeout | `GetCommandTimeout()` |
+| `DefaultNumCtx` | 8192 | — | Default context window size | `GetDefaultNumCtx()` |
+| `OllamaURL` | `localhost:11434` | `OLLAMA_URL` | Ollama API endpoint | `GetOllamaURL()` |
+| `NumCtxOverride` | (auto) | `YOLO_NUM_CTX` | Force context window size | `GetNumCtxOverride()` |
 
-## Data flow
+**Thread Safety:** All configuration uses atomic operations or mutex protection. Initialized via single init() function to prevent race conditions.
 
-### User chat
+## Data Flow Diagrams
+
+### User Chat Flow
 
 ```
 User types "fix the bug in main.go" ──► InputManager.Lines channel
   │
   ▼
-YoloAgent.chatWithAgent("fix the bug in main.go", autonomous=false)
+YoloAgent.chatWithAgent("fix...", autonomous=false)
   │
   ├─► history.AddMessage("user", ...)
   │
-  ├─► Build context: system prompt + last N history messages + round messages
+  ├─► Build context: system prompt + last N history + round messages
   │
   └─► Loop:
       ├─► ollama.Chat(ctx, model, allMsgs, tools)
       │     └─► Streams response to terminal, returns ChatResult
       │
-      ├─► If ChatResult.ToolCalls is non-empty:
+      ├─► If ChatResult.ToolCalls non-empty:
       │     ├─► For each call: tools.Execute(name, args)
       │     ├─► Append tool results to roundMsgs
-      │     └─► Continue loop
+      │     └─► Continue loop with new context
       │
       └─► If no tool calls: save final text to history, exit loop
 ```
 
-### Autonomous thinking
+### Autonomous Thinking Flow
 
 ```
 No user input for IdleThinkDelay seconds
@@ -212,11 +155,12 @@ No user input for IdleThinkDelay seconds
   ▼
 YoloAgent.chatWithAgent("", autonomous=true)
   │
-  ├─► System message instructs the model to continue making progress
-  └─► Same tool-calling loop as above
+  ├─► System message instructs model to continue making progress
+  ├─► Same tool-calling loop as user chat
+  └─► Updates history with autonomous thoughts and actions
 ```
 
-### Sub-agent spawning
+### Sub-agent Spawning Flow
 
 ```
 LLM calls spawn_subagent(prompt="analyze test coverage")
@@ -224,40 +168,20 @@ LLM calls spawn_subagent(prompt="analyze test coverage")
   ▼
 YoloAgent.spawnSubagent(task, model)
   │
-  ├─► Assigns monotonic ID (e.g. #3)
+  ├─► Assigns monotonic ID (e.g. #3 via atomic.AddInt64)
   ├─► Launches goroutine:
   │     ├─► Calls ollama.Chat (no tools, single turn)
   │     └─► Writes result to .yolo/subagents/agent_3.json
   └─► Returns immediately: "Sub-agent #3 spawned"
 ```
 
-## File layout
-
-```
-.
-├── main.go                 # Entry point
-├── agent.go                # YoloAgent: orchestration, chat loop, commands
-├── ollama.go               # OllamaClient: LLM communication
-├── tools.go                # ToolExecutor: tool definitions and dispatch
-├── history.go              # HistoryManager: conversation persistence
-├── input.go                # InputManager: raw terminal input
-├── terminal.go             # TerminalUI: split-screen rendering
-├── config.go               # Constants, env vars, ANSI colours
-├── SYSTEM_PROMPT.md        # System prompt template (interpolated at runtime)
-└── .yolo/                  # Runtime state (gitignored)
-    ├── history.json
-    └── subagents/
-        └── agent_*.json
-```
-
 ## Concurrency Package (`concurrency/`)
 
-The concurrency package provides advanced synchronization primitives for managing
-goroutines safely and efficiently.
+Advanced synchronization primitives for managing goroutines safely.
 
 ### ThreadPool
 
-A worker pool pattern that limits concurrent execution to a fixed number of goroutines.
+Worker pool pattern limiting concurrent execution to fixed number of goroutines.
 
 ```go
 pool := concurrency.NewThreadPool(10)
@@ -265,15 +189,11 @@ pool.Submit(func() { /* work */ })
 pool.Close() // Waits for all jobs to complete
 ```
 
-Features:
-- Fixed worker count prevents resource exhaustion
-- Context-aware job submission with `SubmitWithContext`
-- Graceful shutdown via `Close()`
+Features: Fixed worker count, context-aware submission, graceful shutdown.
 
 ### Group (Structured Concurrency)
 
-Inspired by Java's structured concurrency and Go's sync.WaitGroup, Groups ensure
-all goroutines complete before the parent returns.
+Inspired by Java structured concurrency and Go's sync.WaitGroup. Ensures all goroutines complete before parent returns.
 
 ```go
 g := concurrency.NewGroup(ctx)
@@ -282,16 +202,11 @@ g.Run() // Waits and cancels context
 errors := g.Errors()
 ```
 
-Features:
-- Automatic error collection from child goroutines
-- Context propagation for cancellation
-- Fan-out/fan-in patterns built-in
-- Pipeline composition support
+Features: Automatic error collection, context propagation, fan-out/fan-in patterns.
 
 ### Limiter (Semaphore-based Rate Limiting)
 
-Controls maximum concurrent operations using a semaphore pattern. Useful for
-rate limiting API calls, connection pooling, or resource management.
+Controls maximum concurrent operations using semaphore pattern.
 
 ```go
 limiter := concurrency.NewLimiter(5).WithTimeout(10 * time.Second)
@@ -300,36 +215,52 @@ limiter.Execute(func() error { return work() })
 limiter.ExecuteWithContext(ctx, func(c context.Context) error { return work() })
 ```
 
-Features:
-- `TryAcquire()` for non-blocking slot acquisition
-- `Acquire()` with configurable timeout
-- Automatic acquire/release via `Execute()` wrappers
-- Slot monitoring: `AvailableSlots()`, `InUseSlots()`, `MaxSlots()`
+Features: `TryAcquire()` non-blocking, `Acquire()` with timeout, automatic acquire/release wrappers.
 
 ### LimiterGroup
 
-Combines Group structured concurrency with rate limiting. All goroutines respect
-the same concurrency limit.
+Combines Group structured concurrency with rate limiting. All goroutines respect same limit. Ideal for parallel API calls with rate limits.
 
-```go
-lg := concurrency.NewLimiterGroup(ctx, 5)
-lg.Go(func(c context.Context) error { return work() })
-lg.Run()
+## Design Principles
+
+1. **Safety first**: `safePath` prevents directory traversal. Shell commands run with stdin=/dev/null and timeout.
+2. **Graceful degradation**: Tool call parsing tries 5 formats before giving up. History corruption resets to empty rather than crashing.
+3. **Concurrency safety**: InputManager and sub-agents in separate goroutines. Shared state protected by mutexes and atomic operations.
+4. **Minimal dependencies**: Only `golang.org/x/term` beyond standard library.
+5. **Self-modification**: Agent can read/edit own source, rebuild, and exec new binary via `restart` tool.
+
+## File Layout
+
+```
+.
+├── main.go                 # Entry point
+├── agent.go                # YoloAgent: orchestration, chat loop, commands
+├── ollama.go               # OllamaClient: LLM communication
+├── tools*.go               # ToolExecutor: definitions and dispatch
+├── history.go              # HistoryManager: conversation persistence
+├── input.go                # InputManager: raw terminal input
+├── terminal.go             # TerminalUI: split-screen rendering
+├── config.go               # Constants, env vars, thread-safe config access
+├── SYSTEM_PROMPT.md        # System prompt template (interpolated at runtime)
+├── README.md               # Comprehensive documentation
+├── ARCHITECTURE.md         # This file - technical deep dive
+├── CONTRIBUTING.md         # Development guidelines
+├── EMAIL_PROCESSING.md     # Email system details
+└── .yolo/                  # Runtime state (gitignored)
+    ├── history.json        # Conversation history
+    ├── todos.json          # Task list
+    └── subagents/          # Background agent results
+        └── agent_*.json
 ```
 
-This is ideal for scenarios where you need both structured concurrency guarantees
-and resource-aware rate limiting (e.g., parallel API calls with rate limits).
+## Thread Safety Guarantees
 
-## Design principles
+| Component | Synchronization | Protected State |
+|-----------|---|---|
+| Config | `atomic.Value` + `sync.RWMutex` | All configuration variables |
+| HistoryManager | `sync.RWMutex` | Messages slice, file I/O |
+| Agent (model switch) | `sync.RWMutex` | `currentModel` string |
+| Agent (sub-agent ID) | `atomic.Int64` | `subagentIDCounter` |
+| InputManager | Channel-based | Lines sent to agent |
 
-1. **Safety first**: `safePath` prevents directory traversal. Shell commands
-   run with stdin connected to /dev/null and a timeout.
-2. **Graceful degradation**: tool call parsing tries five formats before
-   giving up. History corruption resets to empty rather than crashing.
-3. **Concurrency**: InputManager and sub-agents run in their own goroutines.
-   Shared state is protected by mutexes. Advanced concurrency patterns available
-   via the `concurrency` package.
-4. **Minimal dependencies**: only `golang.org/x/term` beyond the standard
-   library.
-5. **Self-modification**: the agent can read and edit its own source, rebuild
-   itself, and `exec` the new binary via the `restart` tool.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for concurrency testing guidelines with `-race` flag.

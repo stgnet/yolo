@@ -1,42 +1,34 @@
 # Contributing to YOLO
 
-Thank you for your interest in contributing to YOLO (Your Own Living Operator)! This document provides guidelines for contributing to the project.
+Thank you for your interest in contributing to YOLO (Your Own Living Operator)! This document provides guidelines for contributors. For general usage, see [README.md](README.md).
 
-## Overview
+## Quick Reference
 
-YOLO is a self-evolving AI agent designed for autonomous software development. It continuously improves itself by reading and modifying its own source code, adding tests, fixing bugs, and implementing new features.
+- **Main Documentation**: [README.md](README.md) - Tools, features, usage
+- **Architecture Deep Dive**: [ARCHITECTURE.md](ARCHITECTURE.md) - Technical details
+- **Email System**: [EMAIL_PROCESSING.md](EMAIL_PROCESSING.md) - Email integration
 
-## Development Setup
-
-### Prerequisites
+## Prerequisites
 
 - Go 1.21 or later
 - Git
 - Access to Ollama with compatible models (qwen3.5:27b recommended)
 - Optional: Google Workspace credentials for GOG integration
 
-### Getting Started
+## Getting Started
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/yourorg/yolo.git
-   cd yolo
-   ```
+```bash
+# Clone and setup
+git clone https://github.com/yourorg/yolo.git
+cd yolo
+go mod download
 
-2. **Install dependencies**
-   ```bash
-   go mod download
-   ```
+# Run tests
+go test -v ./...
 
-3. **Run tests**
-   ```bash
-   go test -v ./...
-   ```
-
-4. **Build the project**
-   ```bash
-   go build -o yolo .
-   ```
+# Build
+go build -o yolo .
+```
 
 ## Code Style
 
@@ -44,104 +36,134 @@ YOLO is a self-evolving AI agent designed for autonomous software development. I
 - Use `gofmt` for formatting:
   ```bash
   gofmt -w .
+  go vet ./...
   ```
 - Add tests for new features (aim for >90% coverage)
-- Write clear commit messages
+- Write clear commit messages with actionable descriptions
 
-## Testing
+## Testing Guidelines
 
-### Run All Tests
+### Run Tests
+
 ```bash
+# All tests
 go test -v ./...
+
+# With coverage report
+go test -coverprofile=cov.out ./...
+go tool cover -html=cov.out  # Opens in browser
+
+# Race detection (required for PRs)
+go test -race ./...
 ```
 
-### Run with Coverage
-```bash
-go test -v -coverprofile=cov.out ./...
-go tool cover -html=cov.out
-```
+### Coverage Requirements
 
-### Test Coverage Requirements
-- New code should have >90% test coverage
-- Existing packages average ~85%+ coverage
-- Critical paths must be fully tested
+- **New code**: Must have >90% test coverage
+- **Existing packages**: Average ~85%+ coverage maintained
+- **Critical paths** (file I/O, tool execution): Fully tested
+- **Edge cases**: Invalid input, errors, boundary conditions
 
 ## Adding New Tools
 
-Tools are the core capabilities of YOLO. To add a new tool:
+Tools are YOLO's core capabilities. To add a new tool:
 
-1. **Create the tool function** in `tools.go` or a dedicated file (`tools_xxx.go`)
-2. **Add to ToolDefinitions** slice in `agent.go`
-3. **Write unit tests** for all code paths
-4. **Update documentation** in YOLO.md
+1. **Create tool function** in `tools.go` or dedicated file (`tools_xxx.go`)
+2. **Add to ToolDefinitions slice** in `agent.go`
+3. **Write unit tests** covering all code paths and error cases
+4. **Update documentation** in README.md Tools Reference section
 
-Example tool structure:
+Example:
 ```go
-func newToolName(args string) string {
-    // Parse arguments
-    // Execute logic
-    // Return formatted result
+func myNewTool(args string) string {
+    // Parse arguments with validation
+    var input struct {
+        Query string `json:"query"`
+        Count int    `json:"count"`
+    }
+    if err := json.Unmarshal([]byte(args), &input); err != nil {
+        return fmt.Sprintf("Error parsing args: %v", err)
+    }
+    
+    // Validate inputs
+    if input.Count < 1 || input.Count > 10 {
+        return "Count must be between 1 and 10"
+    }
+    
+    // Execute logic with error handling
+    result, err := doWork(input.Query, input.Count)
+    if err != nil {
+        return fmt.Sprintf("Operation failed: %v", err)
+    }
+    
+    return fmt.Sprintf("Success: %s", result)
 }
 ```
 
-## Adding New Features
+## Development Workflow
 
-1. **Start a sub-agent** for the task (if you're YOLO itself):
+1. **Start a sub-agent** for tasks (if you're YOLO itself):
    ```
    spawn_subagent prompt="Describe the feature to implement"
    ```
 
-2. **Follow the workflow**:
-   - Implement the feature
-   - Add tests
-   - Run full test suite
-   - Commit changes
-   - Restart if needed
+2. **Implement changes**:
+   - Write code following Go style guides
+   - Add comprehensive tests
+   - Run full test suite with race detection
+   
+3. **Verify**:
+   - `go build` passes without errors
+   - `go test ./...` all pass
+   - `go test -race ./...` no races detected
+   - `gofmt -l .` shows clean output
 
-3. **Test thoroughly**:
-   - Unit tests for new code
-   - Integration tests if affecting multiple components
-   - Manual testing for UI/UX features
+4. **Commit and restart**:
+   - Commit changes with descriptive message
+   - Use `restart` tool to rebuild and exec new binary
 
-## Documentation
+## Documentation Standards
 
-- Keep `YOLO.md` up to date with all capabilities
-- Add README.md for new packages
-- Document complex logic with comments
-- Update examples when adding features
+- Update README.md for user-facing features
+- Add ARCHITECTURE.md sections for system design changes
+- Document complex logic with inline comments
+- Keep examples current and tested
+- Remove outdated information (check TODO list for doc cleanup tasks)
 
 ## Pull Request Process
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Add/update tests
-5. Ensure all tests pass
-6. Update documentation if needed
-7. Commit your changes (`git commit -m 'Add amazing feature'`)
-8. Push to the branch (`git push origin feature/amazing-feature`)
-9. Open a Pull Request
+2. Create feature branch: `git checkout -b feature/amazing-feature`
+3. Make your changes following guidelines above
+4. Ensure all tests pass including race detection
+5. Update relevant documentation
+6. Commit with clear messages: `git commit -m 'Add amazing feature'`
+7. Push: `git push origin feature/amazing-feature`
+8. Open Pull Request with description of changes
 
-## Code Review
+## Code Review Checklist
 
-All submissions require review. Maintainers will review:
-- Code quality and style
-- Test coverage
-- Documentation updates
-- Performance impact
-- Security considerations
+All submissions require review. Reviewers check:
+
+- ✅ Code quality and Go idioms
+- ✅ Test coverage (>90% for new code)
+- ✅ Race-free concurrency (pass `-race` flag)
+- ✅ Documentation updates
+- ✅ Performance impact acceptable
+- ✅ Security considerations addressed
+- ✅ No breaking changes to existing features
 
 ## Community Guidelines
 
 - Be respectful and inclusive
-- Provide clear, detailed descriptions
-- Help others with their issues when possible
-- Report security vulnerabilities responsibly
+- Provide clear, detailed descriptions in PRs/issues
+- Help others when possible
+- Report security vulnerabilities responsibly (not publicly)
 
 ## Questions?
 
-If you have questions or need help, open an issue or reach out to the maintainers.
+Open an issue or reach out to maintainers.
 
 ---
 
-Thank you for contributing to YOLO! 🚀
+**Remember**: YOLO continuously improves its own codebase. Many improvements come from autonomous operation following the same guidelines!
