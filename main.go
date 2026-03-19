@@ -24,16 +24,15 @@ func main() {
 	// Detect and handle OLLAMA_DEBUG environment variable
 	ollamaDebug := os.Getenv("OLLAMA_DEBUG")
 	if ollamaDebug != "" && ollamaDebug != "0" {
-		fmt.Printf("\n⚠ [WARNING] OLLAMA_DEBUG=%s is set.\n", ollamaDebug)
-		fmt.Println("[INFO] Automatically redirecting Ollama debug output to logs/ollama.log")
-		
-		// Try to restart Ollama with logging if it's already running
-		checkOllamaAndRestartWithLogging()
-		
-		fmt.Println()
-		fmt.Println("To view debug logs in real-time:")
-		fmt.Println("  tail -f logs/ollama.log")
-		fmt.Println()
+		// Silently redirect Ollama output to log file - no terminal warnings
+		logDir, err := checkOllamaAndRestartWithLogging()
+		if err != nil {
+			// Silent failure - don't print anything if logging setup fails
+			_ = err
+		} else {
+			// Only show minimal info if successful, suppressed by default
+			_ = logDir // Log location available for future reference if needed
+		}
 	}
 
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
@@ -56,13 +55,13 @@ func main() {
 
 // checkOllamaAndRestartWithLogging checks if Ollama is running and restarts it
 // with output redirected to a log file for debugging purposes.
-func checkOllamaAndRestartWithLogging() {
+// Returns the log file path on success, or an error message string.
+func checkOllamaAndRestartWithLogging() (string, error) {
 	logDir := "logs"
 	
 	// Create logs directory if it doesn't exist
 	if err := os.MkdirAll(logDir, 0755); err != nil {
-		fmt.Printf("[WARNING] Could not create logs directory: %v\n", err)
-		return
+		return "", fmt.Errorf("could not create logs directory: %v", err)
 	}
 
 	logFile := logDir + "/ollama.log"
@@ -87,9 +86,7 @@ func checkOllamaAndRestartWithLogging() {
 	// Start ollama with logging to file (redirects both stdout and stderr)
 	cmd = exec.Command("sh", "-c", fmt.Sprintf("(nohup ollama serve >> %s 2>&1) &", logFile))
 	if err := cmd.Run(); err != nil {
-		fmt.Printf("[WARNING] Could not restart Ollama with logging: %v\n", err)
-		fmt.Println("[INFO] You may need to manually run: ./scripts/yolo-ollama-start.sh --log")
-		return
+		return "", fmt.Errorf("could not restart Ollama with logging: %v", err)
 	}
 
 	// Wait for ollama to start up
@@ -97,6 +94,5 @@ func checkOllamaAndRestartWithLogging() {
 		// Busy wait for ~500ms to allow ollama to initialize
 	}
 
-	fmt.Printf("[SUCCESS] Ollama server restarted with debug output logging to: %s\n", logFile)
-	fmt.Println("[INFO] Debug logs will be written here when OLLAMA_DEBUG is set")
+	return logFile, nil
 }
