@@ -4,6 +4,8 @@ package tools
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
 	"strings"
 	"time"
 )
@@ -373,4 +375,94 @@ func (t *ListTodosTool) Execute(ctx context.Context, args map[string]interface{}
 		Metadata: map[string]interface{}{"count": len(todos)},
 		Duration: time.Since(start),
 	}, nil
+}
+
+// CheckOllamaStatusTool checks Ollama server status and reads debug logs
+type CheckOllamaStatusTool struct{}
+
+func (t *CheckOllamaStatusTool) Name() string { return "check_ollama_status" }
+func (t *CheckOllamaStatusTool) Description() string { return "Check Ollama server status and read debug logs. Returns whether Ollama is running, recent log lines, and any errors found." }
+func (t *CheckOllamaStatusTool) Type() ToolType { return ToolTypeSystem }
+
+func (t *CheckOllamaStatusTool) Execute(ctx context.Context, args map[string]interface{}) (*ToolResult, error) {
+	start := time.Now()
+	
+	lines, _ := args["lines"].(int)
+	if lines <= 0 {
+		lines = 50
+	}
+	
+	running, logLines, errorsFound, err := checkOllamaStatus(lines)
+	if err != nil {
+		return &ToolResult{Success: false, Error: err.Error(), Duration: time.Since(start)}, nil
+	}
+	
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Ollama Status:\n"))
+	sb.WriteString(fmt.Sprintf("- Running: %v\n", running))
+	sb.WriteString(fmt.Sprintf("- Errors in logs: %d\n", len(errorsFound)))
+	if len(errorsFound) > 0 {
+		sb.WriteString("\nRecent errors:\n")
+		for i, err := range errorsFound[:min(len(errorsFound), 5)] {
+			sb.WriteString(fmt.Sprintf("  %d. %s\n", i+1, err))
+		}
+	}
+	if logLines != "" {
+		sb.WriteString("\nRecent log lines:\n")
+		sb.WriteString(logLines)
+	}
+	
+	return &ToolResult{
+		Success:  true,
+		Output:   sb.String(),
+		Metadata: map[string]interface{}{"running": running, "error_count": len(errorsFound)},
+		Duration: time.Since(start),
+	}, nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// checkOllamaStatus checks if Ollama is running and reads recent log lines
+func checkOllamaStatus(lines int) (bool, string, []string, error) {
+	// Check if ollama is running
+	cmd := exec.Command("pgrep", "-f", "ollama serve")
+	running := cmd.Run() == nil
+	
+	var logLines string
+	var errorsFound []string
+	
+	// Try to read the log file
+	logFile := "./logs/ollama.log"
+	if data, err := os.ReadFile(logFile); err == nil {
+		content := string(data)
+		allLines := strings.Split(content, "\n")
+		
+		// Get last N lines
+		startIdx := len(allLines) - lines
+		if startIdx < 0 {
+			startIdx = 0
+		}
+		recentLines := allLines[startIdx:]
+		logLines = strings.Join(recentLines, "\n")
+		
+		// Find error lines
+		for _, line := range recentLines {
+			lowerLine := strings.ToLower(line)
+			if strings.Contains(lowerLine, "error") || 
+			   strings.Contains(lowerLine, "fail") || 
+			   strings.Contains(lowerLine, "panic") ||
+			   strings.Contains(lowerLine, "exception") {
+				errorsFound = append(errorsFound, line)
+			}
+		}
+	} else {
+		logLines = "Log file not found at " + logFile
+	}
+	
+	return running, logLines, errorsFound, nil
 }

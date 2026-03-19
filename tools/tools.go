@@ -58,6 +58,7 @@ func RegisterTools() []Tool {
 		&RemoveDirTool{},
 		&CopyFileTool{},
 		&MoveFileTool{},
+		&CheckOllamaStatusTool{},
 		
 		// Web operations
 		&WebSearchTool{},
