@@ -338,3 +338,42 @@ func WithContext(err error, op, path string) error {
 	}
 	return fmt.Errorf("%s %s: %w", op, path, err)
 }
+
+// NewHTTPError creates a new NetworkError for HTTP requests
+func NewHTTPError(method, url string, statusCode int, message string, cause error) *NetworkError {
+	err := &NetworkError{
+		Method: method,
+		URL:    url,
+		Cause:  cause,
+	}
+	if message != "" && cause != nil {
+		err.Cause = fmt.Errorf("%s: %w", message, cause)
+	} else if message != "" {
+		err.Cause = fmt.Errorf("%s", message)
+	}
+	return err
+}
+
+// NewToolExecError creates a new ToolExecutionError for tool execution failures
+func NewToolExecError(tool, command string, output any, message string, cause error) *ToolExecutionError {
+	outStr := ""
+	if output != nil {
+		if s, ok := output.(string); ok {
+			outStr = s
+		} else if bs, ok := output.([]byte); ok {
+			outStr = string(bs)
+		}
+	}
+	err := &ToolExecutionError{
+		Tool:    tool,
+		Command: command,
+		Output:  outStr,
+		Cause:   cause,
+	}
+	if message != "" && cause != nil {
+		err.Cause = fmt.Errorf("%s: %w", message, cause)
+	} else if message != "" {
+		err.Cause = fmt.Errorf("%s", message)
+	}
+	return err
+}
