@@ -222,27 +222,24 @@ func (b *Barrier) Wait() {
 	arrivalNum := b.arrived.Add(1)
 
 	b.mu.Lock()
-
-	// Initialize channel on first arrival if not done yet
-	if b.done == nil {
-		b.done = make(chan struct{})
-	}
-
-	// Check if this is the last goroutine to arrive
 	if arrivalNum >= b.count {
-		// Last one to arrive - close the barrier for everyone
+		// Last one to arrive - initialize and close the channel to release everyone
+		if b.done == nil {
+			b.done = make(chan struct{})
+		}
 		close(b.done)
-		// Reset channel so Reset() doesn't try to close it again
-		b.done = nil
+	} else {
+		// Not the last goroutine - ensure channel exists, then wait outside lock
+		if b.done == nil {
+			b.done = make(chan struct{})
+		}
+		doneCh := b.done
 		b.mu.Unlock()
+
+		<-doneCh
 		return
 	}
-
-	// Not the last goroutine - wait on the channel (will be closed by last goroutine)
-	doneCh := b.done
 	b.mu.Unlock()
-
-	<-doneCh
 }
 
 // Reset resets the barrier for reuse. Must not be called while goroutines
@@ -252,7 +249,7 @@ func (b *Barrier) Reset() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	// Reset state for reuse
+	// Reset state for reuse - channel is already closed after last Wait(), just nil it out
 	b.done = nil
 	b.arrived.Store(0)
 }
