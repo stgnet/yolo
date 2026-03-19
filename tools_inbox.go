@@ -241,16 +241,17 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 			email.From, email.Subject, email.Content)
 
 		log.Printf("Generating LLM response for email from %s...", email.From)
-		response := strings.TrimSpace(t.generateLLMText(prompt, true))
-		if response == "" {
-			log.Printf("Failed to generate LLM response (empty after trim) - skipping email, no reply sent")
-			// Archive without responding when LLM fails - NO template fallbacks
-			archiveEmail(filePath, file.Name(), "llm_generation_failed")
-			skipped = append(skipped, file.Name())
-			continue
-		}
+	response := strings.TrimSpace(t.generateLLMText(prompt, true))
+	if response == "" {
+		log.Printf("ERROR: Failed to generate LLM response (empty after trim) - skipping email, NO reply sent")
+		log.Printf("PROMPT used: %.200s...", prompt)
+		// Archive without responding when LLM fails - NO template fallbacks
+		archiveEmail(filePath, file.Name(), "llm_generation_failed")
+		skipped = append(skipped, file.Name())
+		continue
+	}
 
-		log.Printf("Generated LLM response: %d bytes, preview: %.80s", len(response), response)
+	log.Printf("SUCCESS: Generated LLM response: %d bytes, preview: %.80s", len(response), response)
 
 		// Send response back to sender - extract email address from From header
 		sender := email.From
