@@ -125,6 +125,7 @@ YOLO has 37 built-in tools that the LLM can call:
 | Tool | Description |
 |------|-------------|
 | `web_search` | DuckDuckGo search with Wikipedia fallback (5-min cache) |
+| `read_webpage` | Fetch webpage content, convert HTML to text |
 | `reddit` | Reddit API: search, subreddit posts, thread details |
 | `gog` | Google Workspace: Gmail, Calendar, Drive, Docs, Sheets |
 | `send_email` | Send email via postfix from yolo@b-haven.org |
@@ -145,6 +146,17 @@ YOLO has 37 built-in tools that the LLM can call:
 | Tool | Description |
 |------|-------------|
 | `run_command` | Execute shell command (30s timeout, stdin=/dev/null) |
+
+### Learning & Self-Improvement
+| Tool | Description |
+|------|-------------|
+| `learn` | Autonomous research for self-improvement opportunities |
+| `implement` | Auto-implement improvements from learn results |
+
+### Browser Automation
+| Tool | Description |
+|------|-------------|
+| `playwright_mcp` | Navigate URLs, interact with DOM, fill forms, screenshots |
 
 ## Email Processing
 
