@@ -236,8 +236,8 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 			break // Stop processing remaining emails
 		}
 
-		// Generate AI response using LLM based on full email context
-		prompt := fmt.Sprintf("You are YOLO, an autonomous AI assistant. You received this email:\n\nFrom: %s\nSubject: %s\n\nMessage:\n%s\n\nPlease generate a friendly, helpful, and concise response (maximum 200 words). Acknowledge their message, address any questions or topics they raised, and sign off as YOLO - Your Own Living Operator. Be conversational but professional.",
+		// Generate AI response using LLM based on full email context - NO TEMPLATE FALLBACKS
+		prompt := fmt.Sprintf("You are YOLO, an autonomous AI assistant running in production. You received this email:\n\nFrom: %s\nSubject: %s\n\nMessage content (first 500 chars):\n%s\n\nInstructions:\n- Generate a genuine, personalized response to this specific message\n- Do NOT use generic templates or placeholder text\n- Acknowledge the sender's actual content and questions if any\n- Keep response under 200 words\n- Be conversational but professional\n- Sign as 'YOLO - Your Own Living Operator'\n\nResponse:",
 			email.From, email.Subject, email.Content)
 
 		log.Printf("Generating LLM response for email from %s...", email.From)
