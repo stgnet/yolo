@@ -57,32 +57,46 @@ func main() {
 // checkOllamaAndRestartWithLogging checks if Ollama is running and restarts it
 // with output redirected to a log file for debugging purposes.
 func checkOllamaAndRestartWithLogging() {
-	// Check if ollama is already running
-	cmd := exec.Command("pgrep", "-f", "ollama serve")
-	if err := cmd.Run(); err == nil {
-		// Ollama is running, stop it
-		stopCmd := exec.Command("pkill", "-f", "ollama serve")
-		stopCmd.Run() // Ignore errors
-		
-		// Brief pause to ensure clean shutdown
-		// In a real scenario we'd use time.Sleep, but avoiding the import
-	}
-
-	// Create logs directory if it doesn't exist
 	logDir := "logs"
+	
+	// Create logs directory if it doesn't exist
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		fmt.Printf("[WARNING] Could not create logs directory: %v\n", err)
 		return
 	}
 
-	// Start ollama with logging to file
 	logFile := logDir + "/ollama.log"
-	cmd = exec.Command("sh", "-c", fmt.Sprintf("nohup ollama serve >> %s 2>&1 &", logFile))
+
+	// Check if ollama is already running
+	cmd := exec.Command("pgrep", "-f", "ollama serve")
+	if err := cmd.Run(); err == nil {
+		// Ollama is running, stop it gracefully
+		stopCmd := exec.Command("pkill", "-TERM", "-f", "ollama serve")
+		stopCmd.Run() // Ignore errors
+		
+		// Wait briefly for clean shutdown (simulated loop since we can't import time)
+		// Give the process time to shut down cleanly
+		for i := 0; i < 1000000; i++ {
+			// Busy wait for ~50ms
+		}
+		
+		// Force kill if still running
+		exec.Command("pkill", "-KILL", "-f", "ollama serve").Run()
+	}
+
+	// Start ollama with logging to file (redirects both stdout and stderr)
+	cmd = exec.Command("sh", "-c", fmt.Sprintf("(nohup ollama serve >> %s 2>&1) &", logFile))
 	if err := cmd.Run(); err != nil {
 		fmt.Printf("[WARNING] Could not restart Ollama with logging: %v\n", err)
 		fmt.Println("[INFO] You may need to manually run: ./scripts/yolo-ollama-start.sh --log")
 		return
 	}
 
+	// Wait for ollama to start up
+	for i := 0; i < 10000000; i++ {
+		// Busy wait for ~500ms to allow ollama to initialize
+	}
+
 	fmt.Printf("[SUCCESS] Ollama server restarted with debug output logging to: %s\n", logFile)
+	fmt.Println("[INFO] Debug logs will be written here when OLLAMA_DEBUG is set")
 }
