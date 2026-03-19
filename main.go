@@ -20,13 +20,67 @@ func main() {
 		return
 	}
 
-	// Warn about OLLAMA_DEBUG if set - it causes verbose output
+	// Detect and warn about OLLAMA_DEBUG environment variable
 	ollamaDebug := os.Getenv("OLLAMA_DEBUG")
 	if ollamaDebug != "" && ollamaDebug != "0" {
-		fmt.Printf("Note: OLLAMA_DEBUG=%s is set. This causes verbose debug messages from ollama server.\n", ollamaDebug)
-		fmt.Println("To suppress these messages, unset the variable: unset OLLAMA_DEBUG")
-		fmt.Println("Or set it to 0: export OLLAMA_DEBUG=0")
+		fmt.Printf("\n⚠ [WARNING] OLLAMA_DEBUG=%s is set.\n", ollamaDebug)
+		fmt.Println("[WARNING] This causes verbose [OLLAMA DEBUG] messages from the Ollama server.")
 		fmt.Println()
+		fmt.Println("To capture these messages to a log file for debugging:")
+		fmt.Println("  ./scripts/yolo-ollama-start.sh --log")
+		fmt.Println()
+		fmt.Println("Then view logs with:")
+		fmt.Println("  tail -f logs/ollama.log")
+		fmt.Println()
+		fmt.Println("To suppress debug messages entirely:")
+		fmt.Println("  unset OLLAMA_DEBUG")
+		fmt.Println("  export OLLAMA_DEBUG=0")
+		fmt.Println()
+		
+		// Create a convenience script if it doesn't exist
+		convenienceScript := "./scripts/fix-ollama-debug.sh"
+		if _, err := os.Stat(convenienceScript); os.IsNotExist(err) {
+			scriptContent := `#!/bin/bash
+# fix-ollama-debug.sh - Convenience script to handle OLLAMA_DEBUG output
+#
+# This script helps redirect Ollama debug output to a log file so YOLO can read it.
+
+echo "Setting up Ollama debug logging..."
+
+# Stop any running ollama instances
+pkill -f "ollama serve" 2>/dev/null
+sleep 1
+
+# Create logs directory
+mkdir -p logs
+
+# Start ollama with logging
+nohup ollama serve >> logs/ollama.log 2>&1 &
+OLLAMA_PID=$!
+
+echo "Ollama server started with PID: $OLLAMA_PID"
+echo "Debug output is being logged to: logs/ollama.log"
+echo ""
+echo "To view logs in real-time:"
+echo "  tail -f logs/ollama.log"
+echo ""
+echo "To stop ollama:"
+echo "  kill $OLLAMA_PID"
+echo ""
+echo "YOLO can now read the log file at: $(pwd)/logs/ollama.log"
+`
+			if err := os.WriteFile(convenienceScript, []byte(scriptContent), 0755); err == nil {
+				fmt.Printf("✓ Created convenience script: %s\n", convenienceScript)
+				fmt.Println("✓ Run it with: ./scripts/fix-ollama-debug.sh")
+				fmt.Println()
+			} else {
+				fmt.Printf("⚠ Could not create convenience script: %v\n", err)
+			}
+		} else {
+			fmt.Printf("ℹ Convenience script exists: %s\n", convenienceScript)
+			fmt.Println("ℹ Run it with: ./scripts/fix-ollama-debug.sh")
+			fmt.Println()
+		}
 	}
 
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
