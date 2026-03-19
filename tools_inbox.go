@@ -8,6 +8,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -96,7 +97,11 @@ func parseEmail(content, filename string) EmailMessage {
 	}
 
 	// Parse the email as a MIME message using go-message library
-	reader, err := mail.CreateReader(bytes.NewReader([]byte(content)))
+	// First, strip Postfix envelope headers (Return-Path, Received, etc.) before parsing
+	// The actual RFC822 message starts at standard headers like From:, To:, Subject:, MIME-Version:
+	actualContent := stripEnvelopeHeaders(content)
+	
+	reader, err := mail.CreateReader(bytes.NewReader([]byte(actualContent)))
 	if err != nil {
 		log.Printf("Error creating MIME reader for %s: %v - falling back to simple parsing", filename, err)
 		return parseEmailSimple(content, filename)
@@ -119,6 +124,9 @@ func parseEmail(content, filename string) EmailMessage {
 	// Extract the plain text body using the reader's part iterator
 	var body strings.Builder
 	
+	// Track if we found plain text (prefer it over HTML)
+	foundPlainText := false
+	
 	for {
 		part, err := reader.NextPart()
 		if err == io.EOF {
@@ -132,30 +140,61 @@ func parseEmail(content, filename string) EmailMessage {
 		// Get content type
 		contentType := part.Header.Get("Content-Type")
 		
-		// Skip attachments (application, image types) and HTML if we can get plain text first
+		// Skip attachments (application, image types)
 		if strings.HasPrefix(contentType, "application/") || 
 		   strings.HasPrefix(contentType, "image/") {
 			continue
 		}
 
-		if strings.Contains(contentType, "html") {
-			// Skip HTML parts - prefer plain text
-			continue
-		}
-
-		// Read the content of this part (Part has a Body field that is io.Reader)
-		data, err := io.ReadAll(part.Body)
+		// Read the raw content of this part
+		rawData, err := io.ReadAll(part.Body)
 		if err != nil {
 			log.Printf("Error reading part data from %s: %v", filename, err)
 			continue
 		}
 
-		body.WriteString(string(data))
+		// Get transfer encoding to decode properly
+		transferEncoding := strings.ToLower(part.Header.Get("Content-Transfer-Encoding"))
+		
+		// Decode based on transfer encoding
+		var decodedData []byte
+		switch transferEncoding {
+		case "quoted-printable":
+			decodedData, err = decodeQuotedPrintable(rawData)
+			if err != nil {
+				log.Printf("Error decoding quoted-printable from %s: %v", filename, err)
+				decodedData = rawData // Fall back to raw data
+			}
+		case "base64":
+			decodedData, err = base64.StdEncoding.DecodeString(string(rawData))
+			if err != nil {
+				log.Printf("Error decoding base64 from %s: %v", filename, err)
+				decodedData = rawData // Fall back to raw data
+			}
+		case "7bit", "8bit", "binary", "":
+			// No decoding needed
+			decodedData = rawData
+		default:
+			log.Printf("Unknown transfer encoding '%s' in %s, using raw data", transferEncoding, filename)
+			decodedData = rawData
+		}
+
+		body.WriteString(string(decodedData))
 		
 		// Stop after finding a text/plain body (first match wins)
 		if strings.HasPrefix(contentType, "text/plain") {
+			foundPlainText = true
 			break
 		}
+	}
+
+	// If we only found HTML and no plain text, go back and try to get HTML
+	if !foundPlainText && body.Len() == 0 {
+		// Reset reader - not easily possible with current library, so use simple fallback instead
+		log.Printf("No plain text body found in %s, using simple parser", filename)
+		simpleEmail := parseEmailSimple(content, filename)
+		email.Content = simpleEmail.Content
+		return email
 	}
 
 	// Set Content to just the body text, preserving newlines
@@ -169,6 +208,77 @@ func parseEmail(content, filename string) EmailMessage {
 	}
 
 	return email
+}
+
+// decodeQuotedPrintable decodes a quoted-printable encoded byte slice
+func decodeQuotedPrintable(data []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	
+	// Process line by line (quoted-printable is line-oriented)
+	lines := bytes.Split(data, []byte("\n"))
+	
+	for i, line := range lines {
+		// Remove soft line breaks (= at end of line) and join
+		if bytes.HasSuffix(line, []byte("=")) {
+			// Soft line break - remove the = and continue to next line
+			line = bytes.TrimRight(line, "=")
+			buf.Write(line)
+			continue
+		}
+		
+		// Decode escape sequences (=XX where XX is hex)
+		decoded := make([]byte, 0, len(line))
+		j := 0
+		for j < len(line) {
+			if line[j] == '=' && j+2 < len(line) {
+				// Try to decode =XX hex sequence
+				hexChars := string(line[j+1 : j+3])
+				decodedByte, err := parseQuotedPrintableHex(hexChars)
+				if err != nil {
+					// If it's not valid hex, keep the original characters
+					decoded = append(decoded, line[j:j+3]...)
+					j += 3
+					continue
+				}
+				decoded = append(decoded, decodedByte)
+				j += 3
+			} else {
+				decoded = append(decoded, line[j])
+				j++
+			}
+		}
+		
+		buf.Write(decoded)
+		if i < len(lines)-1 {
+			buf.WriteByte('\n')
+		}
+	}
+	
+	return buf.Bytes(), nil
+}
+
+// parseQuotedPrintableHex decodes a two-character hex string to a byte
+func parseQuotedPrintableHex(hexStr string) (byte, error) {
+	var result byte
+	for i, c := range hexStr {
+		var val byte
+		switch {
+		case c >= '0' && c <= '9':
+			val = byte(c - '0')
+		case c >= 'A' && c <= 'F':
+			val = byte(c - 'A' + 10)
+		case c >= 'a' && c <= 'f':
+			val = byte(c - 'a' + 10)
+		default:
+			return 0, fmt.Errorf("invalid hex character: %c", c)
+		}
+		if i == 0 {
+			result = val << 4
+		} else {
+			result |= val
+		}
+	}
+	return result, nil
 }
 
 // parseEmailSimple provides a fallback parser for non-MIME or corrupted emails
@@ -230,6 +340,33 @@ func parseEmailSimple(content, filename string) EmailMessage {
 	return email
 }
 
+// stripEnvelopeHeaders removes Postfix delivery headers and returns only the RFC822 message
+func stripEnvelopeHeaders(content string) string {
+	lines := strings.Split(content, "\n")
+	
+	// Find where actual message headers start (From:, Date:, Subject:, Message-ID:, MIME-Version:)
+	messageStart := -1
+	for i, line := range lines {
+		lowerLine := strings.ToLower(line)
+		if strings.HasPrefix(lowerLine, "from:") || 
+		   strings.HasPrefix(lowerLine, "date:") || 
+		   strings.HasPrefix(lowerLine, "subject:") ||
+		   strings.HasPrefix(lowerLine, "message-id:") ||
+		   strings.HasPrefix(lowerLine, "mime-version:") {
+			messageStart = i
+			break
+		}
+	}
+	
+	// If no message headers found, return original content
+	if messageStart == -1 {
+		return content
+	}
+	
+	// Return everything from the first actual message header to the end
+	return strings.Join(lines[messageStart:], "\n")
+}
+
 // sanitizeEmailField sanitizes email header fields to prevent injection attacks
 func sanitizeEmailField(value string) string {
 	// Remove embedded newlines that could enable header injection
@@ -242,6 +379,49 @@ func sanitizeEmailField(value string) string {
 	}
 
 	return value
+}
+
+// extractEmailAddress extracts just the email address from a From header like "Name <email@example.com>"
+func extractEmailAddress(fromHeader string) string {
+	sender := strings.TrimSpace(fromHeader)
+	if strings.Contains(sender, "<") {
+		// Extract email from within angle brackets: "Name <email>" -> "email"
+		startIdx := strings.Index(sender, "<")
+		endIdx := strings.Index(sender, ">")
+		if startIdx != -1 && endIdx > startIdx {
+			return strings.TrimSpace(sender[startIdx+1 : endIdx])
+		} else {
+			// Fallback: try to extract email-like pattern using regex
+			emailPattern := regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
+			if match := emailPattern.FindString(sender); match != "" {
+				return match
+			}
+		}
+	}
+	return sender // Use as-is if no angle brackets found
+}
+
+// isProgressReportRequest detects if an email is asking for a progress report
+func isProgressReportRequest(email *EmailMessage) bool {
+	contentLower := strings.ToLower(email.Content)
+	subjectLower := strings.ToLower(email.Subject)
+	
+	// Check for common progress report request patterns
+	indicators := []string{
+		"progress report", "status report", "what are you working on",
+		"what's your status", "update me", "give me a report",
+		"report please", "send me a report", "your todo list",
+		"current progress", "what have you been doing",
+		"progress", "todo", "status",
+	}
+	
+	for _, indicator := range indicators {
+		if strings.Contains(contentLower, indicator) || strings.Contains(subjectLower, indicator) {
+			return true
+		}
+	}
+	
+	return false
 }
 
 // isBounceMessage checks if an email appears to be a bounce/delivery failure notification
@@ -353,47 +533,58 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 			break // Stop processing remaining emails
 		}
 
-		// Generate AI response using LLM based on full email context - NO TEMPLATE FALLBACKS
-		prompt := fmt.Sprintf("You are YOLO, an autonomous AI assistant running in production. You received this email:\n\nFrom: %s\nSubject: %s\n\nMessage content (first 500 chars):\n%s\n\nInstructions:\n- Generate a genuine, personalized response to this specific message\n- Do NOT use generic templates or placeholder text\n- Acknowledge the sender's actual content and questions if any\n- Keep response under 200 words\n- Be conversational but professional\n- Sign as 'YOLO - Your Own Living Operator'\n\nResponse:",
-			email.From, email.Subject, email.Content)
-
-		log.Printf("Generating LLM response for email from %s...", email.From)
-	response := strings.TrimSpace(t.generateLLMText(prompt, true))
-	if response == "" {
-		log.Printf("ERROR: Failed to generate LLM response (empty after trim) - skipping email, NO reply sent")
-		log.Printf("PROMPT used: %.200s...", prompt)
-		// Archive without responding when LLM fails - NO template fallbacks
-		archiveEmail(filePath, file.Name(), "llm_generation_failed")
-		skipped = append(skipped, file.Name())
-		continue
-	}
-
-	log.Printf("SUCCESS: Generated LLM response: %d bytes, preview: %.80s", len(response), response)
-
-		// Send response back to sender - extract email address from From header
-		sender := email.From
-		if strings.Contains(sender, "<") {
-			// Extract email from within angle brackets: "Name <email>" -> "email"
-			startIdx := strings.Index(sender, "<")
-			endIdx := strings.Index(sender, ">")
-			if startIdx != -1 && endIdx > startIdx {
-				sender = strings.TrimSpace(sender[startIdx+1 : endIdx])
-			} else {
-				// Fallback: try to extract email-like pattern using regex
-				emailPattern := regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
-				if match := emailPattern.FindString(sender); match != "" {
-					sender = match
-				} else {
-					sender = strings.TrimSpace(sender) // Use as-is, let validation handle it
-				}
-			}
-		} else {
-			sender = strings.TrimSpace(sender)
+				// Debug: log email parsing details
+		log.Printf("Email from %s with subject '%s' - Content length: %d bytes", email.From, email.Subject, len(email.Content))
+		if email.Content == "" {
+			log.Printf("WARNING: Email content is EMPTY for message from %s with subject '%s'", email.From, email.Subject)
 		}
 
-		log.Printf("Extracted sender email: %s from From header: %s", sender, email.From)
+		// Extract sender email address using helper function
+		sender := extractEmailAddress(email.From)
+		log.Printf("Extracted sender email: %s", sender)
+
+		// Check if this is a request for a progress report
+		isProgressReportRequestFlag := isProgressReportRequest(&email)
+		
+		var response string
+		if isProgressReportRequestFlag {
+			log.Printf("Detected progress report request from %s, sending actual report...", email.From)
+			
+			// Generate and send actual progress report
+			todoOutput := listTodos()
+			reportBody := fmt.Sprintf("🤖 YOLO Progress Report\n\nGenerated in response to your email request.\n\n%s", todoOutput)
+			
+			sendResult := t.sendReport(map[string]any{
+				"to":          sender,
+				"subject":     "YOLO Progress Report",
+				"body":        reportBody,
+				"attach_todo": false,
+			})
+			log.Printf("Progress report send result: %s", sendResult)
+			
+			// Acknowledgment response to send back
+			response = "Thanks for reaching out! I have just sent you a detailed progress report with my current status and todo list. You should receive it shortly.\n\nBest regards,\nYOLO - Your Own Living Operator"
+		} else {
+			// Generate AI response using LLM based on full email context - NO TEMPLATE FALLBACKS
+			prompt := fmt.Sprintf("You are YOLO, an autonomous AI assistant running in production. You received this email:\n\nFrom: %s\nSubject: %s\n\nMessage content (first 500 chars):\n%s\n\nInstructions:\n- Generate a genuine, personalized response to this specific message\n- Do NOT use generic templates or placeholder text\n- Acknowledge the sender's actual content and questions if any\n- Keep response under 200 words\n- Be conversational but professional\n- Sign as 'YOLO - Your Own Living Operator'\n\nResponse:",
+				email.From, email.Subject, email.Content)
+
+			log.Printf("Generating LLM response for email from %s...", email.From)
+			response = strings.TrimSpace(t.generateLLMText(prompt, true))
+			if response == "" {
+				log.Printf("ERROR: Failed to generate LLM response (empty after trim) - skipping email, NO reply sent")
+				log.Printf("PROMPT used: %.200s...", prompt)
+				// Archive without responding when LLM fails - NO template fallbacks
+				archiveEmail(filePath, file.Name(), "llm_generation_failed")
+				skipped = append(skipped, file.Name())
+				continue
+			}
+
+			log.Printf("SUCCESS: Generated LLM response: %d bytes, preview: %.80s", len(response), response)
+		}
 
 		// Validate sender before responding
+// Validate sender before responding
 		if !validateSender(sender) {
 			log.Printf("Skipping response to untrusted sender: %s", sender)
 			skipped = append(skipped, file.Name())
