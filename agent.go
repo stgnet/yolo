@@ -415,7 +415,7 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 				cprint(Yellow, "\n  [agent produced unrecognized tool call format — sending correction]\n")
 				roundMsgs = append(roundMsgs, ChatMessage{
 					Role:    "assistant",
-					Content: result.ContentText,
+					Content: result.DisplayText, // Use DisplayText (includes ThinkingText fallback) for history
 				})
 				roundMsgs = append(roundMsgs, ChatMessage{
 					Role: "user",
@@ -453,6 +453,10 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		// Leaving both the text-based syntax and native tool_calls confuses
 		// the model into thinking its tools didn't execute.
 		assistantContent := result.ContentText
+		if assistantContent == "" && result.ThinkingText != "" {
+			// If ContentText is empty (thinking-only models), use ThinkingText as fallback
+			assistantContent = result.ThinkingText
+		}
 		if textParsed {
 			assistantContent = stripTextToolCalls(assistantContent)
 		}
