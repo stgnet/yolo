@@ -243,20 +243,27 @@ curl http://localhost:11434/api/generate -d '{"model":"qwen3.5:27b","prompt":"te
 ```
 
 **Verbose [OLLAMA DEBUG] messages appearing in terminal:**
+
+The `OLLAMA_DEBUG` environment variable causes Ollama to output debug logs. If you're seeing these, you have three options:
+
 ```bash
-# Check if OLLAMA_DEBUG is set
-echo $OLLAMA_DEBUG
-
-# To suppress debug messages, unset the variable
+# Option 1: Disable debug mode (recommended for normal use)
 unset OLLAMA_DEBUG
-
-# Or explicitly disable it
+# or
 export OLLAMA_DEBUG=0
 
-# To capture ollama output to a log file (useful for debugging):
+# Option 2: Use the YOLO script with logging enabled (best for debugging)
 ./scripts/yolo-ollama-start.sh --log
+
+# Then monitor logs in real-time:
 tail -f logs/ollama.log
+
+# Option 3: Let YOLO read the logs automatically
+# If you have logs/ollama.log, YOLO can check Ollama status using:
+# Tool: check_ollama_status(lines=50)  # Reads last 50 lines from log file
 ```
+
+**Why this changed:** YOLO no longer automatically restarts your Ollama server at startup. You now have full control over how Ollama is configured and run. This prevents accidental interruptions to your development workflow.
 
 **Build fails:**
 ```bash
