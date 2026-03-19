@@ -241,13 +241,16 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 			email.From, email.Subject, email.Content)
 
 		log.Printf("Generating LLM response for email from %s...", email.From)
-		response := strings.TrimSpace(t.generateLLMText(prompt, true)) // Use LLM for response generation and trim whitespace
+		response := strings.TrimSpace(t.generateLLMText(prompt, true))
 		if response == "" {
-			log.Printf("Failed to generate LLM response (empty after trim), using fallback")
-			response = generateSafeAIResponse(&email)
-		} else {
-			log.Printf("Generated LLM response: %d bytes, preview: %.80s", len(response), response)
+			log.Printf("Failed to generate LLM response (empty after trim) - skipping email, no reply sent")
+			// Archive without responding when LLM fails - NO template fallbacks
+			archiveEmail(filePath, file.Name(), "llm_generation_failed")
+			skipped = append(skipped, file.Name())
+			continue
 		}
+
+		log.Printf("Generated LLM response: %d bytes, preview: %.80s", len(response), response)
 
 		// Send response back to sender - extract email address from From header
 		sender := email.From
@@ -348,65 +351,7 @@ func archiveEmail(srcPath, filename string, reason string) error {
 	return err
 }
 
-// generateSafeAIResponse creates a safe auto-response that resists prompt injection
-func generateSafeAIResponse(email *EmailMessage) string {
-	var sb strings.Builder
 
-	sb.WriteString("Thank you for your message.\n\n")
-	if email.Subject != "" {
-		// Sanitize subject before including in response to prevent prompt injection
-		sanitizedSubject := sanitizeInboxContent(email.Subject)
-		// Truncate very long subjects
-		if len(sanitizedSubject) > 200 {
-			sanitizedSubject = sanitizedSubject[:197] + "..."
-		}
-		sb.WriteString(fmt.Sprintf("I've received your email regarding \"%s\" and will review it shortly.\n", sanitizedSubject))
-	} else {
-		sb.WriteString("I've received your email and will review it shortly.\n")
-	}
-
-	// Use a template that explicitly mentions the original subject but doesn't
-	// include or repeat any potentially malicious content from the body
-	if strings.Contains(strings.ToLower(email.Subject), "hello") ||
-		strings.Contains(strings.ToLower(email.Subject), "hi ") ||
-		strings.Contains(strings.ToLower(email.Subject), "help") {
-		sb.WriteString("\nI appreciate you reaching out. I'll get back to you with a more detailed response shortly.\n")
-	}
-
-	sb.WriteString("\nBest regards,\n")
-	sb.WriteString("YOLO - Your Own Living Operator\n")
-
-	return sb.String()
-}
-
-// sanitizeContent removes potentially malicious content from email body
-// This helps prevent prompt injection attacks
-func sanitizeInboxContent(content string) string {
-	// Remove potential command injection patterns (line breaks and separators only)
-	content = regexp.MustCompile(`[;|&]\s*`).ReplaceAllString(content, " ")
-
-	// Remove potential template injection markers
-	content = regexp.MustCompile(`\{\{.*?\}\}`).ReplaceAllStringFunc(content, func(match string) string {
-		return "[REDACTED]"
-	})
-
-	// Remove shell command patterns that could be interpreted by downstream systems
-	// Process dollar-sign command substitution first: $(...)
-	content = regexp.MustCompile(`\$\([^)]*\)`).ReplaceAllStringFunc(content, func(match string) string {
-		return "[COMMAND_REDACTED]"
-	})
-	// Process backtick command substitution second: `...`
-	content = regexp.MustCompile("`[^`]*`").ReplaceAllStringFunc(content, func(match string) string {
-		return "[COMMAND_REDACTED]"
-	})
-
-	// Truncate very long content to prevent memory issues
-	if len(content) > 10000 {
-		content = content[:10000] + " [CONTENT TRUNCATED - ORIGINAL EXCEEDED 10KB LIMIT]"
-	}
-
-	return content
-}
 
 // generateLLMText generates an AI response using the Ollama client
 func (t *ToolExecutor) generateLLMText(prompt string, streaming bool) string {
