@@ -165,6 +165,10 @@ var ollamaTools = []ToolDef{
 	toolDef("list_todos", "List all todos (pending and completed) from .todo.json file",
 		map[string]ToolParam{},
 		nil),
+	toolDef("check_ollama_status", "Check Ollama server status and read debug logs. Returns whether Ollama is running, recent log lines, and any errors found.",
+		map[string]ToolParam{
+			"lines": {Type: "integer", Description: "Number of log lines to return (default: 50)"},
+		}, nil),
 	toolDef("playwright_mcp", "Playwright MCP for browser automation. Navigate URLs, interact with DOM elements, fill forms, take screenshots, and extract page content.",
 		map[string]ToolParam{
 			"action":    {Type: "string", Description: "Action to perform: navigate, click, fill, getHTML, screenshot"},
@@ -186,7 +190,7 @@ var validTools = []string{
 	"search_files", "run_command", "spawn_subagent",
 	"list_subagents", "read_subagent_result", "summarize_subagents",
 	"list_models", "switch_model", "think", "restart",
-	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "read_webpage", "learn", "implement", "send_email", "send_report", "check_inbox", "process_inbox_with_response", "add_todo", "complete_todo", "delete_todo", "list_todos", "playwright_mcp",
+	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "read_webpage", "learn", "implement", "send_email", "send_report", "check_inbox", "process_inbox_with_response", "add_todo", "complete_todo", "delete_todo", "list_todos", "check_ollama_status", "playwright_mcp",
 }
 
 // fileNameRegex extracts the agent ID from filenames like "agent_1.json"
@@ -348,6 +352,8 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 		return t.deleteTodo(args)
 	case "list_todos":
 		return t.listTodosTool(args)
+	case "check_ollama_status":
+		return t.checkOllamaStatus(args)
 	case "playwright_mcp":
 		return t.playwrightMCP(args)
 	default:

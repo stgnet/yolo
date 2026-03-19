@@ -4,6 +4,9 @@
 package main
 
 import (
+	"fmt"
+	"os"
+	"os/exec"
 	"strings"
 
 	"yolo/tools/todo"
@@ -74,7 +77,7 @@ func getPendingTodos() string {
 	return todoList.FormatPendingTodos()
 }
 
-// ──── Tool Executor Methods ──────────────────────────────────────────
+// ──── Tool Executor Methods ────────────────────────────────────
 
 // addTodo handles the "add_todo" tool invocation.
 func (te *ToolExecutor) addTodo(args map[string]any) string {
@@ -106,4 +109,85 @@ func (te *ToolExecutor) deleteTodo(args map[string]any) string {
 // listTodosTool handles the "list_todos" tool invocation.
 func (te *ToolExecutor) listTodosTool(args map[string]any) string {
 	return listTodos()
+}
+
+// checkOllamaStatus checks if Ollama is running and reads recent log entries.
+func (te *ToolExecutor) checkOllamaStatus(args map[string]any) string {
+	linesToRead := 50
+	if lines, ok := args["lines"].(int); ok && lines > 0 {
+		linesToRead = lines
+	}
+
+	var result strings.Builder
+
+	// Check if ollama is running
+	cmd := exec.Command("pgrep", "-f", "ollama serve")
+	ollamaRunning := cmd.Run() == nil
+
+	result.WriteString("=== Ollama Status ===\n\n")
+	result.WriteString(fmt.Sprintf("Ollama Running: %v\n\n", ollamaRunning))
+
+	if !ollamaRunning {
+		return result.String() + "Ollama is not running. YOLO cannot function without Ollama.\n"
+	}
+
+	// Read the log file if it exists
+	logFile := "logs/ollama.log"
+	data, err := os.ReadFile(logFile)
+	if err != nil {
+		return result.String() + fmt.Sprintf("Could not read log file %s: %v\n", logFile, err)
+	}
+
+	lines := strings.Split(string(data), "\n")
+	startIdx := len(lines) - linesToRead
+	if startIdx < 0 {
+		startIdx = 0
+	}
+
+	logLines := lines[startIdx:]
+
+	// Look for error patterns
+	var errors []string
+	var warnings []string
+	for i, line := range logLines {
+		if strings.Contains(line, "ERROR") || strings.Contains(line, "error") || strings.Contains(line, "failed") {
+			errors = append(errors, fmt.Sprintf("Line %d: %s", startIdx+i+1, line))
+		} else if strings.Contains(line, "WARN") || strings.Contains(line, "warning") {
+			warnings = append(warnings, fmt.Sprintf("Line %d: %s", startIdx+i+1, line))
+		}
+	}
+
+	result.WriteString(fmt.Sprintf("Log File: %s\n", logFile))
+	result.WriteString(fmt.Sprintf("Lines Read: %d (last %d of %d total)\n\n", len(logLines), linesToRead, len(lines)))
+
+	if len(errors) > 0 {
+		result.WriteString(fmt.Sprintf("=== ERRORS FOUND (%d) ===\n\n", len(errors)))
+		for _, e := range errors[:10] { // Limit to first 10 errors
+			result.WriteString(e + "\n")
+		}
+		if len(errors) > 10 {
+			result.WriteString(fmt.Sprintf("\n... and %d more errors\n", len(errors)-10))
+		}
+		result.WriteString("\n")
+	}
+
+	if len(warnings) > 0 {
+		result.WriteString(fmt.Sprintf("=== WARNINGS FOUND (%d) ===\n\n", len(warnings)))
+		for _, w := range warnings[:10] { // Limit to first 10 warnings
+			result.WriteString(w + "\n")
+		}
+		if len(warnings) > 10 {
+			result.WriteString(fmt.Sprintf("\n... and %d more warnings\n", len(warnings)-10))
+		}
+		result.WriteString("\n")
+	}
+
+	result.WriteString("=== RECENT LOG LINES ===\n\n")
+	for _, line := range logLines {
+		if line != "" {
+			result.WriteString(line + "\n")
+		}
+	}
+
+	return result.String()
 }
