@@ -2,15 +2,189 @@
 package tools
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	
+	"github.com/emersion/go-message/mail"
 	"yolo/tools/todo"
 )
+
+// EmailMessage represents a parsed email from the inbox
+type EmailMessage struct {
+	Filename    string
+	From        string
+	To          []string
+	Subject     string
+	Date        string
+	ContentType string
+	Content     string
+	Size        int64
+}
+
+// sanitizeEmailField sanitizes email header fields to prevent injection attacks
+func sanitizeEmailField(value string) string {
+	// Remove embedded newlines that could enable header injection
+	value = strings.ReplaceAll(value, "\n", " ")
+	value = strings.ReplaceAll(value, "\r", " ")
+
+	// Truncate very long headers to prevent buffer overflow attacks
+	if len(value) > 497 {
+		value = value[:497] + "..."
+	}
+
+	return value
+}
+
+// truncateString safely truncates a string to maxLen characters
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}
+
+// parseEmail extracts relevant fields from email content using proper MIME parsing
+func parseEmail(content, filename string) EmailMessage {
+	email := EmailMessage{
+		Filename:    filename,
+		ContentType: "text/plain",
+		Size:        int64(len(content)),
+	}
+
+	// Parse the email as a MIME message using go-message library
+	reader, err := mail.CreateReader(bytes.NewReader([]byte(content)))
+	if err != nil {
+		return parseEmailSimple(content, filename)
+	}
+
+	// Extract headers safely with sanitization
+	email.From = sanitizeEmailField(reader.Header.Get("From"))
+	email.Subject = sanitizeEmailField(reader.Header.Get("Subject"))
+	email.Date = sanitizeEmailField(reader.Header.Get("Date"))
+	
+	// Get To addresses
+	toHeader := reader.Header.Get("To")
+	if toHeader != "" {
+		toAddresses := strings.Split(toHeader, ",")
+		for _, addr := range toAddresses {
+			email.To = append(email.To, sanitizeEmailField(strings.TrimSpace(addr)))
+		}
+	}
+
+	// Extract the plain text body using the reader's part iterator
+	var body strings.Builder
+	
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			break
+		}
+
+		// Get content type
+		contentType := part.Header.Get("Content-Type")
+		
+		// Skip attachments (application, image types) and HTML if we can get plain text first
+		if strings.HasPrefix(contentType, "application/") || 
+		   strings.HasPrefix(contentType, "image/") {
+			continue
+		}
+
+		if strings.Contains(contentType, "html") {
+			// Skip HTML parts - prefer plain text
+			continue
+		}
+
+		// Read the content of this part (Part has a Body field that is io.Reader)
+		data, err := io.ReadAll(part.Body)
+		if err != nil {
+			continue
+		}
+
+		body.WriteString(string(data))
+		
+		// Stop after finding a text/plain body (first match wins)
+		if strings.HasPrefix(contentType, "text/plain") {
+			break
+		}
+	}
+
+	// Set Content to just the body text, preserving newlines
+	email.Content = truncateString(strings.TrimSpace(body.String()), 500)
+
+	if email.Content == "" {
+		simpleEmail := parseEmailSimple(content, filename)
+		email.Content = simpleEmail.Content
+	}
+
+	return email
+}
+
+// parseEmailSimple provides a fallback parser for non-MIME or corrupted emails
+func parseEmailSimple(content, filename string) EmailMessage {
+	email := EmailMessage{
+		Filename:    filename,
+		ContentType: "text/plain",
+		Size:        int64(len(content)),
+	}
+
+	// Email format: headers followed by blank line, then body
+	// Find the blank line that separates headers from body
+	lines := strings.Split(content, "\n")
+	bodyStartIdx := 0
+	headersFound := false
+	
+	for i, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			if headersFound {
+				// Found blank line after headers - body starts here
+				bodyStartIdx = i + 1
+				break
+			}
+		} else if strings.Contains(line, ":") {
+			headersFound = true
+		}
+	}
+
+	// Extract body content (everything after the blank line)
+	var bodyLines []string
+	for i := bodyStartIdx; i < len(lines); i++ {
+		bodyLines = append(bodyLines, lines[i])
+	}
+	body := strings.Join(bodyLines, "\n")
+	
+	// Set Content to just the body text (not headers)
+	email.Content = truncateString(strings.TrimSpace(body), 500)
+
+	// Now parse headers from the first part of content
+	scanner := bufio.NewScanner(strings.NewReader(content))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "From:") {
+			email.From = sanitizeEmailField(strings.TrimSpace(strings.TrimPrefix(line, "From:")))
+		} else if strings.HasPrefix(line, "Subject:") {
+			email.Subject = sanitizeEmailField(strings.TrimSpace(strings.TrimPrefix(line, "Subject:")))
+		} else if strings.HasPrefix(line, "Date:") {
+			email.Date = sanitizeEmailField(strings.TrimSpace(strings.TrimPrefix(line, "Date:")))
+		} else if strings.HasPrefix(line, "To:") {
+			toAddresses := strings.Split(strings.TrimSpace(strings.TrimPrefix(line, "To:")), ",")
+			for i, addr := range toAddresses {
+				toAddresses[i] = sanitizeEmailField(strings.TrimSpace(addr))
+			}
+			email.To = toAddresses
+		}
+	}
+
+	return email
+}
 
 // Email-related helpers
 
@@ -35,10 +209,13 @@ func sendReport(subject, body string) error {
 	return sendEmail(to, subject, body)
 }
 
+const (
+	InboxPath = "/var/mail/b-haven.org/yolo/new/"
+	CurDir    = "cur"
+)
+
 func checkInbox(markRead bool) ([]string, error) {
-	inboxDir := "/var/mail/b-haven.org/yolo/new/"
-	
-	entries, err := os.ReadDir(inboxDir)
+	entries, err := os.ReadDir(InboxPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read inbox: %w", err)
 	}
@@ -49,13 +226,26 @@ func checkInbox(markRead bool) ([]string, error) {
 			continue
 		}
 		
-		emailPath := filepath.Join(inboxDir, entry.Name())
+		emailPath := filepath.Join(InboxPath, entry.Name())
 		content, err := os.ReadFile(emailPath)
 		if err != nil {
 			continue
 		}
 		
-		emails = append(emails, string(content))
+		// Parse the email and extract just the relevant parts
+		emailMsg := parseEmail(string(content), entry.Name())
+		
+		// Format email for display - show only parsed fields, not raw content
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("From: %s\n", emailMsg.From))
+		sb.WriteString(fmt.Sprintf("To: %s\n", strings.Join(emailMsg.To, ", ")))
+		sb.WriteString(fmt.Sprintf("Subject: %s\n", emailMsg.Subject))
+		sb.WriteString(fmt.Sprintf("Date: %s\n", emailMsg.Date))
+		sb.WriteString(fmt.Sprintf("Size: %d bytes\n", emailMsg.Size))
+		sb.WriteString("\n--- Message Body ---\n")
+		sb.WriteString(emailMsg.Content)
+		
+		emails = append(emails, sb.String())
 		
 		if markRead {
 			// Move to cur directory
@@ -81,9 +271,10 @@ func processInboxWithResponse() (int, int, error) {
 		return 0, 0, err
 	}
 	
-	for _, _ = range emails {
+	for _, emailContent := range emails {
 		// For each email, generate LLM response and send it
 		// This is a simplified version - full implementation in main package
+		_ = emailContent // Parse the content to check if body exists
 		processed++
 	}
 	
