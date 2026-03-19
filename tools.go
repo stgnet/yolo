@@ -243,9 +243,111 @@ func EmailTools() []ToolDef {
 	return tools
 }
 
+// ─── Structured Error Types ──┐───────────────────────────────
+
+// ToolError represents a structured error with classification for better error handling
+type ToolError struct {
+	// Category classifies the type of error (e.g., "validation", "io", "network", "timeout")
+	Category string `json:"category"`
+	
+	// Message is a human-readable error description
+	Message string `json:"message"`
+	
+	// Details provides additional context or technical information
+	Details string `json:"details,omitempty"`
+	
+	// Code is an optional error code for programmatic handling
+	Code string `json:"code,omitempty"`
+	
+	// Suggestion offers helpful guidance for resolving the error
+	Suggestion string `json:"suggestion,omitempty"`
+}
+
+func (e *ToolError) Error() string {
+	if e.Details != "" {
+		return fmt.Sprintf("%s: %s", e.Message, e.Details)
+	}
+	return e.Message
+}
+
+// NewValidationError creates a validation error for invalid input
+func NewValidationError(message, suggestion string) *ToolError {
+	return &ToolError{
+		Category:   "validation",
+		Message:    message,
+		Suggestion: suggestion,
+		Code:       "ERR_VALIDATION",
+	}
+}
+
+// NewIOError creates an I/O error for file system operations
+func NewIOError(message string, details error) *ToolError {
+	return &ToolError{
+		Category:  "io",
+		Message:   message,
+		Details:   details.Error(),
+		Code:      "ERR_IO",
+	}
+}
+
+// NewNetworkError creates a network-related error
+func NewNetworkError(message string) *ToolError {
+	return &ToolError{
+		Category: "network",
+		Message:  message,
+		Code:     "ERR_NETWORK",
+	}
+}
+
+// NewTimeoutError creates a timeout error
+func NewTimeoutError(message string) *ToolError {
+	return &ToolError{
+		Category: "timeout",
+		Message:  message,
+		Code:     "ERR_TIMEOUT",
+	}
+}
+
+// NewNotFoundError creates an error for missing resources
+func NewNotFoundError(resource, path string) *ToolError {
+	return &ToolError{
+		Category: "not_found",
+		Message:  fmt.Sprintf("%s not found: %s", resource, path),
+		Code:     "ERR_NOT_FOUND",
+	}
+}
+
+// NewPermissionError creates an error for permission issues
+func NewPermissionError(message string) *ToolError {
+	return &ToolError{
+		Category: "permission",
+		Message:  message,
+		Code:     "ERR_PERMISSION",
+	}
+}
+
+// toErrorOutput converts a ToolError to a formatted string output for backward compatibility
+// This allows gradual migration to structured error handling while maintaining existing interfaces
+func (e *ToolError) toErrorOutput() string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Error: %s\n", e.Message))
+	if e.Details != "" {
+		sb.WriteString(fmt.Sprintf("  Category: %s\n", e.Category))
+		sb.WriteString(fmt.Sprintf("  Details: %s\n", e.Details))
+	}
+	if e.Code != "" {
+		sb.WriteString(fmt.Sprintf("  Code: %s\n", e.Code))
+	}
+	if e.Suggestion != "" {
+		sb.WriteString(fmt.Sprintf("  Suggestion: %s\n", e.Suggestion))
+	}
+	return strings.TrimSpace(sb.String())
+}
+
 // errorMessage creates a standardized error message by extracting the error details
 // from the fmt.Sprintf format string. This ensures consistent error reporting
 // across all tool implementations.
+// Deprecated: Use NewValidationError or other specific error constructors instead.
 func errorMessage(format string, args ...any) string {
 	return fmt.Sprintf("Error: "+format, args...)
 }
@@ -472,23 +574,25 @@ func isBinaryData(data []byte) bool {
 func (t *ToolExecutor) readFile(args map[string]any) string {
 	path := getStringArg(args, "path", "")
 	if path == "" {
-		return errorMessage("path is required")
+		return NewValidationError("path is required", "Provide the 'path' parameter with the file to read").toErrorOutput()
 	}
 	offset := getIntArg(args, "offset", 1)
 	limit := getIntArg(args, "limit", 200)
 
 	full, err := t.safePath(path)
 	if err != nil {
-		return errorMessage("%v", err)
+		return NewValidationError(err.Error(), "Use a relative path within the working directory").toErrorOutput()
 	}
 
 	data, err := os.ReadFile(full)
 	if err != nil {
-		return errorMessage("could not read %s: %v", path, err)
+		return NewIOError(fmt.Sprintf("could not read %s", path), err).toErrorOutput()
 	}
 
 	if isBinaryData(data) {
-		return errorMessage("%s is a binary file, not a text file. Cannot read binary files as source code.", path)
+		return NewValidationError(
+			fmt.Sprintf("%s is a binary file, not a text file", path),
+			"Binary files cannot be read as source code. Use a text editor instead.").toErrorOutput()
 	}
 
 	allLines := strings.Split(string(data), "\n")
