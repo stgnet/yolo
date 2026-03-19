@@ -89,9 +89,37 @@ func parseEmail(content, filename string) EmailMessage {
 		Filename:    filename,
 		ContentType: "text/plain",
 		Size:        int64(len(content)),
-		Content:     truncateString(content, 500),
 	}
 
+	// Email format: headers followed by blank line, then body
+	// Find the blank line that separates headers from body
+	lines := strings.Split(content, "\n")
+	bodyStartIdx := 0
+	headersFound := false
+	
+	for i, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			if headersFound {
+				// Found blank line after headers - body starts here
+				bodyStartIdx = i + 1
+				break
+			}
+		} else if strings.Contains(line, ":") {
+			headersFound = true
+		}
+	}
+
+	// Extract body content (everything after the blank line)
+	var bodyLines []string
+	for i := bodyStartIdx; i < len(lines); i++ {
+		bodyLines = append(bodyLines, lines[i])
+	}
+	body := strings.Join(bodyLines, "\n")
+	
+	// Set Content to just the body text (not headers)
+	email.Content = sanitizeEmailField(truncateString(strings.TrimSpace(body), 500))
+
+	// Now parse headers from the first part of content
 	scanner := bufio.NewScanner(strings.NewReader(content))
 	for scanner.Scan() {
 		line := scanner.Text()
