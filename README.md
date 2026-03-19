@@ -155,7 +155,7 @@ YOLO provides intelligent email processing for `yolo@b-haven.org`:
 - **Auto-deletion**: Delete emails after successful response
 - **Progress reports**: Scheduled status updates to scott@stg.net
 
-See [EMAIL_PROCESSING.md](EMAIL_PROCESSING.md) for detailed email system documentation.
+See [DOCS/EMAIL_PROCESSING.md](DOCS/EMAIL_PROCESSING.md) for detailed email system documentation.
 
 ## Configuration
 
@@ -220,7 +220,7 @@ func newToolName(args string) string {
 }
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed development guidelines.
+See [DOCS/CONTRIBUTING.md](DOCS/CONTRIBUTING.md) for detailed development guidelines.
 
 ## Troubleshooting
 

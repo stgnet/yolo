@@ -380,7 +380,7 @@ Convenience wrapper for reports to scott@stg.net.
 - `subject` (optional): Report subject (default: "YOLO Progress Report")
 - `body` (required): Report content
 
-See [EMAIL_PROCESSING.md](../EMAIL_PROCESSING.md) for architecture details.
+See [EMAIL_PROCESSING.md](./EMAIL_PROCESSING.md) for architecture details.
 
 ---
 

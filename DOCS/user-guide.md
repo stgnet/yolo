@@ -144,7 +144,7 @@ Features:
 - Send progress reports to stakeholders
 - Archive processed emails
 
-See [Email Processing](../EMAIL_PROCESSING.md) for detailed documentation.
+See [Email Processing](./EMAIL_PROCESSING.md) for detailed documentation.
 
 ### Web Integration
 
@@ -262,7 +262,7 @@ Parameters:
   - body: "Completed tasks: [...]\nPending items: [...]"
 ```
 
-See [Email Processing](../EMAIL_PROCESSING.md) for security considerations and detailed architecture.
+See [Email Processing](./EMAIL_PROCESSING.md) for security considerations and detailed architecture.
 
 ---
 
@@ -449,10 +449,10 @@ See [Autonomous Operations](./AUTONOMOUS_OPERATIONS.md#troubleshooting-common-is
 
 ## Related Documentation
 
-- [Architecture Overview](../ARCHITECTURE.md) - System design and structure
+- [Architecture Overview](./ARCHITECTURE.md) - System design and structure
 - [Autonomous Operations](./AUTONOMOUS_OPERATIONS.md) - How YOLO works autonomously
 - [Tools Reference](./tools.md) - Detailed tool documentation
-- [Contributing Guide](../CONTRIBUTING.md) - Development guidelines
+- [Contributing Guide](./CONTRIBUTING.md) - Development guidelines
 
 ---
 
