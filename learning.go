@@ -279,7 +279,7 @@ func (lm *LearningManager) extractImprovementsFromWeb(area ResearchArea, result 
 		}
 
 		// Skip if too short or contains generic patterns
-		if len(content) < 70 || containsGenericPattern(content, genericPatterns) {
+		if len(content) < 50 || containsGenericPattern(content, genericPatterns) {
 			continue
 		}
 
@@ -341,7 +341,7 @@ func (lm *LearningManager) extractCompleteSentences(text string) []string {
 		part = strings.TrimSpace(part)
 
 		// Skip very short fragments or too long (likely multiple sentences)
-		if len(part) < 75 || len(part) > 280 {
+		if len(part) < 60 || len(part) > 300 {
 			continue
 		}
 
@@ -355,13 +355,12 @@ func (lm *LearningManager) extractCompleteSentences(text string) []string {
 
 		// Extended list of fragment starters to filter out incomplete sentences
 		fragmentStarters := []string{
-			"including", "such as", "for example", "like", "with", "in the",
-			"on the", "at the", "to the", "by the", "of the", "and the",
+			"including", "such as", "for example", "like",
+			"with the", "in the", "on the", "at the", "to the", "by the", "of the", "and the",
 			"but the", "or the", "is a", "are the", "was a", "were the",
 			"has a", "have a", "it is", "they are", "you can", "we have",
 			"for more", "see also", "read more", "click here", "visit",
 			"check out", "learn about", "find out", "discover",
-			"uses several methods", "provides features", "includes the following",
 		}
 
 		isFragment := false
@@ -763,6 +762,15 @@ func containsActionableContent(text string) bool {
 		"method", "technique", "strategy", "framework", "architecture",
 		"handle", "manage", "process", "validate", "verify",
 		"performance", "scalability", "reliability", "efficiency",
+		"avoid", "prevent", "mitigate", "address", "solve",
+		"design", "build", "create", "develop", "construct",
+		"integration", "workflow", "pipeline", "automation",
+		"monitoring", "logging", "debugging", "testing", "validation",
+		"error handling", "exception", "recovery", "fallback",
+		"caching", "memory", "storage", "database", "query",
+		"concurrency", "parallel", "asynchronous", "synchronous",
+		"security", "authentication", "authorization", "encryption",
+		"deployment", "infrastructure", "container", "orchestration",
 	}
 	textLower := strings.ToLower(text)
 	for _, kw := range actionableKeywords {
