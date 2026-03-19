@@ -144,8 +144,17 @@ func (a *YoloAgent) getSystemPrompt() string {
 // If so, it returns a warning message to inject into autonomous mode prompts.
 // It also prints the warning to stdout so the user can see it.
 func (a *YoloAgent) checkBinaryFreshness() string {
-	// Find all .go files in the project
-	goFiles, err := filepath.Glob("*.go")
+	// Find all .go files in the project recursively using filepath.Walk
+	var goFiles []string
+	err := filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // Skip errors
+		}
+		if !info.IsDir() && strings.HasSuffix(path, ".go") {
+			goFiles = append(goFiles, path)
+		}
+		return nil
+	})
 	if err != nil {
 		return ""
 	}
@@ -162,7 +171,7 @@ func (a *YoloAgent) checkBinaryFreshness() string {
 	}
 
 	if len(newerFiles) > 0 {
-		warning := fmt.Sprintf("⚠️ STALE BINARY DETECTED: Source files are newer than the binary: %s. Code changes have not been compiled. You should compile and restart to apply your changes.", strings.Join(newerFiles, ", "))
+		warning := fmt.Sprintf("[SYSTEM] ⚠️ STALE BINARY DETECTED: Source files newer than binary: %s. These code changes have NOT been compiled. You must run 'go build' and then use the restart tool to apply your changes.", strings.Join(newerFiles, ", "))
 		cprint(Yellow, fmt.Sprintf("\n%s\n", warning))
 		return warning
 	}

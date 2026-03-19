@@ -168,10 +168,10 @@ func (c *OllamaClient) ListModels() []string {
 
 // ChatMessage is a single message in an Ollama chat conversation.
 type ChatMessage struct {
-	Role       string     `json:"role"` // "system", "user", "assistant", or "tool"
-	Content    string     `json:"content"`
-	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
-	ToolName   string     `json:"tool_name,omitempty"`
+	Role      string     `json:"role"` // "system", "user", "assistant", or "tool"
+	Content   string     `json:"content"`
+	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
+	ToolName  string     `json:"tool_name,omitempty"`
 }
 
 // ToolCall is a tool invocation returned by the model.
@@ -609,14 +609,14 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 
 	contentText := strings.Join(contentParts, "")
 	thinkingText := strings.Join(thinkingParts, "")
-	
+
 	// Log for debugging empty responses - both to terminal and syslog
 	if contentText == "" && thinkingText != "" {
-		fmt.Printf("[WARN] Ollama returned empty ContentText but ThinkingText has %d bytes - using ThinkingText as fallback\n", len(thinkingText))
+		// fmt.Printf("[WARN] Ollama returned empty ContentText but ThinkingText has %d bytes - using ThinkingText as fallback\n", len(thinkingText))
 	} else if contentText == "" && thinkingText == "" {
-		fmt.Printf("[ERROR] Ollama returned both empty ContentText and ThinkingText - model may be failing to generate responses\n")
+		// fmt.Printf("[ERROR] Ollama returned both empty ContentText and ThinkingText - model may be failing to generate responses\n")
 	}
-	
+
 	displayText := contentText
 	if displayText == "" {
 		displayText = thinkingText
