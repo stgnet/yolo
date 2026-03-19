@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 
 	"golang.org/x/term"
 )
@@ -25,14 +27,14 @@ func setupOllamaLogging() {
 	}
 
 	// Create logs directory if it doesn't exist
-	logDir := "./logs"
+	logDir, _ := filepath.Abs("./logs")
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: Could not create logs directory: %v\n", err)
 		return
 	}
 
-	logFile := logDir + "/ollama.log"
-	errLogFile := logDir + "/ollama.err.log"
+	logFile := filepath.Join(logDir, "ollama.log")
+	errLogFile := filepath.Join(logDir, "ollama.err.log")
 
 	// Always restart ollama with logging when requested
 	// This ensures we capture all output including [OLLAMA DEBUG] messages
@@ -41,47 +43,59 @@ func setupOllamaLogging() {
 
 	if ollamaRunning {
 		fmt.Println("Stopping existing ollama server to enable logging...")
-		exec.Command("pkill", "-f", "ollama serve").Run()
+		exec.Command("pkill", "-9", "-f", "ollama serve").Run()
 		exec.Command("sleep", "2").Run() // Wait for it to fully stop
+		
+		// Double-check all ollama processes are stopped
+		cmd2 := exec.Command("pgrep", "-f", "ollama")
+		if cmd2.Run() == nil {
+			fmt.Println("Warning: Some ollama processes may still be running. Trying to kill them all...")
+			exec.Command("pkill", "-9", "-f", "ollama").Run()
+			exec.Command("sleep", "1").Run()
+		}
 	}
 
 	fmt.Println("Starting ollama server with logging enabled...")
 
-	// Prepare environment - keep OLLAMA_DEBUG if set so we capture those messages
-	newEnv := os.Environ()
+	// Use shell redirection for reliable process detachment
+	// This creates a background process that continues running after YOLO exits
+	// and properly redirects output to log files without YOLO needing to manage file handles
 	
-	// Start new ollama with output redirected to log files
-	ollamaCmd := exec.Command("ollama", "serve")
-	ollamaCmd.Env = newEnv
-	
-	// Redirect both stdout and stderr to log files
-	stdoutFile, err := os.Create(logFile)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: Could not create stdout log file: %v\n", err)
-		return
-	}
-	
-	stderrFile, err := os.OpenFile(errLogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: Could not create stderr log file: %v\n", err)
-		stdoutFile.Close()
-		return
+	ollamaDebug := os.Getenv("OLLAMA_DEBUG")
+	if ollamaDebug == "" {
+		ollamaDebug = "1" // Enable debug if not already set
 	}
 
-	ollamaCmd.Stdout = stdoutFile
-	ollamaCmd.Stderr = stderrFile
-	
-	err = ollamaCmd.Start()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error starting ollama: %v\n", err)
-		stdoutFile.Close()
-		stderrFile.Close()
-		return
+	// Get absolute paths for log files to ensure they work from any directory
+	absLogFile, _ := filepath.Abs(logFile)
+	absErrLogFile, _ := filepath.Abs(errLogFile)
+
+	// Truncate log files before starting to ensure clean output
+	os.WriteFile(absLogFile, []byte(""), 0644)
+	os.WriteFile(absErrLogFile, []byte(""), 0644)
+
+	// Build the shell command with proper quoting for paths that might have spaces
+	// Use > instead of >> to start fresh (files are truncated above)
+	startCmd := fmt.Sprintf("( OLLAMA_DEBUG=%s nohup ollama serve > '%s' 2> '%s' ) &", 
+		strings.ReplaceAll(ollamaDebug, "'", "'\\''"), 
+		absLogFile, 
+		absErrLogFile)
+
+	exec.Command("sh", "-c", startCmd).Run()
+
+	// Get absolute paths for display if not already absolute
+	displayLogFile := absLogFile
+	displayErrLogFile := absErrLogFile
+	if !filepath.IsAbs(logFile) {
+		displayLogFile, _ = filepath.Abs(logFile)
+	}
+	if !filepath.IsAbs(errLogFile) {
+		displayErrLogFile, _ = filepath.Abs(errLogFile)
 	}
 
 	fmt.Printf("Ollama started with logging enabled.\n")
-	fmt.Printf("  Standard output: %s\n", logFile)
-	fmt.Printf("  Error output: %s\n", errLogFile)
+	fmt.Printf("  Standard output: %s\n", displayLogFile)
+	fmt.Printf("  Error output: %s\n", displayErrLogFile)
 	fmt.Println("YOLO can now read these logs to diagnose Ollama issues.")
 
 	// Give ollama time to start

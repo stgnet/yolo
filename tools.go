@@ -1448,6 +1448,103 @@ func (t *ToolExecutor) parseListingResponse(action string, data []byte) string {
 	return sb.String()
 }
 
+// checkOllamaStatus checks Ollama server status and reads debug logs
+func (t *ToolExecutor) checkOllamaStatus(args map[string]any) string {
+	lines := getIntArg(args, "lines", 50)
+	
+	var result strings.Builder
+	
+	// Check if ollama is running
+	cmd := exec.Command("pgrep", "-f", "ollama serve")
+	ollamaRunning := cmd.Run() == nil
+	
+	result.WriteString("=== Ollama Status ===\n\n")
+	if ollamaRunning {
+		result.WriteString("✓ Ollama server is running\n\n")
+	} else {
+		result.WriteString("✗ Ollama server is NOT running\n\n")
+		result.WriteString("Hint: Run 'ollama serve' in the background to start it.\n\n")
+	}
+	
+	// Read logs directory if it exists
+	logDir := "./logs"
+	logFile := filepath.Join(logDir, "ollama.log")
+	errLogFile := filepath.Join(logDir, "ollama.err.log")
+	
+	// Check if log files exist and read them
+	hasLogs := false
+	
+	if info, err := os.Stat(logFile); err == nil && !info.IsDir() {
+		hasLogs = true
+		result.WriteString(fmt.Sprintf("=== Log File: %s ===\n", logFile))
+		
+		content, err := os.ReadFile(logFile)
+		if err != nil {
+			result.WriteString(fmt.Sprintf("Error reading log file: %v\n", err))
+		} else {
+			// Show last N lines
+			linesArray := strings.Split(strings.TrimSpace(string(content)), "\n")
+			start := 0
+			if len(linesArray) > lines {
+				start = len(linesArray) - lines
+			}
+			
+			for i := start; i < len(linesArray); i++ {
+				if linesArray[i] != "" {
+					result.WriteString(linesArray[i] + "\n")
+				}
+			}
+		}
+		result.WriteString("\n")
+	}
+	
+	if info, err := os.Stat(errLogFile); err == nil && !info.IsDir() {
+		hasLogs = true
+		result.WriteString(fmt.Sprintf("=== Error Log File: %s ===\n", errLogFile))
+		
+		content, err := os.ReadFile(errLogFile)
+		if err != nil {
+			result.WriteString(fmt.Sprintf("Error reading error log file: %v\n", err))
+		} else {
+			// Show last N lines
+			linesArray := strings.Split(strings.TrimSpace(string(content)), "\n")
+			start := 0
+			if len(linesArray) > lines {
+				start = len(linesArray) - lines
+			}
+			
+			for i := start; i < len(linesArray); i++ {
+				if linesArray[i] != "" {
+					result.WriteString(linesArray[i] + "\n")
+				}
+			}
+		}
+		result.WriteString("\n")
+	}
+	
+	if !hasLogs {
+		result.WriteString("No log files found at ./logs/\n")
+		result.WriteString("Enable logging by setting OLLAMA_DEBUG=1 or YOLO_OLLAMA_LOG=1\n\n")
+		
+		// Try to check if ollama is reachable via API even without logs
+		if ollamaRunning {
+			client := NewOllamaClient("http://localhost:11434")
+			models := client.ListModels()
+			if len(models) > 0 {
+				result.WriteString("API Status: Ollama API is reachable.\n")
+				result.WriteString("Available models:\n")
+				for _, m := range models {
+					result.WriteString(fmt.Sprintf("  - %s\n", m))
+				}
+			} else if len(models) == 0 {
+				result.WriteString("API Status: Ollama API responded but no models found.\n")
+			}
+		}
+	}
+	
+	return result.String()
+}
+
 func (t *ToolExecutor) parseThreadResponse(action string, data []byte) string {
 	// Thread responses are nested - we get the post + comments tree
 	var listing redditListing
