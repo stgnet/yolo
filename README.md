@@ -242,6 +242,22 @@ ollama serve
 curl http://localhost:11434/api/generate -d '{"model":"qwen3.5:27b","prompt":"test"}'
 ```
 
+**Verbose [OLLAMA DEBUG] messages appearing in terminal:**
+```bash
+# Check if OLLAMA_DEBUG is set
+echo $OLLAMA_DEBUG
+
+# To suppress debug messages, unset the variable
+unset OLLAMA_DEBUG
+
+# Or explicitly disable it
+export OLLAMA_DEBUG=0
+
+# To capture ollama output to a log file (useful for debugging):
+./scripts/yolo-ollama-start.sh --log
+tail -f logs/ollama.log
+```
+
 **Build fails:**
 ```bash
 go mod download

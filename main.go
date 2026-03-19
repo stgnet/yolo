@@ -20,6 +20,15 @@ func main() {
 		return
 	}
 
+	// Warn about OLLAMA_DEBUG if set - it causes verbose output
+	ollamaDebug := os.Getenv("OLLAMA_DEBUG")
+	if ollamaDebug != "" && ollamaDebug != "0" {
+		fmt.Printf("Note: OLLAMA_DEBUG=%s is set. This causes verbose debug messages from ollama server.\n", ollamaDebug)
+		fmt.Println("To suppress these messages, unset the variable: unset OLLAMA_DEBUG")
+		fmt.Println("Or set it to 0: export OLLAMA_DEBUG=0")
+		fmt.Println()
+	}
+
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		fmt.Fprintln(os.Stderr, "Error: yolo requires an interactive terminal (stdin is not a TTY)")
 		os.Exit(1)
