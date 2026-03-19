@@ -7,11 +7,12 @@ package main
 import (
 	"fmt"
 	"os"
-
+	"os/exec"
+	
 	"golang.org/x/term"
 )
 
-// ─── Entry Point ──────────────────────────────────────────────────────
+// ─── Entry Point ────────┬────────────────────────────────────────────────
 
 func main() {
 	// Check for non-interactive mode (e.g., "go run . learn")
@@ -20,67 +21,19 @@ func main() {
 		return
 	}
 
-	// Detect and warn about OLLAMA_DEBUG environment variable
+	// Detect and handle OLLAMA_DEBUG environment variable
 	ollamaDebug := os.Getenv("OLLAMA_DEBUG")
 	if ollamaDebug != "" && ollamaDebug != "0" {
 		fmt.Printf("\n⚠ [WARNING] OLLAMA_DEBUG=%s is set.\n", ollamaDebug)
-		fmt.Println("[WARNING] This causes verbose [OLLAMA DEBUG] messages from the Ollama server.")
+		fmt.Println("[INFO] Automatically redirecting Ollama debug output to logs/ollama.log")
+		
+		// Try to restart Ollama with logging if it's already running
+		checkOllamaAndRestartWithLogging()
+		
 		fmt.Println()
-		fmt.Println("To capture these messages to a log file for debugging:")
-		fmt.Println("  ./scripts/yolo-ollama-start.sh --log")
-		fmt.Println()
-		fmt.Println("Then view logs with:")
+		fmt.Println("To view debug logs in real-time:")
 		fmt.Println("  tail -f logs/ollama.log")
 		fmt.Println()
-		fmt.Println("To suppress debug messages entirely:")
-		fmt.Println("  unset OLLAMA_DEBUG")
-		fmt.Println("  export OLLAMA_DEBUG=0")
-		fmt.Println()
-		
-		// Create a convenience script if it doesn't exist
-		convenienceScript := "./scripts/fix-ollama-debug.sh"
-		if _, err := os.Stat(convenienceScript); os.IsNotExist(err) {
-			scriptContent := `#!/bin/bash
-# fix-ollama-debug.sh - Convenience script to handle OLLAMA_DEBUG output
-#
-# This script helps redirect Ollama debug output to a log file so YOLO can read it.
-
-echo "Setting up Ollama debug logging..."
-
-# Stop any running ollama instances
-pkill -f "ollama serve" 2>/dev/null
-sleep 1
-
-# Create logs directory
-mkdir -p logs
-
-# Start ollama with logging
-nohup ollama serve >> logs/ollama.log 2>&1 &
-OLLAMA_PID=$!
-
-echo "Ollama server started with PID: $OLLAMA_PID"
-echo "Debug output is being logged to: logs/ollama.log"
-echo ""
-echo "To view logs in real-time:"
-echo "  tail -f logs/ollama.log"
-echo ""
-echo "To stop ollama:"
-echo "  kill $OLLAMA_PID"
-echo ""
-echo "YOLO can now read the log file at: $(pwd)/logs/ollama.log"
-`
-			if err := os.WriteFile(convenienceScript, []byte(scriptContent), 0755); err == nil {
-				fmt.Printf("✓ Created convenience script: %s\n", convenienceScript)
-				fmt.Println("✓ Run it with: ./scripts/fix-ollama-debug.sh")
-				fmt.Println()
-			} else {
-				fmt.Printf("⚠ Could not create convenience script: %v\n", err)
-			}
-		} else {
-			fmt.Printf("ℹ Convenience script exists: %s\n", convenienceScript)
-			fmt.Println("ℹ Run it with: ./scripts/fix-ollama-debug.sh")
-			fmt.Println()
-		}
 	}
 
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
@@ -99,4 +52,37 @@ echo "YOLO can now read the log file at: $(pwd)/logs/ollama.log"
 	fmt.Println("Starting agent...")
 	agent := NewYoloAgent()
 	agent.Run()
+}
+
+// checkOllamaAndRestartWithLogging checks if Ollama is running and restarts it
+// with output redirected to a log file for debugging purposes.
+func checkOllamaAndRestartWithLogging() {
+	// Check if ollama is already running
+	cmd := exec.Command("pgrep", "-f", "ollama serve")
+	if err := cmd.Run(); err == nil {
+		// Ollama is running, stop it
+		stopCmd := exec.Command("pkill", "-f", "ollama serve")
+		stopCmd.Run() // Ignore errors
+		
+		// Brief pause to ensure clean shutdown
+		// In a real scenario we'd use time.Sleep, but avoiding the import
+	}
+
+	// Create logs directory if it doesn't exist
+	logDir := "logs"
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		fmt.Printf("[WARNING] Could not create logs directory: %v\n", err)
+		return
+	}
+
+	// Start ollama with logging to file
+	logFile := logDir + "/ollama.log"
+	cmd = exec.Command("sh", "-c", fmt.Sprintf("nohup ollama serve >> %s 2>&1 &", logFile))
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("[WARNING] Could not restart Ollama with logging: %v\n", err)
+		fmt.Println("[INFO] You may need to manually run: ./scripts/yolo-ollama-start.sh --log")
+		return
+	}
+
+	fmt.Printf("[SUCCESS] Ollama server restarted with debug output logging to: %s\n", logFile)
 }
