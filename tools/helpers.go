@@ -4,13 +4,15 @@ package tools
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	
+	"time"
+
 	"github.com/emersion/go-message/mail"
 	"github.com/scottstg/yolo/tools/todo"
 )
@@ -191,14 +193,86 @@ func parseEmailSimple(content, filename string) EmailMessage {
 // Email-related helpers
 
 func sendEmail(to, subject, body string) error {
+	return sendEmailInternal(to, subject, body, nil)
+}
+
+// sendEmailInternal is the internal function that handles email sending with optional attachments
+func sendEmailInternal(to, subject, body string, attachments []string) error {
 	if to == "" {
 		to = "scott@stg.net"
 	}
 	
-	cmd := exec.Command("sendmail", "-t")
-	input := fmt.Sprintf("To: %s\nFrom: yolo@b-haven.org\nSubject: %s\n\n%s\n", to, subject, body)
+	// If no attachments, use simple sendmail approach
+	if len(attachments) == 0 {
+		cmd := exec.Command("sendmail", "-t")
+		input := fmt.Sprintf("To: %s\nFrom: yolo@b-haven.org\nSubject: %s\n\n%s\n", to, subject, body)
+		cmd.Stdin = strings.NewReader(input)
+		return cmd.Run()
+	}
 	
-	cmd.Stdin = strings.NewReader(input)
+	// With attachments, create a proper MIME multipart message
+	return sendEmailWithAttachments(to, subject, body, attachments)
+}
+
+// sendEmailWithAttachments creates a MIME multipart message with attachments
+func sendEmailWithAttachments(to, subject, body string, attachments []string) error {
+	if to == "" {
+		to = "scott@stg.net"
+	}
+
+	// Create the email buffer
+	var emailBuf bytes.Buffer
+	
+	// Write headers
+	fmt.Fprintf(&emailBuf, "To: %s\n", to)
+	fmt.Fprintf(&emailBuf, "From: yolo@b-haven.org\n")
+	fmt.Fprintf(&emailBuf, "Subject: %s\n", subject)
+	fmt.Fprintf(&emailBuf, "MIME-Version: 1.0\n")
+	
+	// Create a boundary for multipart message
+	boundary := fmt.Sprintf("Boundary_%d", time.Now().UnixNano())
+	fmt.Fprintf(&emailBuf, "Content-Type: multipart/mixed; boundary=\"%s\"\n\n", boundary)
+	
+	// Write the text part
+	fmt.Fprintf(&emailBuf, "--%s\n", boundary)
+	fmt.Fprintf(&emailBuf, "Content-Type: text/plain; charset=\"UTF-8\"\n")
+	fmt.Fprintf(&emailBuf, "Content-Transfer-Encoding: 7bit\n\n")
+	fmt.Fprint(&emailBuf, body)
+	fmt.Fprintf(&emailBuf, "\n\n")
+	
+	// Write attachment parts
+	for _, attachPath := range attachments {
+		data, err := os.ReadFile(attachPath)
+		if err != nil {
+			// Skip attachment if can't read, but continue with others
+			continue
+		}
+		
+		filename := filepath.Base(attachPath)
+		
+		fmt.Fprintf(&emailBuf, "--%s\n", boundary)
+		fmt.Fprintf(&emailBuf, "Content-Type: application/octet-stream; name=\"%s\"\n", filename)
+		fmt.Fprintf(&emailBuf, "Content-Disposition: attachment; filename=\"%s\"\n", filename)
+	fmt.Fprintf(&emailBuf, "Content-Transfer-Encoding: base64\n\n")
+		
+		// Encode to base64 with line breaks every 76 chars (RFC 2045)
+		encoded := base64.StdEncoding.EncodeToString(data)
+		for i := 0; i < len(encoded); i += 76 {
+			end := i + 76
+			if end > len(encoded) {
+				end = len(encoded)
+			}
+			fmt.Fprintf(&emailBuf, "%s\n", encoded[i:end])
+		}
+		fmt.Fprintf(&emailBuf, "\n")
+	}
+	
+	// Write closing boundary
+	fmt.Fprintf(&emailBuf, "--%s--\n", boundary)
+	
+	// Send the message via sendmail
+	cmd := exec.Command("sendmail", "-t")
+	cmd.Stdin = &emailBuf
 	return cmd.Run()
 }
 
