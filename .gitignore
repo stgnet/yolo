@@ -3,6 +3,7 @@ yolo
 .yolo
 .yolo_learning.json
 .yolo_email_cooldown.txt
+cur/
 test_output/
 logs/
 *.patch
