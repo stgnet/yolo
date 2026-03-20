@@ -130,6 +130,7 @@ YOLO has 32 built-in tools that the LLM can call:
 | `reddit` | Reddit API: search, subreddit posts, thread details |
 | `gog` | Google Workspace: Gmail, Calendar, Drive, Docs, Sheets |
 | `send_email` | Send email via postfix from yolo@b-haven.org |
+| `send_report` | Send progress report to scott@stg.net |
 | `check_inbox` | Read Maildir inbox at /var/mail/b-haven.org/yolo/new/ |
 | `process_inbox_with_response` | Auto-respond to emails then delete |
 | `list_models` | List available Ollama models |
