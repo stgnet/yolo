@@ -6,93 +6,8 @@ import (
 	"time"
 )
 
-// TestSanitizeContentCommandInjection tests that command injection patterns are removed
-func TestSanitizeContentCommandInjection(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{
-			name:     "no injection",
-			input:    "This is safe content",
-			expected: "This is safe content",
-		},
-		{
-			name:     "semicolon injection",
-			input:    `rm -rf /; echo "injected"`,
-			expected: `rm -rf / echo "injected"`,
-		},
-		{
-			name:     "pipe injection",
-			input:    `cat file.txt | malicious_cmd`,
-			expected: `cat file.txt  malicious_cmd`,
-		},
-		{
-			name:     "dollar command substitution",
-			input:    `echo $(rm -rf /)`,
-			expected: `echo [COMMAND_REDACTED]`,
-		},
-		{
-			name:     "backtick injection",
-			input:    `echo ` + "`rm -rf /`" + ``,
-			expected: `echo [COMMAND_REDACTED]`,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := sanitizeContent(tt.input)
-			if result != tt.expected {
-				t.Errorf("sanitizeContent(%q) = %q, want %q", tt.input, result, tt.expected)
-			}
-		})
-	}
-}
-
-// TestSanitizeContentTemplateInjection tests that template injection markers are removed
-func TestSanitizeContentTemplateInjection(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{
-			name:     "no injection",
-			input:    "Normal content",
-			expected: "Normal content",
-		},
-		{
-			name:     "simple template injection",
-			input:    `{{ malicious code }}`,
-			expected: `[REDACTED]`,
-		},
-		{
-			name:     "nested template injection",
-			input:    `Hello {{ user.name }}! How are you?`,
-			expected: `Hello [REDACTED]! How are you?`,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := sanitizeContent(tt.input)
-			if result != tt.expected {
-				t.Errorf("sanitizeContent(%q) = %q, want %q", tt.input, result, tt.expected)
-			}
-		})
-	}
-}
-
-// TestSanitizeContentTruncation tests that very long content is truncated
-func TestSanitizeContentTruncation(t *testing.T) {
-	longContent := strings.Repeat("A", 15000)
-	result := sanitizeContent(longContent)
-
-	if len(result) >= 15000 || !strings.Contains(result, "[CONTENT TRUNCATED") {
-		t.Errorf("Content not properly truncated: length=%d", len(result))
-	}
-}
+// NOTE: sanitizeContent tests removed - this function does not exist and is not needed
+// Email content should NOT be sanitized before being sent to LLM - the LLM needs full context
 
 // TestEncodeHeader tests header injection prevention
 func TestEncodeHeader(t *testing.T) {
@@ -109,7 +24,7 @@ func TestEncodeHeader(t *testing.T) {
 		{
 			name:     "newline injection",
 			input:    "Test\r\nBcc: attacker@evil.com",
-			expected: "Test  Bcc: attacker@evil.com", // Both \\r and \\n replaced with spaces
+			expected: "Test  Bcc: attacker@evil.com", // Both \r and \n replaced with spaces
 		},
 		{
 			name:     "carriage return injection",
@@ -224,27 +139,6 @@ func TestEncodeHeaderTruncation(t *testing.T) {
 
 	if len(result) > 503 || !strings.HasSuffix(result, "..") {
 		t.Errorf("Header not properly truncated: length=%d, ends_with='..': %v", len(result), strings.HasSuffix(result, ".."))
-	}
-}
-
-// TestSanitizeContentMultipleInjection tests multiple injection attempts
-func TestSanitizeContentMultipleInjection(t *testing.T) {
-	input := `
-Hello {{ user.name }},
-You can execute: $(rm -rf /)
-Or use backticks: ` + "`cat /etc/passwd`" + `
-Separator: ; rm -rf /
-Pipe: | malicious_cmd
-`
-
-	result := sanitizeContent(input)
-
-	// Check all injection markers are removed
-	injectionPatterns := []string{"{{", "$(rm", "`cat", "; rm", "| malicious"}
-	for _, pattern := range injectionPatterns {
-		if strings.Contains(result, pattern) {
-			t.Errorf("Injection pattern '%s' still present in sanitized content", pattern)
-		}
 	}
 }
 

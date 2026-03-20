@@ -463,7 +463,6 @@ func isRateLimited() bool {
 
 // processInboxWithResponse automates the email workflow: read → respond → archive
 func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
-	markRead := getBoolArg(args, "mark_read", true)
 
 	// Check if inbox directory exists
 	if _, err := os.Stat(InboxPath); os.IsNotExist(err) {
@@ -547,10 +546,11 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 		isProgressReportRequestFlag := isProgressReportRequest(&email)
 
 		var response string
+		
 		if isProgressReportRequestFlag {
 			log.Printf("Detected progress report request from %s, sending actual report...", email.From)
 
-			// Generate and send actual progress report
+			// Generate and send actual progress report - THIS IS THE ONLY EMAIL SENT FOR PROGRESS REQUESTS
 			todoOutput := listTodos()
 			reportBody := fmt.Sprintf("🤖 YOLO Progress Report\n\nGenerated in response to your email request.\n\n%s", todoOutput)
 
@@ -562,8 +562,13 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 			})
 			log.Printf("Progress report send result: %s", sendResult)
 
-			// Acknowledgment response to send back
-			response = "Thanks for reaching out! I have just sent you a detailed progress report with my current status and todo list. You should receive it shortly.\n\nBest regards,\nYOLO - Your Own Living Operator"
+			// NO acknowledgment email sent - progress report itself is the response
+		
+			// Archive the original request email
+			archiveEmail(filePath, file.Name(), "progress_report_sent")
+			totalProcessed++
+			processed = append(processed, file.Name())
+			continue // Skip to next email - no acknowledgment sent
 		} else {
 			// Generate AI response using LLM based on full email context - NO TEMPLATE FALLBACKS
 			prompt := fmt.Sprintf("You are YOLO, an autonomous AI assistant running in production. You received this email:\n\nFrom: %s\nSubject: %s\n\nMessage content:\n%s\n\nInstructions for generating response:\n1. SIGNATURE DETECTION: The last few lines of emails often contain signatures (company names like 'STG.NET & B-Haven', phone numbers, website links, disclaimers). These are NOT part of the actual request - use your judgment to identify and ignore them. Focus only on the substantive message content.\n2. RESPOND TO SUBSTANCE: Generate a genuine response that addresses the actual request or questions in the email body, not the signature.\n3. NO LENGTH LIMITS: Provide complete, detailed information when requested. Include full progress reports, complete todo lists with all details, comprehensive explanations. Do NOT summarize, truncate, or artificially limit your response length.\n4. BE CONVERSATIONAL: Write naturally and professionally, acknowledging what was actually asked.\n5. SIGN YOUR RESPONSE: End as 'YOLO - Your Own Living Operator'\n\nResponse:",
@@ -584,7 +589,6 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 		}
 
 		// Validate sender before responding
-		// Validate sender before responding
 		if !validateSender(sender) {
 			log.Printf("Skipping response to untrusted sender: %s", sender)
 			skipped = append(skipped, file.Name())
@@ -603,15 +607,6 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 
 		totalProcessed++
 		processed = append(processed, file.Name())
-
-		// Mark as read (move to cur directory) if requested
-		if markRead {
-			curDir := filepath.Join(CurDir)
-			if err := os.MkdirAll(curDir, 0755); err == nil {
-				destPath := filepath.Join(curDir, "processed_"+file.Name())
-				os.Rename(filePath, destPath)
-			}
-		}
 	}
 
 	var sb strings.Builder

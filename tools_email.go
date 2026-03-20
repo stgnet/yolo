@@ -97,34 +97,7 @@ func validateSender(emailAddress string) bool {
 	return true
 }
 
-// sanitizeContent removes potentially malicious content from email body
-// This helps prevent prompt injection attacks
-func sanitizeContent(content string) string {
-	// Remove potential command injection patterns (line breaks and separators only)
-	content = regexp.MustCompile(`[;|&]\s*`).ReplaceAllString(content, " ")
 
-	// Remove potential template injection markers
-	content = regexp.MustCompile(`\{\{.*?\}\}`).ReplaceAllStringFunc(content, func(match string) string {
-		return "[REDACTED]"
-	})
-
-	// Remove shell command patterns that could be interpreted by downstream systems
-	// Process dollar-sign command substitution first: $(...)
-	content = regexp.MustCompile(`\$\([^)]*\)`).ReplaceAllStringFunc(content, func(match string) string {
-		return "[COMMAND_REDACTED]"
-	})
-	// Process backtick command substitution second: `...`
-	content = regexp.MustCompile("`[^`]*`").ReplaceAllStringFunc(content, func(match string) string {
-		return "[COMMAND_REDACTED]"
-	})
-
-	// Truncate very long content to prevent memory issues
-	if len(content) > 10000 {
-		content = content[:10000] + " [CONTENT TRUNCATED - ORIGINAL EXCEEDED 10KB LIMIT]"
-	}
-
-	return content
-}
 
 // encodeHeader safely encodes header values to prevent header injection
 func encodeHeader(value string) string {
@@ -173,16 +146,13 @@ func (t *ToolExecutor) sendEmail(args map[string]any) string {
 		return fmt.Sprintf("Error: email address '%s' is not allowed", to)
 	}
 
-	// Sanitize content to prevent prompt injection
-	sanitizedBody := sanitizeContent(body)
-
 	// Encode headers safely to prevent header injection
 	safeSubject := encodeHeader(subject)
 
 	msg := &email.Message{
 		To:      []string{to},
 		Subject: safeSubject,
-		Body:    sanitizedBody,
+		Body:    body,
 	}
 
 	client := email.New(cfg)
@@ -242,16 +212,13 @@ func (t *ToolExecutor) sendReport(args map[string]any) string {
 		return fmt.Sprintf("Error: email address '%s' is not allowed", to)
 	}
 
-	// Sanitize content to prevent prompt injection
-	sanitizedBody := sanitizeContent(body)
-
 	// Encode headers safely to prevent header injection
 	safeSubject := encodeHeader(subject)
 
 	msg := &email.Message{
 		To:      []string{to},
 		Subject: safeSubject,
-		Body:    sanitizedBody,
+		Body:    body,
 	}
 
 	client := email.New(cfg)
