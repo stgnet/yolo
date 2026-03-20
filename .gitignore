@@ -17,3 +17,5 @@ yolo-bin
 history.json
 .todo.json
 tools/todo/.todo.json
+tmp
+archive
