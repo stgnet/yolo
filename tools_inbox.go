@@ -23,10 +23,9 @@ import (
 )
 
 const (
-	InboxPath      = "/var/mail/b-haven.org/yolo/new/"
-	CurDir         = "cur"
-	ArchiveDir     = "archive"
-	RateLimitEmail = "admin@b-haven.org" // Email for rate limit notifications
+	InboxPath  = "/var/mail/b-haven.org/yolo/new/"
+	CurDir     = "cur"
+	ArchiveDir = "archive"
 )
 
 // emailArchived tracks which emails have been archived in this session
@@ -455,12 +454,6 @@ func isBounceMessage(email *EmailMessage) bool {
 	return false
 }
 
-// isRateLimited checks if we've exceeded the email sending rate limit
-func isRateLimited() bool {
-	emailCount.Load() // This is a no-op to check current count
-	return emailCount.Load() >= MaxEmailsPerHour
-}
-
 // processInboxWithResponse automates the email workflow: read → respond → archive
 func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 
@@ -512,24 +505,6 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 			// Still archive these for audit purposes
 			archiveEmail(filePath, file.Name(), "bounce_skipped")
 			continue
-		}
-
-		// Check rate limiting before generating response
-		if isRateLimited() {
-			log.Printf("Rate limit exceeded, skipping email %s", file.Name())
-			skipped = append(skipped, file.Name())
-
-			// Archive the email and notify admin
-			archiveEmail(filePath, file.Name(), "rate_limited")
-
-			// Send notification to admin about rate limit
-			t.sendEmail(map[string]any{
-				"to":      RateLimitEmail,
-				"subject": "YOLO Email Rate Limit Exceeded",
-				"body":    fmt.Sprintf("YOLO has reached its hourly email sending limit. %d emails processed, %d skipped due to rate limiting.", totalProcessed, len(skipped)),
-			})
-
-			break // Stop processing remaining emails
 		}
 
 		// Debug: log email parsing details

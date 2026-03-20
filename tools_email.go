@@ -1,6 +1,6 @@
 // Email Tool Implementation with Security Hardening
 // Allows YOLO to send emails via SMTP from yolo@b-haven.org
-// Includes protection against prompt injection, header injection, and rate limiting
+// Includes protection against prompt injection and header injection
 
 package main
 
@@ -8,76 +8,15 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"sync"
-	"sync/atomic"
-	"time"
 
 	"github.com/scottstg/yolo/email"
 )
 
-// Security constants for rate limiting and validation
+// Security constants for validation
 const (
-	MaxEmailsPerHour   = 10              // Maximum emails per hour
-	CooldownPeriod     = time.Second * 5 // Minimum time between email sends
 	AllowedSenderRegex = `^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`
 	DenylistedDomains  = "example.com|test.com|suspicious-domain.org"
 )
-
-// EmailCooldownTracker tracks email sending rate
-var (
-	lastEmailTime atomic.Value // stores time.Time via interface{}
-	emailCount    atomic.Int32
-	hourStart     atomic.Int64
-	initOnce      sync.Once
-)
-
-// initEmailSecurity initializes security tracking variables
-func initEmailSecurity() {
-	initOnce.Do(func() {
-		now := time.Now()
-		hourStart.Store(now.Unix())
-		lastEmailTime.Store(time.Time{})
-	})
-}
-
-// checkEmailCooldown enforces rate limiting and cooldown periods
-func checkEmailCooldown() bool {
-	hourUnix := hourStart.Load()
-	currentUnix := time.Now().Unix()
-
-	// Reset counter at the start of each hour
-	if currentUnix-hourUnix >= 3600 {
-		hourStart.Store(currentUnix)
-		emailCount.Store(0)
-	}
-
-	// Check rate limit (max emails per hour)
-	if emailCount.Load() >= MaxEmailsPerHour {
-		return false // Rate limit exceeded
-	}
-
-	// Check cooldown period between sends
-	lastTimeVal := lastEmailTime.Load()
-	if lastTimeVal == nil {
-		return true
-	}
-	lastTime, ok := lastTimeVal.(time.Time)
-	if !ok || lastTime.IsZero() {
-		return true
-	}
-	if time.Since(lastTime) < CooldownPeriod {
-		return false // Still in cooldown
-	}
-
-	return true
-}
-
-// recordEmailSent updates the email send tracking after a successful send
-func recordEmailSent() error {
-	lastEmailTime.Store(time.Now())
-	emailCount.Add(1)
-	return nil
-}
 
 // validateSender checks if sender is allowed (not denylisted)
 // Format validation MUST happen before denylist check to avoid false rejections of invalid emails
@@ -128,11 +67,6 @@ func (t *ToolExecutor) sendEmail(args map[string]any) string {
 		return fmt.Sprintf("Error: invalid email address '%s'", to)
 	}
 
-	// Check rate limiting before processing
-	if !checkEmailCooldown() {
-		return "Error: Email sending rate limit exceeded. Please wait a moment and try again."
-	}
-
 	// Get email configuration (uses local SMTP relay by default, no auth needed)
 	cfg := email.DefaultConfig()
 
@@ -160,9 +94,6 @@ func (t *ToolExecutor) sendEmail(args map[string]any) string {
 	if err != nil {
 		return fmt.Sprintf("Error sending email: %v", err)
 	}
-
-	// Record successful send for rate limiting
-	recordEmailSent()
 
 	var sb strings.Builder
 	sb.WriteString("✅ Email sent successfully\n")
@@ -202,11 +133,6 @@ func (t *ToolExecutor) sendReport(args map[string]any) string {
 		to = "scott@stg.net"
 	}
 
-	// Check rate limiting before processing
-	if !checkEmailCooldown() {
-		return "Error: Email sending rate limit exceeded. Please wait a moment and try again."
-	}
-
 	// Validate sender is not denylisted
 	if !validateSender(to) {
 		return fmt.Sprintf("Error: email address '%s' is not allowed", to)
@@ -226,9 +152,6 @@ func (t *ToolExecutor) sendReport(args map[string]any) string {
 	if err != nil {
 		return fmt.Sprintf("Error sending report: %v", err)
 	}
-
-	// Record successful send for rate limiting
-	recordEmailSent()
 
 	var sb strings.Builder
 	sb.WriteString("✅ Progress report sent successfully\n")

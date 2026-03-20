@@ -3,7 +3,6 @@ package main
 import (
 	"strings"
 	"testing"
-	"time"
 )
 
 // NOTE: sanitizeContent tests removed - this function does not exist and is not needed
@@ -87,51 +86,6 @@ func TestValidateSender(t *testing.T) {
 	}
 }
 
-// TestCheckEmailCooldown tests rate limiting functionality
-func TestCheckEmailCooldown(t *testing.T) {
-	t.Parallel() // Isolate from other tests with global state
-
-	tests := []struct {
-		name     string
-		setup    func()
-		expected bool
-	}{
-		{
-			name: "no emails sent yet",
-			setup: func() {
-				hourStart.Store(time.Now().Unix())
-				emailCount.Store(0)
-				lastEmailTime.Store(time.Time{})
-			},
-			expected: true,
-		},
-		{
-			name: "within cooldown period",
-			setup: func() {
-				hourStart.Store(time.Now().Unix())
-				emailCount.Store(5)
-				lastEmailTime.Store(time.Now())
-			},
-			expected: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.setup()
-			result := checkEmailCooldown()
-			if result != tt.expected {
-				t.Errorf("checkEmailCooldown() = %v, want %v", result, tt.expected)
-			}
-		})
-	}
-
-	// Cleanup: reset to initial state for other tests
-	hourStart.Store(time.Now().Unix())
-	emailCount.Store(0)
-	lastEmailTime.Store(time.Time{})
-}
-
 // TestEncodeHeaderTruncation tests that very long headers are truncated
 func TestEncodeHeaderTruncation(t *testing.T) {
 	longHeader := strings.Repeat("A", 1000)
@@ -140,33 +94,4 @@ func TestEncodeHeaderTruncation(t *testing.T) {
 	if len(result) > 503 || !strings.HasSuffix(result, "..") {
 		t.Errorf("Header not properly truncated: length=%d, ends_with='..': %v", len(result), strings.HasSuffix(result, ".."))
 	}
-}
-
-// TestRateLimitingOverHour tests that rate limit resets after an hour
-func TestRateLimitingOverHour(t *testing.T) {
-	t.Parallel() // Isolate from other tests
-
-	now := time.Now().Unix()
-	hourStart.Store(now)
-	emailCount.Store(MaxEmailsPerHour)
-	lastEmailTime.Store(time.Time{})
-
-	// Initially should be rate limited
-	if checkEmailCooldown() {
-		t.Errorf("Expected rate limiting to block send")
-	}
-
-	// Simulate hour passing
-	hourStart.Store(now + 3601)
-	emailCount.Store(0)
-
-	// Should now allow send
-	if !checkEmailCooldown() {
-		t.Errorf("Expected rate limit reset after hour")
-	}
-
-	// Cleanup: reset to initial state for other tests
-	hourStart.Store(time.Now().Unix())
-	emailCount.Store(0)
-	lastEmailTime.Store(time.Time{})
 }
