@@ -1,6 +1,8 @@
 package inputmanager
 
 import (
+	"fmt"
+	"os"
 	"testing"
 	"time"
 )
@@ -474,4 +476,148 @@ func equalBytes(a, b []byte) bool {
 		}
 	}
 	return true
+}
+
+func TestNewInputManagerWithDelayOverride(t *testing.T) {
+	// Save original value
+	original := os.Getenv("YOLO_INPUT_DELAY")
+	defer func() {
+		if original == "" {
+			os.Unsetenv("YOLO_INPUT_DELAY")
+		} else {
+			os.Setenv("YOLO_INPUT_DELAY", original)
+		}
+	}()
+
+	// Test with custom delay
+	os.Setenv("YOLO_INPUT_DELAY", "5")
+	im := NewInputManager(nil)
+
+	if im.sendDelay != 5*time.Second {
+		t.Errorf("Expected send delay of 5s, got %v", im.sendDelay)
+	}
+
+	// Test with invalid value (should fall back to default)
+	os.Setenv("YOLO_INPUT_DELAY", "invalid")
+	im2 := NewInputManager(nil)
+
+	if im2.sendDelay != 10*time.Second {
+		t.Errorf("Expected default send delay of 10s for invalid override, got %v", im2.sendDelay)
+	}
+
+	// Test with zero value (should fall back to default)
+	os.Setenv("YOLO_INPUT_DELAY", "0")
+	im3 := NewInputManager(nil)
+
+	if im3.sendDelay != 10*time.Second {
+		t.Errorf("Expected default send delay of 10s for zero override, got %v", im3.sendDelay)
+	}
+}
+
+
+func TestInputManagerBufferModeRedraw(t *testing.T) {
+	im := NewInputManager(nil)
+	
+	// Set some buffer content
+	im.mu.Lock()
+	im.buf = []byte("test content")
+	im.mu.Unlock()
+	
+	// Should not panic
+	im.bufferModeRedraw()
+}
+
+func TestInputManagerRedrawAfterOutput(t *testing.T) {
+	im := NewInputManager(nil)
+	
+	// Should not panic
+	im.RedrawAfterOutput()
+}
+
+func TestInputManagerClearScreen(t *testing.T) {
+	im := NewInputManager(nil)
+	
+	// Should not panic (outputs escape sequence to stdout)
+	im.clearScreen()
+}
+
+func TestInputManagerStop(t *testing.T) {
+	im := NewInputManager(nil)
+	
+	// Stop should not panic even without Start being called
+	im.Stop()
+}
+
+func TestInputManagerConsumeEscapeSequenceSimple(t *testing.T) {
+	im := NewInputManager(nil)
+	
+	// Simulate bare ESC press (timeout case)
+	// Don't send anything to rawBytes, let it timeout
+	go func() {
+		im.consumeEscapeSequence()
+	}()
+	
+	// Should complete without blocking
+	time.Sleep(100 * time.Millisecond)
+}
+
+func TestInputManagerConsumeEscapeSequenceCSI(t *testing.T) {
+	im := NewInputManager(nil)
+	
+	// Send CSI sequence: ESC [ A (up arrow)
+	go func() {
+		im.rawBytes <- '['
+		time.Sleep(10 * time.Millisecond)
+		im.rawBytes <- 'A'
+	}()
+	
+	im.consumeEscapeSequence()
+	
+	// Should complete without blocking
+	time.Sleep(50 * time.Millisecond)
+}
+
+func TestInputManagerConsumeEscapeSequenceOther(t *testing.T) {
+	im := NewInputManager(nil)
+	
+	// Send ESC + single char (not [, ], P, X, ^, _)
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		im.rawBytes <- 'O' // ESC O is often right arrow
+	}()
+	
+	im.consumeEscapeSequence()
+	
+	// Should complete without blocking
+	time.Sleep(100 * time.Millisecond)
+}
+
+func TestInputManagerStartStop(t *testing.T) {
+	im := NewInputManager(nil)
+	
+	// Start will try to set terminal to raw mode
+	// In test environment this might fail, but should handle gracefully
+	go im.Start()
+	
+	// Give it a moment to initialize goroutines
+	time.Sleep(100 * time.Millisecond)
+	
+	// Stop should not panic
+	im.Stop()
+	
+	// Send EOF signal to terminate the processLoop
+	im.rawErr <- fmt.Errorf("test done")
+	
+	// Give it time to exit
+	time.Sleep(100 * time.Millisecond)
+}
+
+func TestInputManagerSyncToUI(t *testing.T) {
+	im := NewInputManager(nil)
+	
+	// SyncToUI should handle any interface{} without panic
+	im.SyncToUI(nil)
+	im.SyncToUI("test")
+	im.SyncToUI(123)
+	im.SyncToUI(map[string]string{"key": "value"})
 }
