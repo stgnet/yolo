@@ -6,7 +6,7 @@ package main
 import (
 	"strings"
 
-	"yolo/tools/todo"
+	"github.com/scottstg/yolo/tools/todo"
 )
 
 // addTodoItem adds a new todo item using the todo package.

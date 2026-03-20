@@ -17,7 +17,7 @@ const (
 
 	// IMPORTANT: Source code is in current directory (.), NOT in yolo/
 	// File paths should be relative to: /Users/sgriepentrog/src/yolo
-	// Example: Use "tools_inbox.go", NOT "yolo/tools_inbox.go"
+	// Example: Use "tools_inbox.go", NOT "github.com/scottstg/yolo/"tools_inbox.go"
 	_SourceCodeLocation = "."
 
 	// CRITICAL: Use the restart tool to rebuild, NEVER call os.Exit()

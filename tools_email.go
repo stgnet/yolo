@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"yolo/email"
+	"github.com/scottstg/yolo/email"
 )
 
 // Security constants for rate limiting and validation

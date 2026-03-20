@@ -300,7 +300,9 @@ func (p *PlaywrightMCP) Close() error {
 		p.browser.Close()
 		p.browser = nil
 	}
-	p.pw.Stop()
+	if p.pw != nil {
+		p.pw.Stop()
+	}
 	return nil
 }
 

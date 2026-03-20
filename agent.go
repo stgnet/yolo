@@ -15,8 +15,8 @@ import (
 	"syscall"
 	"time"
 
-	"yolo/config"
-	"yolo/tools/todo"
+	"github.com/scottstg/yolo/config"
+	"github.com/scottstg/yolo/tools/todo"
 )
 
 // ─── Main Agent ───────────────────────────────────────────────────────
