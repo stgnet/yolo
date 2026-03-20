@@ -2,7 +2,7 @@
 
 **Version**: 1.0 | **Status**: ✅ Production Ready | **Last Updated**: 2026-03-18
 
-[![Go](https://img.shields.io/badge/Go-1.21+-blue.svg)](https://golang.org)
+[![Go](https://img.shields.io/badge/Go-1.26+-blue.svg)](https://golang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Overview
@@ -15,14 +15,14 @@ YOLO is a **self-evolving AI agent** for autonomous software development. It ope
 - 📧 **Email-enabled**: Full email processing with auto-responses at `yolo@b-haven.org`
 - 🌐 **Web-connected**: DuckDuckGo search, Reddit API, Google Workspace integration
 - ⚡ **Autonomous mode**: Works independently without human intervention
-- 🔧 **Developer tools**: File operations, command execution, sub-agent spawning
+- 🔧 **Developer tools**: 32 built-in tools for file operations, command execution, and browser automation
 
 ## Quick Start
 
 ### Prerequisites
 
 ```bash
-# Go 1.21+ required
+# Go 1.26+ required
 go version
 
 # Install Ollama
@@ -73,7 +73,7 @@ YOLO consists of several key components that work together:
       │           YoloAgent                 │
       │  ┌────────────┬────────────────────┤
       │  │ History    │ ToolExecutor       │
-      │  │ Manager    │  (27 tools)        │
+       │  │ Manager    │  (32 tools)        │
       │  └────────────┴────────────────────┘
       └───────────┬──────────────┬──────────┘
                   │              │
@@ -89,14 +89,14 @@ YOLO consists of several key components that work together:
 
 - **YoloAgent** (`agent.go`): Central orchestrator handling chat loops and commands
 - **OllamaClient** (`ollama.go`): HTTP client for Ollama REST API with streaming support
-- **ToolExecutor** (`tools.go`): Dispatches tool calls to 27 concrete implementations
+- **ToolExecutor** (`tools.go`): Dispatches tool calls to 32 concrete implementations
 - **HistoryManager** (`history.go`): Thread-safe persistence in `.yolo/history.json`
 - **InputManager** (`input.go`): Raw terminal input handling in separate goroutine
 - **TerminalUI** (`terminal.go`): Split-screen layout with scrollable output
 
 ## Tools Reference
 
-YOLO has 27 built-in tools that the LLM can call:
+YOLO has 32 built-in tools that the LLM can call:
 
 ### File Operations
 | Tool | Description |
@@ -120,6 +120,7 @@ YOLO has 27 built-in tools that the LLM can call:
 | `summarize_subagents` | Aggregate sub-agent statistics |
 | `think` | Record reasoning without side effects |
 | `restart` | Rebuild from source and exec the new binary |
+| `check_ollama_status` | Check Ollama server status and read debug logs |
 
 ### External Services
 | Tool | Description |
@@ -147,16 +148,12 @@ YOLO has 27 built-in tools that the LLM can call:
 |------|-------------|
 | `run_command` | Execute shell command (30s timeout, stdin=/dev/null) |
 
-### Learning & Self-Improvement
-| Tool | Description |
-|------|-------------|
-| `learn` | Autonomous research for self-improvement opportunities |
-| `implement` | Auto-implement improvements from learn results |
-
 ### Browser Automation
 | Tool | Description |
 |------|-------------|
 | `playwright_mcp` | Navigate URLs, interact with DOM, fill forms, screenshots |
+
+Total: 32 tools across file operations, agent management, external services, task management, system commands, and browser automation.
 
 ## Email Processing
 
@@ -232,7 +229,7 @@ func newToolName(args string) string {
 }
 ```
 
-See [DOCS/CONTRIBUTING.md](DOCS/CONTRIBUTING.md) for detailed development guidelines.
+See [DOCS/tools.md](DOCS/tools.md) for detailed tool examples and the [README.md](README.md#development) section for development guidelines.
 
 ## Troubleshooting
 
@@ -292,7 +289,7 @@ go test -race ./...  # Run with race detector
 
 ## Architecture Deep Dive
 
-For detailed architecture documentation, see [ARCHITECTURE.md](ARCHITECTURE.md) covering:
+For detailed architecture information, see the code comments in `agent.go`, `tools.go`, and other source files covering:
 
 - Data flow diagrams (user chat, autonomous thinking, sub-agents)
 - Component specifications
@@ -301,7 +298,7 @@ For detailed architecture documentation, see [ARCHITECTURE.md](ARCHITECTURE.md) 
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on:
+See [DOCS/README.md](DOCS/README.md) for guidelines on:
 
 - Development workflow
 - Code style requirements  
