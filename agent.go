@@ -174,14 +174,14 @@ func (a *YoloAgent) checkBinaryFreshness() string {
 		return nil
 	})
 	if err == nil && len(newerFiles) > 0 {
-		w := fmt.Sprintf("[SYSTEM] NEEDS COMPILE: Source files newer than binary: %s. Run 'go build' when you are done with your current set of changes.", strings.Join(newerFiles, ", "))
+		w := fmt.Sprintf("NEEDS COMPILE: Source files newer than binary: %s. Run 'go build' when you are done with your current set of changes.", strings.Join(newerFiles, ", "))
 		cprint(Yellow, fmt.Sprintf("\n%s\n", w))
 		warnings = append(warnings, w)
 	}
 
 	// --- Check 2: executable on disk is newer than at startup → restart needed ---
 	if execModTime.After(a.binaryModTime) {
-		w := "[SYSTEM] NEEDS RESTART: The binary has been recompiled since this process started. Use the restart tool to apply the new version."
+		w := "NEEDS RESTART: The binary has been recompiled since this process started. You MUST use the restart tool now to apply the new version."
 		cprint(Yellow, fmt.Sprintf("\n%s\n", w))
 		warnings = append(warnings, w)
 	}
@@ -655,6 +655,15 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 			if strings.HasPrefix(resultStr, "Error: ") && isFileMutationTool(name) {
 				fileMutationFailed = true
 			}
+
+			// Check if go.mod has disappeared — stop auto mode so
+			// the operator can review what caused the deletion.
+			if _, err := os.Stat("go.mod"); os.IsNotExist(err) {
+				cprint(Red, "  *** CRITICAL: go.mod has disappeared! Disabling autonomous mode. ***")
+				cprint(Yellow, "  Review the chat output above to determine what deleted go.mod.")
+				a.config.SetAutoMode(false)
+				break
+			}
 		}
 
 		// After the tool batch completes, check if the user typed something
@@ -695,14 +704,14 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		// so the LLM is notified during long tool-calling chains.
 		if emailNote := a.checkEmailInbox(); emailNote != "" {
 			roundMsgs = append(roundMsgs, ChatMessage{
-				Role:    "user",
-				Content: "[SYSTEM] " + emailNote,
+				Role:    "system",
+				Content: emailNote,
 			})
 		}
 		if freshNote := a.checkBinaryFreshness(); freshNote != "" {
 			roundMsgs = append(roundMsgs, ChatMessage{
-				Role:    "user",
-				Content: "[SYSTEM] " + freshNote,
+				Role:    "system",
+				Content: freshNote,
 			})
 		}
 
