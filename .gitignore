@@ -15,3 +15,5 @@ coverage.html
 yolo-bin
 *.out
 history.json
+.todo.json
+tools/todo/.todo.json
