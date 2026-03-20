@@ -126,12 +126,6 @@ var ollamaTools = []ToolDef{
 		map[string]ToolParam{
 			"url": {Type: "string", Description: "URL to fetch (required). Will be prefixed with https:// if no scheme is provided."},
 		}, []string{"url"}),
-	toolDef("learn", "Autonomously research and discover self-improvement opportunities from the internet. Uses web search and Reddit to find new features, best practices, and improvements for the YOLO agent.",
-		map[string]ToolParam{}, nil),
-	toolDef("implement", "Automatically implement the highest priority improvements discovered by the learning system. Executes code changes, adds tests, and improves the YOLO agent based on research findings.",
-		map[string]ToolParam{
-			"count": {Type: "integer", Description: "Number of improvements to implement (default: 2)"},
-		}, []string{}),
 	toolDef("send_email", "Send an email via sendmail from yolo@b-haven.org. Postfix handles DKIM signing automatically.",
 		map[string]ToolParam{
 			"to":      {Type: "string", Description: "Recipient email address (default: scott@stg.net)"},
@@ -190,7 +184,7 @@ var validTools = []string{
 	"search_files", "run_command", "spawn_subagent",
 	"list_subagents", "read_subagent_result", "summarize_subagents",
 	"list_models", "switch_model", "think", "restart",
-	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "read_webpage", "learn", "implement", "send_email", "send_report", "check_inbox", "process_inbox_with_response", "add_todo", "complete_todo", "delete_todo", "list_todos", "check_ollama_status", "playwright_mcp",
+	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "read_webpage", "send_email", "send_report", "check_inbox", "process_inbox_with_response", "add_todo", "complete_todo", "delete_todo", "list_todos", "check_ollama_status", "playwright_mcp",
 }
 
 // fileNameRegex extracts the agent ID from filenames like "agent_1.json"
@@ -198,7 +192,7 @@ var fileNameRegex = regexp.MustCompile(`^agent_(\d+)\.json$`)
 
 // subagentTools is the subset of ollamaTools exposed to sub-agents.
 // Excluded: spawn_subagent (no nesting), list_subagents, read_subagent_result,
-// summarize_subagents, list_models, switch_model, restart, learn,
+// summarize_subagents, list_models, switch_model, restart,
 // send_email, send_report, check_inbox, process_inbox_with_response.
 var subagentToolNames = map[string]bool{
 	"read_file": true, "write_file": true, "edit_file": true,
@@ -249,16 +243,16 @@ func EmailTools() []ToolDef {
 type ToolError struct {
 	// Category classifies the type of error (e.g., "validation", "io", "network", "timeout")
 	Category string `json:"category"`
-	
+
 	// Message is a human-readable error description
 	Message string `json:"message"`
-	
+
 	// Details provides additional context or technical information
 	Details string `json:"details,omitempty"`
-	
+
 	// Code is an optional error code for programmatic handling
 	Code string `json:"code,omitempty"`
-	
+
 	// Suggestion offers helpful guidance for resolving the error
 	Suggestion string `json:"suggestion,omitempty"`
 }
@@ -283,10 +277,10 @@ func NewValidationError(message, suggestion string) *ToolError {
 // NewIOError creates an I/O error for file system operations
 func NewIOError(message string, details error) *ToolError {
 	return &ToolError{
-		Category:  "io",
-		Message:   message,
-		Details:   details.Error(),
-		Code:      "ERR_IO",
+		Category: "io",
+		Message:  message,
+		Details:  details.Error(),
+		Code:     "ERR_IO",
 	}
 }
 
@@ -434,10 +428,6 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 		return t.webSearch(args)
 	case "read_webpage":
 		return t.readWebpage(args)
-	case "learn":
-		return t.learn(args)
-	case "implement":
-		return t.implement(args)
 	case "send_email":
 		return t.sendEmail(args)
 	case "send_report":
@@ -1135,7 +1125,7 @@ func (t *ToolExecutor) runCommand(args map[string]any) string {
 }
 
 func (t *ToolExecutor) listSubagents(args map[string]any) string {
-	files, err := filepath.Glob(filepath.Join(cfg.GetSubagentDir(), "agent_*.json"))
+	files, err := filepath.Glob(filepath.Join(t.agent.yoloCfg.GetSubagentDir(), "agent_*.json"))
 	if err != nil {
 		return errorMessage("could not read subagent directory: %v", err)
 	}
@@ -1185,7 +1175,7 @@ func (t *ToolExecutor) readSubagentResult(args map[string]any) string {
 		return errorMessage("required parameter 'id' is missing")
 	}
 
-	resultFile := filepath.Join(cfg.GetSubagentDir(), fmt.Sprintf("agent_%d.json", agentID))
+	resultFile := filepath.Join(t.agent.yoloCfg.GetSubagentDir(), fmt.Sprintf("agent_%d.json", agentID))
 	data, err := os.ReadFile(resultFile)
 	if err != nil {
 		return errorMessage("could not read subagent result: %v", err)
@@ -1211,7 +1201,7 @@ func (t *ToolExecutor) readSubagentResult(args map[string]any) string {
 }
 
 func (t *ToolExecutor) summarizeSubagents(args map[string]any) string {
-	files, err := filepath.Glob(filepath.Join(cfg.GetSubagentDir(), "agent_*.json"))
+	files, err := filepath.Glob(filepath.Join(t.agent.yoloCfg.GetSubagentDir(), "agent_*.json"))
 	if err != nil {
 		return errorMessage("could not read subagent directory: %v", err)
 	}
@@ -1566,7 +1556,7 @@ func getBaseDir() string {
 		"..",
 		"../../..",
 	}
-	
+
 	for _, dir := range dirs {
 		goMod := filepath.Join(dir, "go.mod")
 		if info, err := os.Stat(goMod); err == nil && !info.IsDir() {
@@ -1574,7 +1564,7 @@ func getBaseDir() string {
 			return absPath
 		}
 	}
-	
+
 	// Fallback to current directory
 	absPath, _ := filepath.Abs(".")
 	return absPath
@@ -1583,13 +1573,13 @@ func getBaseDir() string {
 // checkOllamaStatus checks Ollama server status and reads debug logs
 func (t *ToolExecutor) checkOllamaStatus(args map[string]any) string {
 	lines := getIntArg(args, "lines", 50)
-	
+
 	var result strings.Builder
-	
+
 	// Check if ollama is running
 	cmd := exec.Command("pgrep", "-f", "ollama serve")
 	ollamaRunning := cmd.Run() == nil
-	
+
 	result.WriteString("=== Ollama Status ===\n\n")
 	if ollamaRunning {
 		result.WriteString("✓ Ollama server is running\n\n")
@@ -1597,21 +1587,21 @@ func (t *ToolExecutor) checkOllamaStatus(args map[string]any) string {
 		result.WriteString("✗ Ollama server is NOT running\n\n")
 		result.WriteString("Hint: Run 'ollama serve' in the background to start it.\n\n")
 	}
-	
+
 	// Read logs directory if it exists - try both relative and absolute paths
 	logFile := "./logs/ollama.log"
 	errLogFile := "./logs/ollama.err.log"
-	
+
 	// Also check common absolute locations where logs might be stored
 	_ = getBaseDir() // Will use this for absolute path lookup when needed
-	
+
 	// Check if log files exist and read them
 	hasLogs := false
-	
+
 	if info, err := os.Stat(logFile); err == nil && !info.IsDir() {
 		hasLogs = true
 		result.WriteString(fmt.Sprintf("=== Log File: %s ===\n", logFile))
-		
+
 		content, err := os.ReadFile(logFile)
 		if err != nil {
 			result.WriteString(fmt.Sprintf("Error reading log file: %v\n", err))
@@ -1622,7 +1612,7 @@ func (t *ToolExecutor) checkOllamaStatus(args map[string]any) string {
 			if len(linesArray) > lines {
 				start = len(linesArray) - lines
 			}
-			
+
 			for i := start; i < len(linesArray); i++ {
 				if linesArray[i] != "" {
 					result.WriteString(linesArray[i] + "\n")
@@ -1631,11 +1621,11 @@ func (t *ToolExecutor) checkOllamaStatus(args map[string]any) string {
 		}
 		result.WriteString("\n")
 	}
-	
+
 	if info, err := os.Stat(errLogFile); err == nil && !info.IsDir() {
 		hasLogs = true
 		result.WriteString(fmt.Sprintf("=== Error Log File: %s ===\n", errLogFile))
-		
+
 		content, err := os.ReadFile(errLogFile)
 		if err != nil {
 			result.WriteString(fmt.Sprintf("Error reading error log file: %v\n", err))
@@ -1646,7 +1636,7 @@ func (t *ToolExecutor) checkOllamaStatus(args map[string]any) string {
 			if len(linesArray) > lines {
 				start = len(linesArray) - lines
 			}
-			
+
 			for i := start; i < len(linesArray); i++ {
 				if linesArray[i] != "" {
 					result.WriteString(linesArray[i] + "\n")
@@ -1655,11 +1645,11 @@ func (t *ToolExecutor) checkOllamaStatus(args map[string]any) string {
 		}
 		result.WriteString("\n")
 	}
-	
+
 	if !hasLogs {
 		result.WriteString("No log files found at ./logs/\n")
 		result.WriteString("Enable logging by setting OLLAMA_DEBUG=1 or YOLO_OLLAMA_LOG=1\n\n")
-		
+
 		// Try to check if ollama is reachable via API even without logs
 		if ollamaRunning {
 			client := NewOllamaClient("http://localhost:11434")
@@ -1675,7 +1665,7 @@ func (t *ToolExecutor) checkOllamaStatus(args map[string]any) string {
 			}
 		}
 	}
-	
+
 	return result.String()
 }
 

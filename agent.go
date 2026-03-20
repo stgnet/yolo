@@ -57,26 +57,25 @@ type YoloAgent struct {
 	mu              sync.Mutex         // protects busy, cancelChat, subagentCounter, handoffCounter, pendingHandoffs
 	cancelChat      context.CancelFunc // cancels the in-flight Chat HTTP request
 	yoloCfg         *config.Config     // thread-safe configuration
-}
-
-// cfg is the global configuration instance (temporary during migration).
-// TODO: Remove this and use dependency injection throughout.
-var cfg *config.Config
-
-func init() {
-	cfg = config.DefaultConfig()
+	thinkingEnabled bool               // true when thinking output is enabled (default: true)
 }
 
 // NewYoloAgent creates an agent rooted in the current working directory
-// and connects to the Ollama instance at cfg.GetOllamaURL().
-func NewYoloAgent() *YoloAgent {
+// and connects to Ollama. Accepts optional config for dependency injection.
+func NewYoloAgent(opts ...*config.Config) *YoloAgent {
+	// Use passed config or fall back to default for backward compatibility
+	configToUse := config.DefaultConfig()
+	if len(opts) > 0 && opts[0] != nil {
+		configToUse = opts[0]
+	}
+
 	baseDir, _ := os.Getwd()
 	execPath, _ := os.Executable()
 
 	// Clear stale subagent results from any prior run so that
 	// listSubagents/readSubagentResult don't return leftover data and the
 	// monotonic ID counter (starting at 0) doesn't collide with old files.
-	if files, err := filepath.Glob(filepath.Join(cfg.GetSubagentDir(), "agent_*.json")); err == nil {
+	if files, err := filepath.Glob(filepath.Join(configToUse.GetSubagentDir(), "agent_*.json")); err == nil {
 		for _, f := range files {
 			os.Remove(f)
 		}
@@ -89,14 +88,15 @@ func NewYoloAgent() *YoloAgent {
 	}
 
 	a := &YoloAgent{
-		baseDir:     baseDir,
-		scriptPath:  execPath,
-		binaryModTime: binaryModTime,
-		ollama:      NewOllamaClient(cfg.GetOllamaURL()),
-		history:     NewHistoryManager(baseDir),
-		config:      NewYoloConfig(baseDir),
-		running:     true,
-		yoloCfg:     cfg,
+		baseDir:         baseDir,
+		scriptPath:      execPath,
+		binaryModTime:   binaryModTime,
+		ollama:          NewOllamaClient(configToUse.GetOllamaURL()),
+		history:         NewHistoryManager(baseDir),
+		config:          NewYoloConfig(baseDir),
+		running:         true,
+		yoloCfg:         configToUse,
+		thinkingEnabled: true, // default: thinking is shown
 	}
 	a.tools = NewToolExecutor(baseDir, a)
 	return a
@@ -141,7 +141,7 @@ func (a *YoloAgent) getSystemPrompt() string {
 }
 
 // checkBinaryFreshness returns warnings about stale binary state.
-// Two independent checks:
+// / Two independent checks:
 //  1. Source newer than executable on disk → needs compile ("go build").
 //  2. Executable on disk newer than at startup → needs restart.
 func (a *YoloAgent) checkBinaryFreshness() string {
@@ -187,6 +187,38 @@ func (a *YoloAgent) checkBinaryFreshness() string {
 	}
 
 	return strings.Join(warnings, "\n")
+}
+
+// checkEmailInbox returns a warning message if there are unread emails in the inbox.
+// It counts files in the Maildir new/ directory and returns an alert if any exist.
+func (a *YoloAgent) checkEmailInbox() string {
+	inboxPath := "/var/mail/b-haven.org/yolo/new/"
+
+	// Check if inbox directory exists
+	if _, err := os.Stat(inboxPath); os.IsNotExist(err) {
+		return ""
+	}
+
+	// Count files in the new/ directory
+	files, err := os.ReadDir(inboxPath)
+	if err != nil {
+		return ""
+	}
+
+	newEmailCount := 0
+	for _, file := range files {
+		if !file.IsDir() {
+			newEmailCount++
+		}
+	}
+
+	if newEmailCount > 0 {
+		w := fmt.Sprintf("[SYSTEM] NEW EMAILS: You have %d unread email(s) in your inbox. Use the check_inbox tool to read them.", newEmailCount)
+		cprint(Yellow, fmt.Sprintf("\n%s\n", w))
+		return w
+	}
+
+	return ""
 }
 
 // restart rebuilds the binary from source and replaces the running process
@@ -346,6 +378,18 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		a.history.AddMessage("user", userMessage, nil)
 	}
 
+	// Check if binary is stale and inject warning if needed
+	freshnessWarning := a.checkBinaryFreshness()
+	if freshnessWarning != "" {
+		a.history.AddMessage("system", freshnessWarning, nil)
+	}
+
+	// Check for new emails and inject notification if needed
+	emailWarning := a.checkEmailInbox()
+	if emailWarning != "" {
+		a.history.AddMessage("system", emailWarning, nil)
+	}
+
 	if autonomous {
 		// Build the base autonomous message
 		baseMsg := "No new user input. You are in autonomous mode. " +
@@ -354,13 +398,7 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 			"and execute it using tools. Focus on: code quality, bug fixes, " +
 			"tests, self-improvement, or new features. " +
 			"Act decisively. Do the work, then move to the next thing."
-		
-		// Check if binary is stale and prepend warning if needed
-		freshnessWarning := a.checkBinaryFreshness()
-		if freshnessWarning != "" {
-			baseMsg = freshnessWarning + "\n\n" + baseMsg
-		}
-		
+
 		a.history.AddMessage("system", baseMsg, nil)
 	}
 
@@ -556,8 +594,8 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 					"Review earlier errors before retrying this tool call (%s).", name)
 				cprint(Red, fmt.Sprintf("  [%s] SKIPPED (prior file operation failed)", name))
 				roundMsgs = append(roundMsgs, ChatMessage{
-					Role:       "tool",
-					Content:    abortMsg,
+					Role:     "tool",
+					Content:  abortMsg,
 					ToolName: name,
 				})
 				toolLog = append(toolLog, toolLogEntry{name: name, args: args, result: abortMsg})
@@ -651,6 +689,21 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 			default:
 				// Channel drained between len check and receive; no-op
 			}
+		}
+
+		// Between tool rounds, check for new emails and binary staleness
+		// so the LLM is notified during long tool-calling chains.
+		if emailNote := a.checkEmailInbox(); emailNote != "" {
+			roundMsgs = append(roundMsgs, ChatMessage{
+				Role:    "user",
+				Content: "[SYSTEM] " + emailNote,
+			})
+		}
+		if freshNote := a.checkBinaryFreshness(); freshNote != "" {
+			roundMsgs = append(roundMsgs, ChatMessage{
+				Role:    "user",
+				Content: "[SYSTEM] " + freshNote,
+			})
 		}
 
 		roundNum++
@@ -1157,8 +1210,8 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 	if useModel == "" {
 		useModel = a.config.GetModel()
 	}
-	os.MkdirAll(cfg.GetSubagentDir(), 0o755)
-	resultFile := filepath.Join(cfg.GetSubagentDir(), fmt.Sprintf("agent_%d.json", aid))
+	os.MkdirAll(a.yoloCfg.GetSubagentDir(), 0o755)
+	resultFile := filepath.Join(a.yoloCfg.GetSubagentDir(), fmt.Sprintf("agent_%d.json", aid))
 
 	// Write an initial "in-progress" result file so the parent agent can
 	// see that this subagent exists and is still working.
@@ -1262,8 +1315,8 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 						"Review earlier errors before retrying this tool call (%s).", call.Name)
 					cprint(Red, fmt.Sprintf("%s [%s] SKIPPED (prior file operation failed)", prefix, call.Name))
 					roundMsgs = append(roundMsgs, ChatMessage{
-						Role:       "tool",
-						Content:    abortMsg,
+						Role:     "tool",
+						Content:  abortMsg,
 						ToolName: call.Name,
 					})
 					continue
@@ -1457,6 +1510,9 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		cprint(Reset, "  /cache           Show/clear search cache stats")
 		cprint(Reset, "  /debug [on|off]  Toggle debug mode (show full tool args/results)")
 		cprint(Reset, "  /auto [on|off]   Toggle autonomous mode (operate without user input)")
+		cprint(Reset, "  /think [on|off]  Toggle thinking output (show/hide [thinking] blocks)")
+		cprint(Reset, "  /todo            Show uncompleted todo items")
+		cprint(Reset, "  /todo <text>     Add a new todo item")
 		cprint(Reset, "  /learn           Run autonomous research for self-improvement")
 		cprint(Reset, "  /restart         Restart YOLO")
 		cprint(Reset, "  /exit, /quit     Exit YOLO")
@@ -1595,15 +1651,6 @@ func (a *YoloAgent) handleCommand(cmd string) {
 
 	case "/cache":
 		a.showCacheStatus(arg)
-
-	case "/learn":
-		cprint(Yellow, "  Starting autonomous learning research...")
-		go func() {
-			time.Sleep(500 * time.Millisecond)
-			result := a.tools.learn(map[string]any{})
-			cprint(Cyan, result)
-		}()
-		return // Let the goroutine handle the learn tool
 
 	case "/status":
 		cprint(Cyan, "Status:")
