@@ -454,7 +454,9 @@ func isBounceMessage(email *EmailMessage) bool {
 	return false
 }
 
-// processInboxWithResponse automates the email workflow: read → respond → archive
+// processInboxWithResponse reads and archives emails, returning them for LLM to handle responses
+// This tool ONLY reads and archives - it does NOT send any auto-responses. All email responses must be
+// handled by the LLM using the send_email or send_report tools through normal conversation flow.
 func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 
 	// Check if inbox directory exists
@@ -476,6 +478,7 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 	totalSkipped := 0
 	var processed []string
 	var skipped []string
+	var emailContents []string // Store parsed emails for LLM context
 
 	// Create archive directory if it doesn't exist
 	archiveDir := filepath.Join(ArchiveDir)
@@ -507,96 +510,40 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 			continue
 		}
 
-		// Debug: log email parsing details
-		log.Printf("Email from %s with subject '%s' - Content length: %d bytes", email.From, email.Subject, len(email.Content))
-		if email.Content == "" {
-			log.Printf("WARNING: Email content is EMPTY for message from %s with subject '%s'", email.From, email.Subject)
-		}
+		// Build email content string for LLM context
+		emailInfo := fmt.Sprintf("EMAIL #%d:\n  From: %s\n  Subject: %s\n  Date: %s\n  Content:\n%s", 
+			totalProcessed+1, email.From, email.Subject, email.Date, email.Content)
+		emailContents = append(emailContents, emailInfo)
 
-		// Extract sender email address using helper function
-		sender := extractEmailAddress(email.From)
-		log.Printf("Extracted sender email: %s", sender)
-
-		// Check if this is a request for a progress report
-		isProgressReportRequestFlag := isProgressReportRequest(&email)
-
-		var response string
-		
-		if isProgressReportRequestFlag {
-			log.Printf("Detected progress report request from %s, sending actual report...", email.From)
-
-			// Generate and send actual progress report - THIS IS THE ONLY EMAIL SENT FOR PROGRESS REQUESTS
-			todoOutput := listTodos()
-			reportBody := fmt.Sprintf("🤖 YOLO Progress Report\n\nGenerated in response to your email request.\n\n%s", todoOutput)
-
-			sendResult := t.sendReport(map[string]any{
-				"to":          sender,
-				"subject":     "YOLO Progress Report",
-				"body":        reportBody,
-				"attach_todo": false,
-			})
-			log.Printf("Progress report send result: %s", sendResult)
-
-			// NO acknowledgment email sent - progress report itself is the response
-		
-			// Archive the original request email
-			archiveEmail(filePath, file.Name(), "progress_report_sent")
-			totalProcessed++
-			processed = append(processed, file.Name())
-			continue // Skip to next email - no acknowledgment sent
-		} else {
-			// Generate AI response using LLM based on full email context - NO TEMPLATE FALLBACKS
-			prompt := fmt.Sprintf("You are YOLO, an autonomous AI assistant running in production. You received this email:\n\nFrom: %s\nSubject: %s\n\nMessage content:\n%s\n\nInstructions for generating response:\n1. SIGNATURE DETECTION: The last few lines of emails often contain signatures (company names like 'STG.NET & B-Haven', phone numbers, website links, disclaimers). These are NOT part of the actual request - use your judgment to identify and ignore them. Focus only on the substantive message content.\n2. RESPOND TO SUBSTANCE: Generate a genuine response that addresses the actual request or questions in the email body, not the signature.\n3. NO LENGTH LIMITS: Provide complete, detailed information when requested. Include full progress reports, complete todo lists with all details, comprehensive explanations. Do NOT summarize, truncate, or artificially limit your response length.\n4. BE CONVERSATIONAL: Write naturally and professionally, acknowledging what was actually asked.\n5. SIGN YOUR RESPONSE: End as 'YOLO - Your Own Living Operator'\n\nResponse:",
-				email.From, email.Subject, email.Content)
-
-			log.Printf("Generating LLM response for email from %s...", email.From)
-			response = strings.TrimSpace(t.generateLLMText(prompt, true))
-			if response == "" {
-				log.Printf("ERROR: Failed to generate LLM response (empty after trim) - skipping email, NO reply sent")
-				log.Printf("PROMPT used: %.200s...", prompt)
-				// Archive without responding when LLM fails - NO template fallbacks
-				archiveEmail(filePath, file.Name(), "llm_generation_failed")
-				skipped = append(skipped, file.Name())
-				continue
-			}
-
-			log.Printf("SUCCESS: Generated LLM response: %d bytes, preview: %.80s", len(response), response)
-		}
-
-		// Validate sender before responding
-		if !validateSender(sender) {
-			log.Printf("Skipping response to untrusted sender: %s", sender)
-			skipped = append(skipped, file.Name())
-			continue
-		}
-
-		subjectResp := fmt.Sprintf("Re: %s", email.Subject)
-		t.sendEmail(map[string]any{
-			"to":      sender,
-			"subject": subjectResp,
-			"body":    response,
-		})
-
-		// Archive email instead of deleting (preserves audit trail)
-		archiveEmail(filePath, file.Name(), "processed")
-
+		// Archive the email immediately (moved from processed to audit trail)
+		archiveEmail(filePath, file.Name(), "read")
 		totalProcessed++
 		processed = append(processed, file.Name())
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("✅ Processed %d email(s)\n", totalProcessed))
+	sb.WriteString(fmt.Sprintf("📬 Read %d email(s) from inbox\n", totalProcessed))
 	if len(processed) > 0 {
 		sb.WriteString(fmt.Sprintf("📁 Archived: %s\n", strings.Join(processed, ", ")))
 	}
 	if len(skipped) > 0 {
-		sb.WriteString(fmt.Sprintf("⚠️  Skipped %d messages:\n", totalSkipped))
-		for _, name := range skipped {
-			sb.WriteString(fmt.Sprintf("    - %s\n", name))
-		}
+		sb.WriteString(fmt.Sprintf("⚠️ Skipped %d bounce messages (archived but not read)\n", totalSkipped))
 	}
-	if len(processed) > 0 {
-		sb.WriteString("📧 Sent auto-responses to all senders")
+
+	// IMPORTANT: Do NOT send auto-responses. All responses must be handled by the LLM
+	// through normal conversation flow using send_email or send_report tools.
+	sb.WriteString("\n🤖 Email handling instructions:\n")
+	sb.WriteString("  - These emails have been read and archived\n")
+	sb.WriteString("  - You (the LLM) should now decide if responses are needed\n")
+	sb.WriteString("  - Use send_email or send_report tools to craft proper responses\n")
+	sb.WriteString("  - Consider the full conversation context when responding\n")
+
+	// Append email contents for LLM to see and respond to appropriately
+	if len(emailContents) > 0 {
+		sb.WriteString("\n📧 EMAIL CONTENTS:\n\n")
+		for _, ec := range emailContents {
+			sb.WriteString(ec + "\n\n")
+		}
 	}
 
 	return sb.String()

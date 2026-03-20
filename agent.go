@@ -214,7 +214,7 @@ func (a *YoloAgent) checkEmailInbox() string {
 	}
 
 	if newEmailCount > 0 {
-		w := fmt.Sprintf("[SYSTEM] NEW EMAILS: You have %d unread email(s) in your inbox. Use the check_inbox tool to read them.", newEmailCount)
+		w := fmt.Sprintf("[SYSTEM] NEW EMAILS: You have %d unread email(s) in your inbox. Use the check_inbox or process_inbox_with_response tool to read them.", newEmailCount)
 		cprint(Yellow, fmt.Sprintf("\n%s\n", w))
 		return w
 	}
