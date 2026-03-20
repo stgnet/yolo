@@ -140,43 +140,53 @@ func (a *YoloAgent) getSystemPrompt() string {
 	return prompt
 }
 
-// checkBinaryFreshness checks if any .go source files are newer than the binary.
-// If so, it returns a warning message to inject into autonomous mode prompts.
-// It also prints the warning to stdout so the user can see it.
+// checkBinaryFreshness returns warnings about stale binary state.
+// Two independent checks:
+//  1. Source newer than executable on disk → needs compile ("go build").
+//  2. Executable on disk newer than at startup → needs restart.
 func (a *YoloAgent) checkBinaryFreshness() string {
-	// Find all .go files in the project recursively using filepath.Walk
-	var goFiles []string
+	var warnings []string
+
+	// Get the current on-disk mod time of the executable
+	execModTime := a.binaryModTime
+	if info, err := os.Stat(a.scriptPath); err == nil {
+		execModTime = info.ModTime()
+	}
+
+	// --- Check 1: source files newer than the executable on disk ---
+	var newerFiles []string
 	err := filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil // Skip errors
+			return nil
 		}
-		if !info.IsDir() && strings.HasSuffix(path, ".go") {
-			goFiles = append(goFiles, path)
+		if info.IsDir() {
+			switch info.Name() {
+			case "vendor", "testdata", "benchmark", ".git":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasSuffix(path, ".go") && !strings.HasSuffix(path, "_test.go") {
+			if info.ModTime().After(execModTime) {
+				newerFiles = append(newerFiles, path)
+			}
 		}
 		return nil
 	})
-	if err != nil {
-		return ""
+	if err == nil && len(newerFiles) > 0 {
+		w := fmt.Sprintf("[SYSTEM] NEEDS COMPILE: Source files newer than binary: %s. Run 'go build' when you are done with your current set of changes.", strings.Join(newerFiles, ", "))
+		cprint(Yellow, fmt.Sprintf("\n%s\n", w))
+		warnings = append(warnings, w)
 	}
 
-	var newerFiles []string
-	for _, file := range goFiles {
-		info, err := os.Stat(file)
-		if err != nil {
-			continue
-		}
-		if info.ModTime().After(a.binaryModTime) {
-			newerFiles = append(newerFiles, file)
-		}
+	// --- Check 2: executable on disk is newer than at startup → restart needed ---
+	if execModTime.After(a.binaryModTime) {
+		w := "[SYSTEM] NEEDS RESTART: The binary has been recompiled since this process started. Use the restart tool to apply the new version."
+		cprint(Yellow, fmt.Sprintf("\n%s\n", w))
+		warnings = append(warnings, w)
 	}
 
-	if len(newerFiles) > 0 {
-		warning := fmt.Sprintf("[SYSTEM] ⚠️ STALE BINARY DETECTED: Source files newer than binary: %s. These code changes have NOT been compiled. You must run 'go build' and then use the restart tool to apply your changes.", strings.Join(newerFiles, ", "))
-		cprint(Yellow, fmt.Sprintf("\n%s\n", warning))
-		return warning
-	}
-
-	return ""
+	return strings.Join(warnings, "\n")
 }
 
 // restart rebuilds the binary from source and replaces the running process
@@ -1684,6 +1694,24 @@ func (a *YoloAgent) Run() {
 	// Display session resumption message AFTER terminal is set up
 	if hasModel && hasHistory {
 		a.displaySessionResumption()
+	}
+
+	// If the last history message is from the restart tool, the process was
+	// just restarted. Inject a system message so the agent knows the restart
+	// completed successfully and does not attempt it again.
+	if hasHistory {
+		msgs := a.history.Data.Messages
+		if len(msgs) > 0 {
+			last := msgs[len(msgs)-1]
+			if last.Role == "tool" && strings.Contains(last.Content, "[restart]") {
+				a.history.AddMessage("system",
+					"The program has just been restarted successfully with the new binary. "+
+						"The restart tool was used and the process has been replaced. "+
+						"You do NOT need to compile or restart again — the running code is up to date. "+
+						"Continue with your next task.",
+					nil)
+			}
+		}
 	}
 
 	// Start async input manager

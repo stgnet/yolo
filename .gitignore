@@ -13,3 +13,4 @@ yolo-test
 coverage.html
 yolo-bin
 *.out
+history.json

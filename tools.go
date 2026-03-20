@@ -1330,6 +1330,12 @@ func (t *ToolExecutor) restart(args map[string]any) string {
 
 	fmt.Fprintf(os.Stderr, "[RESTART] Build successful. Replacing current process...\n")
 
+	// Record the restart in history so the agent knows what happened after reload
+	if t.agent != nil {
+		t.agent.history.AddMessage("tool", "[restart] Build successful. Restarting process with new binary...", nil)
+		t.agent.history.AddEvolution("restart", "Rebuilt and restarting with new binary")
+	}
+
 	// Get the full path to the new executable in cwd
 	newExePath := filepath.Join(cwd, filepath.Base(exePath))
 
