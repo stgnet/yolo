@@ -6,6 +6,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 
@@ -52,6 +53,49 @@ func encodeHeader(value string) string {
 	return value
 }
 
+// loadAttachments reads file contents for attachment paths and returns email.Attachments
+func loadAttachments(paths []string) ([]email.Attachment, error) {
+	var attachments []email.Attachment
+	
+	for _, path := range paths {
+		if path == "" {
+			continue // Skip empty paths
+		}
+		
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read attachment %s: %v", path, err)
+		}
+		
+		// Extract filename from path
+		filename := path
+		for i := len(path) - 1; i >= 0; i-- {
+			if path[i] == '/' || path[i] == '\\' {
+				filename = path[i+1:]
+				break
+			}
+		}
+		
+		// Security: prevent path traversal in filename
+		filename = sanitizeFilename(filename)
+		
+		attachments = append(attachments, email.Attachment{
+			Filename: filename,
+			Content:  content,
+		})
+	}
+	
+	return attachments, nil
+}
+
+// sanitizeFilename removes dangerous characters from filenames for email headers
+func sanitizeFilename(filename string) string {
+	filename = strings.ReplaceAll(filename, "\"", "")
+	filename = strings.ReplaceAll(filename, "\n", "_")
+	filename = strings.ReplaceAll(filename, "\r", "_")
+	return filename
+}
+
 func (t *ToolExecutor) sendEmail(args map[string]any) string {
 	subject := getStringArg(args, "subject", "")
 	body := getStringArg(args, "body", "")
@@ -83,10 +127,21 @@ func (t *ToolExecutor) sendEmail(args map[string]any) string {
 	// Encode headers safely to prevent header injection
 	safeSubject := encodeHeader(subject)
 
+	// Load attachments if specified
+	var attachments []email.Attachment
+	if attachmentPaths, ok := args["attachments"].([]string); ok && len(attachmentPaths) > 0 {
+		var err error
+		attachments, err = loadAttachments(attachmentPaths)
+		if err != nil {
+			return fmt.Sprintf("Error loading attachments: %v", err)
+		}
+	}
+
 	msg := &email.Message{
-		To:      []string{to},
-		Subject: safeSubject,
-		Body:    body,
+		To:          []string{to},
+		Subject:     safeSubject,
+		Body:        body,
+		Attachments: attachments,
 	}
 
 	client := email.New(cfg)
@@ -100,6 +155,9 @@ func (t *ToolExecutor) sendEmail(args map[string]any) string {
 	sb.WriteString(fmt.Sprintf("   To: %s\n", to))
 	sb.WriteString(fmt.Sprintf("   From: yolo@b-haven.org\n"))
 	sb.WriteString(fmt.Sprintf("   Subject: %s\n", safeSubject))
+	if len(attachments) > 0 {
+		sb.WriteString(fmt.Sprintf("   Attachments: %d file(s)\n", len(attachments)))
+	}
 	return sb.String()
 }
 
