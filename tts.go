@@ -8,19 +8,34 @@ import (
 	"sync"
 )
 
-// ─── Text-to-Speech (TTS) Support ──────┬───────────────
+// ─── Text-to-Speech (TTS) Support ──────┬──────────
 
 // TTSManager handles text-to-speech output for YOLO
 type TTSManager struct {
 	enabled bool
 	mu      sync.Mutex
+	voice   string
+	queue   chan string // Queue to ensure sequential speech
+	closed  bool
 }
 
 // NewTTSManager creates a new TTS manager with default settings
 func NewTTSManager() *TTSManager {
-	return &TTSManager{
-		enabled: false, // Disabled by default
+	tts := &TTSManager{
+		enabled: true, // Enabled by default so YOLO speaks responses
+		voice:   "Samantha", // Better quality voice than Fred
+		queue:   make(chan string, 100), // Buffer for up to 100 messages
 	}
+	go tts.processQueue()
+	return tts
+}
+
+// SetVoice changes the TTS voice (e.g., "Samantha", "Fred", "Zira", "Alice")
+func (t *TTSManager) SetVoice(voice string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.voice = voice
+	fmt.Printf("  ✓ TTS voice changed to: %s\n", voice)
 }
 
 // SetEnabled enables or disables TTS output
@@ -42,17 +57,18 @@ func (t *TTSManager) IsEnabled() bool {
 	return t.enabled
 }
 
-// Speak outputs text using the system's TTS engine (macOS `say` command)
+// Speak queues text to be spoken sequentially using the system's TTS engine
 func (t *TTSManager) Speak(text string) {
 	t.mu.Lock()
 	enabled := t.enabled
+	closed := t.closed
 	t.mu.Unlock()
 
-	if !enabled || text == "" {
+	if !enabled || text == "" || closed {
 		return
 	}
 
-	// Clean the text for TTS - remove ANSI color codes, trim whitespace, limit length
+	// Clean the text for TTS
 	cleanText := t.cleanTextForTTS(text)
 	if cleanText == "" {
 		return
@@ -63,17 +79,37 @@ func (t *TTSManager) Speak(text string) {
 		cleanText = cleanText[:500] + "..."
 	}
 
-	// Run the say command asynchronously (non-blocking)
-	go func() {
-		cmd := exec.Command("say", "-v", "Fred", cleanText)
-		_ = cmd.Start() // Start but don't wait (fire and forget)
-	}()
+	// Add to queue (non-blocking with capacity limit)
+	select {
+	case t.queue <- cleanText:
+		// Queued successfully
+	default:
+		// Queue full, drop message to prevent blocking
+		fmt.Println("  ⚠ TTS queue full, message dropped")
+	}
 }
 
-// SpeakSync outputs text synchronously (blocking)
+// processQueue handles the TTS queue sequentially
+func (t *TTSManager) processQueue() {
+	for text := range t.queue {
+		t.mu.Lock()
+		enabled := t.enabled
+		voice := t.voice
+		t.mu.Unlock()
+
+		if enabled && text != "" {
+			// Run say command synchronously to ensure sequential speech
+			cmd := exec.Command("say", "-v", voice, text)
+			_ = cmd.Run() // Wait for completion before next message
+		}
+	}
+}
+
+// SpeakSync outputs text immediately (for emergency/interactive use)
 func (t *TTSManager) SpeakSync(text string) {
 	t.mu.Lock()
 	enabled := t.enabled
+	voice := t.voice
 	t.mu.Unlock()
 
 	if !enabled || text == "" {
@@ -89,8 +125,18 @@ func (t *TTSManager) SpeakSync(text string) {
 		cleanText = cleanText[:500] + "..."
 	}
 
-	cmd := exec.Command("say", "-v", "Fred", cleanText)
+	cmd := exec.Command("say", "-v", voice, cleanText)
 	_ = cmd.Run() // Wait for completion (blocking)
+}
+
+// Stop shuts down the TTS queue processor
+func (t *TTSManager) Stop() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if !t.closed {
+		close(t.queue)
+		t.closed = true
+	}
 }
 
 // cleanTextForTTS removes ANSI codes, excessive whitespace, and other problematic characters
@@ -102,12 +148,12 @@ func (t *TTSManager) cleanTextForTTS(text string) string {
 	// Replace multiple newlines with single newline
 	text = strings.Join(strings.Fields(text), " ")
 
-	// Remove excessive punctuation
+	// Remove excessive punctuation that might cause issues
 	text = strings.Map(func(r rune) rune {
 		switch r {
-		case '.', '!', '?':
-			return r
-		case ',', ';', ':', '-', '_', '/', '\\', '@', '#', '$', '%', '^', '&', '*', '(', ')', '[', ']', '{', '}', '|', '~', '`':
+		case '.', '!', '?', ',':
+			return r // Keep basic sentence punctuation
+		case ';', ':', '-', '_', '/', '\\', '@', '#', '$', '%', '^', '&', '*', '(', ')', '[', ']', '{', '}', '|', '~', '`':
 			return ' ' // Replace with space
 		default:
 			return r
@@ -123,7 +169,7 @@ func (t *TTSManager) getStatus() string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.enabled {
-		return "TTS: ON"
+		return fmt.Sprintf("TTS: ON (%s)", t.voice)
 	}
 	return "TTS: OFF"
 }

@@ -12,6 +12,10 @@ import (
 	"golang.org/x/term"
 )
 
+// ─── Global Variables ──┬──────────────────────
+
+var ttsGlobal *TTSManager // Global TTS manager for output integration via cprint()
+
 // ─── Output Sanitization ────────────────────────────────────────────
 
 // sanitizeOutput strips terminal escape sequences and control characters from
