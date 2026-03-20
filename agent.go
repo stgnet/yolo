@@ -50,6 +50,7 @@ type YoloAgent struct {
 	config          *YoloConfig        // persistent configuration (model, etc.)
 	tools           *ToolExecutor      // tool dispatcher
 	inputMgr        *InputManager      // async terminal input
+	tts             *TTSManager        // text-to-speech manager
 	running         bool               // false signals the main loop to exit
 	busy            bool               // true while the agent is processing a chat round
 	subagentCounter int                // monotonic ID for spawned sub-agents
@@ -98,6 +99,7 @@ func NewYoloAgent(opts ...*config.Config) *YoloAgent {
 		running:         true,
 		yoloCfg:         configToUse,
 		thinkingEnabled: true, // default: thinking is shown
+		tts:             NewTTSManager(), // disabled by default
 	}
 	a.tools = NewToolExecutor(baseDir, a)
 	return a
@@ -723,6 +725,9 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 	if finalText != "" {
 		// Response was already streamed to the terminal by Chat(), just save to history
 		a.history.AddMessage("assistant", finalText, nil)
+		
+		// Speak the response if TTS is enabled
+		a.tts.Speak(finalText)
 	}
 }
 
@@ -1614,6 +1619,25 @@ func (a *YoloAgent) handleCommand(cmd string) {
 			}
 		default:
 			cprint(Red, "  Usage: /think [on|off]")
+		}
+
+	case "/tts":
+		switch strings.ToLower(strings.TrimSpace(arg)) {
+		case "on":
+			a.tts.SetEnabled(true)
+		case "off":
+			a.tts.SetEnabled(false)
+		case "":
+			// Toggle
+			current := a.tts.IsEnabled()
+			a.tts.SetEnabled(!current)
+			if !current {
+				cprint(Green, "  ✓ TTS enabled — YOLO will now speak responses")
+			} else {
+				cprint(Yellow, "  ✗ TTS disabled — YOLO will no longer speak responses")
+			}
+		default:
+			cprint(Red, "  Usage: /tts [on|off]")
 		}
 
 	case "/todo":
