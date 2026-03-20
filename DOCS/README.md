@@ -10,7 +10,6 @@ Welcome to the complete documentation for **YOLO (Your Own Living Operator)** - 
 
 ### Core Concepts
 - **[Autonomous Operations](./AUTONOMOUS_OPERATIONS.md)** - How YOLO works autonomously
-- **[Architecture](./ARCHITECTURE.md)** - System design and structure
 - **[Security Fixes](../SECURITY_FIXES_SUMMARY.md)** - Security improvements summary
 
 ### Tools & Integration
@@ -23,7 +22,7 @@ Welcome to the complete documentation for **YOLO (Your Own Living Operator)** - 
 - **[Email Processing](./EMAIL_PROCESSING.md)** - Email architecture and workflow
 
 ### Development & Maintenance
-- **[Contributing](../CONTRIBUTING.md)** - Contribution guidelines
+- **[Tools Reference](./tools.md)** - Complete tool catalog with examples
 
 ## 🔑 Quick Reference
 

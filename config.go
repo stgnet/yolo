@@ -143,7 +143,7 @@ func init() {
 	yoloConfig.numCtxOverride.Store(os.Getenv("YOLO_NUM_CTX"))
 	yoloConfig.subagentDir.Store(filepath.Join(YoloDir, "subagents"))
 	yoloConfig.fileNameRegex = filePattern
-	
+
 	// Initialize legacy globals from config after config is ready
 	HistoryFile = yoloConfig.GetHistoryFile()
 	OllamaURL = yoloConfig.GetOllamaURL()

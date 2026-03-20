@@ -67,6 +67,7 @@ func TestIsBounceMessage(t *testing.T) {
 		})
 	}
 }
+
 // TestSanitizeEmailField tests email field sanitization
 func TestSanitizeEmailField(t *testing.T) {
 	tests := []struct {

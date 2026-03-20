@@ -100,7 +100,7 @@ func parseEmail(content, filename string) EmailMessage {
 	// First, strip Postfix envelope headers (Return-Path, Received, etc.) before parsing
 	// The actual RFC822 message starts at standard headers like From:, To:, Subject:, MIME-Version:
 	actualContent := stripEnvelopeHeaders(content)
-	
+
 	reader, err := mail.CreateReader(bytes.NewReader([]byte(actualContent)))
 	if err != nil {
 		log.Printf("Error creating MIME reader for %s: %v - falling back to simple parsing", filename, err)
@@ -111,7 +111,7 @@ func parseEmail(content, filename string) EmailMessage {
 	email.From = sanitizeEmailField(reader.Header.Get("From"))
 	email.Subject = sanitizeEmailField(reader.Header.Get("Subject"))
 	email.Date = sanitizeEmailField(reader.Header.Get("Date"))
-	
+
 	// Get To addresses
 	toHeader := reader.Header.Get("To")
 	if toHeader != "" {
@@ -123,10 +123,10 @@ func parseEmail(content, filename string) EmailMessage {
 
 	// Extract the plain text body using the reader's part iterator
 	var body strings.Builder
-	
+
 	// Track if we found plain text (prefer it over HTML)
 	foundPlainText := false
-	
+
 	for {
 		part, err := reader.NextPart()
 		if err == io.EOF {
@@ -139,10 +139,10 @@ func parseEmail(content, filename string) EmailMessage {
 
 		// Get content type
 		contentType := part.Header.Get("Content-Type")
-		
+
 		// Skip attachments (application, image types)
-		if strings.HasPrefix(contentType, "application/") || 
-		   strings.HasPrefix(contentType, "image/") {
+		if strings.HasPrefix(contentType, "application/") ||
+			strings.HasPrefix(contentType, "image/") {
 			continue
 		}
 
@@ -155,7 +155,7 @@ func parseEmail(content, filename string) EmailMessage {
 
 		// Get transfer encoding to decode properly
 		transferEncoding := strings.ToLower(part.Header.Get("Content-Transfer-Encoding"))
-		
+
 		// Decode based on transfer encoding
 		var decodedData []byte
 		switch transferEncoding {
@@ -180,7 +180,7 @@ func parseEmail(content, filename string) EmailMessage {
 		}
 
 		body.WriteString(string(decodedData))
-		
+
 		// Stop after finding a text/plain body (first match wins)
 		if strings.HasPrefix(contentType, "text/plain") {
 			foundPlainText = true
@@ -213,10 +213,10 @@ func parseEmail(content, filename string) EmailMessage {
 // decodeQuotedPrintable decodes a quoted-printable encoded byte slice
 func decodeQuotedPrintable(data []byte) ([]byte, error) {
 	var buf bytes.Buffer
-	
+
 	// Process line by line (quoted-printable is line-oriented)
 	lines := bytes.Split(data, []byte("\n"))
-	
+
 	for i, line := range lines {
 		// Remove soft line breaks (= at end of line) and join
 		if bytes.HasSuffix(line, []byte("=")) {
@@ -225,7 +225,7 @@ func decodeQuotedPrintable(data []byte) ([]byte, error) {
 			buf.Write(line)
 			continue
 		}
-		
+
 		// Decode escape sequences (=XX where XX is hex)
 		decoded := make([]byte, 0, len(line))
 		j := 0
@@ -247,13 +247,13 @@ func decodeQuotedPrintable(data []byte) ([]byte, error) {
 				j++
 			}
 		}
-		
+
 		buf.Write(decoded)
 		if i < len(lines)-1 {
 			buf.WriteByte('\n')
 		}
 	}
-	
+
 	return buf.Bytes(), nil
 }
 
@@ -294,7 +294,7 @@ func parseEmailSimple(content, filename string) EmailMessage {
 	lines := strings.Split(content, "\n")
 	bodyStartIdx := 0
 	headersFound := false
-	
+
 	for i, line := range lines {
 		if strings.TrimSpace(line) == "" {
 			if headersFound {
@@ -313,7 +313,7 @@ func parseEmailSimple(content, filename string) EmailMessage {
 		bodyLines = append(bodyLines, lines[i])
 	}
 	body := strings.Join(bodyLines, "\n")
-	
+
 	// Set Content to just the body text (not headers)
 	// DO NOT truncate - preserve full email content for proper LLM context and response generation
 	email.Content = strings.TrimSpace(body)
@@ -343,26 +343,26 @@ func parseEmailSimple(content, filename string) EmailMessage {
 // stripEnvelopeHeaders removes Postfix delivery headers and returns only the RFC822 message
 func stripEnvelopeHeaders(content string) string {
 	lines := strings.Split(content, "\n")
-	
+
 	// Find where actual message headers start (From:, Date:, Subject:, Message-ID:, MIME-Version:)
 	messageStart := -1
 	for i, line := range lines {
 		lowerLine := strings.ToLower(line)
-		if strings.HasPrefix(lowerLine, "from:") || 
-		   strings.HasPrefix(lowerLine, "date:") || 
-		   strings.HasPrefix(lowerLine, "subject:") ||
-		   strings.HasPrefix(lowerLine, "message-id:") ||
-		   strings.HasPrefix(lowerLine, "mime-version:") {
+		if strings.HasPrefix(lowerLine, "from:") ||
+			strings.HasPrefix(lowerLine, "date:") ||
+			strings.HasPrefix(lowerLine, "subject:") ||
+			strings.HasPrefix(lowerLine, "message-id:") ||
+			strings.HasPrefix(lowerLine, "mime-version:") {
 			messageStart = i
 			break
 		}
 	}
-	
+
 	// If no message headers found, return original content
 	if messageStart == -1 {
 		return content
 	}
-	
+
 	// Return everything from the first actual message header to the end
 	return strings.Join(lines[messageStart:], "\n")
 }
@@ -405,7 +405,7 @@ func extractEmailAddress(fromHeader string) string {
 func isProgressReportRequest(email *EmailMessage) bool {
 	contentLower := strings.ToLower(email.Content)
 	subjectLower := strings.ToLower(email.Subject)
-	
+
 	// Check for common progress report request patterns
 	indicators := []string{
 		"progress report", "status report", "what are you working on",
@@ -414,13 +414,13 @@ func isProgressReportRequest(email *EmailMessage) bool {
 		"current progress", "what have you been doing",
 		"progress", "todo", "status",
 	}
-	
+
 	for _, indicator := range indicators {
 		if strings.Contains(contentLower, indicator) || strings.Contains(subjectLower, indicator) {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -533,7 +533,7 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 			break // Stop processing remaining emails
 		}
 
-				// Debug: log email parsing details
+		// Debug: log email parsing details
 		log.Printf("Email from %s with subject '%s' - Content length: %d bytes", email.From, email.Subject, len(email.Content))
 		if email.Content == "" {
 			log.Printf("WARNING: Email content is EMPTY for message from %s with subject '%s'", email.From, email.Subject)
@@ -545,15 +545,15 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 
 		// Check if this is a request for a progress report
 		isProgressReportRequestFlag := isProgressReportRequest(&email)
-		
+
 		var response string
 		if isProgressReportRequestFlag {
 			log.Printf("Detected progress report request from %s, sending actual report...", email.From)
-			
+
 			// Generate and send actual progress report
 			todoOutput := listTodos()
 			reportBody := fmt.Sprintf("🤖 YOLO Progress Report\n\nGenerated in response to your email request.\n\n%s", todoOutput)
-			
+
 			sendResult := t.sendReport(map[string]any{
 				"to":          sender,
 				"subject":     "YOLO Progress Report",
@@ -561,7 +561,7 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 				"attach_todo": false,
 			})
 			log.Printf("Progress report send result: %s", sendResult)
-			
+
 			// Acknowledgment response to send back
 			response = "Thanks for reaching out! I have just sent you a detailed progress report with my current status and todo list. You should receive it shortly.\n\nBest regards,\nYOLO - Your Own Living Operator"
 		} else {
@@ -584,7 +584,7 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 		}
 
 		// Validate sender before responding
-// Validate sender before responding
+		// Validate sender before responding
 		if !validateSender(sender) {
 			log.Printf("Skipping response to untrusted sender: %s", sender)
 			skipped = append(skipped, file.Name())
@@ -660,8 +660,6 @@ func archiveEmail(srcPath, filename string, reason string) error {
 	return err
 }
 
-
-
 // generateLLMText generates an AI response using the Ollama client
 func (t *ToolExecutor) generateLLMText(prompt string, streaming bool) string {
 	// Use agent's ollama client to generate response
@@ -679,7 +677,7 @@ func (t *ToolExecutor) generateLLMText(prompt string, streaming bool) string {
 	// Use DisplayText which falls back to ThinkingText if ContentText is empty
 	response := strings.TrimSpace(result.DisplayText)
 
-	log.Printf("generateLLMText result - ContentText: %.50s, ThinkingText: %.50s, DisplayText: %.50s", 
+	log.Printf("generateLLMText result - ContentText: %.50s, ThinkingText: %.50s, DisplayText: %.50s",
 		result.ContentText, result.ThinkingText, result.DisplayText)
 
 	if response == "" {

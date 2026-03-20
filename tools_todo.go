@@ -107,4 +107,3 @@ func (te *ToolExecutor) deleteTodo(args map[string]any) string {
 func (te *ToolExecutor) listTodosTool(args map[string]any) string {
 	return listTodos()
 }
-

@@ -45,7 +45,7 @@ func setupOllamaLogging() {
 		fmt.Println("Stopping existing ollama server to enable logging...")
 		exec.Command("pkill", "-9", "-f", "ollama serve").Run()
 		exec.Command("sleep", "2").Run() // Wait for it to fully stop
-		
+
 		// Double-check all ollama processes are stopped
 		cmd2 := exec.Command("pgrep", "-f", "ollama")
 		if cmd2.Run() == nil {
@@ -60,7 +60,7 @@ func setupOllamaLogging() {
 	// Use shell redirection for reliable process detachment
 	// This creates a background process that continues running after YOLO exits
 	// and properly redirects output to log files without YOLO needing to manage file handles
-	
+
 	ollamaDebug := os.Getenv("OLLAMA_DEBUG")
 	if ollamaDebug == "" {
 		ollamaDebug = "1" // Enable debug if not already set
@@ -76,9 +76,9 @@ func setupOllamaLogging() {
 
 	// Build the shell command with proper quoting for paths that might have spaces
 	// Use > instead of >> to start fresh (files are truncated above)
-	startCmd := fmt.Sprintf("( OLLAMA_DEBUG=%s nohup ollama serve > '%s' 2> '%s' ) &", 
-		strings.ReplaceAll(ollamaDebug, "'", "'\\''"), 
-		absLogFile, 
+	startCmd := fmt.Sprintf("( OLLAMA_DEBUG=%s nohup ollama serve > '%s' 2> '%s' ) &",
+		strings.ReplaceAll(ollamaDebug, "'", "'\\''"),
+		absLogFile,
 		absErrLogFile)
 
 	exec.Command("sh", "-c", startCmd).Run()
@@ -105,12 +105,6 @@ func setupOllamaLogging() {
 // ─── Entry Point ────────────────
 
 func main() {
-	// Check for non-interactive mode (e.g., "go run . learn")
-	if len(os.Args) > 1 && os.Args[1] == "learn" {
-		runLearnTool()
-		return
-	}
-
 	// Setup Ollama logging if needed
 	setupOllamaLogging()
 
