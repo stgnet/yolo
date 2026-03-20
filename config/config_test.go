@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"yolo/config"
+	"github.com/scottstg/yolo/config"
 )
 
 func TestDefaultConfig(t *testing.T) {

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"yolo/caching"
-	"yolo/concurrency"
+	"github.com/scottstg/yolo/caching"
+	"github.com/scottstg/yolo/concurrency"
 )
 
 // BenchmarkSearchCache stores performance metrics

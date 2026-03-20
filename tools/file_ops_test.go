@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"yolo/config"
+	"github.com/scottstg/yolo/config"
 )
 
 func TestCopyFileToolMissingSource(t *testing.T) {

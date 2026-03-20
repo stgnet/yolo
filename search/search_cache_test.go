@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"yolo/caching"
+	"github.com/scottstg/yolo/caching"
 )
 
 // Test cache hit scenario

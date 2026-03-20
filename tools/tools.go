@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"yolo/config"
+	"github.com/scottstg/yolo/config"
 )
 
 // ToolType represents the type of tool operation

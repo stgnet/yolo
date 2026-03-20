@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 	
-	"yolo/config"
+	"github.com/scottstg/yolo/config"
 )
 
 // CopyFileTool implements file copying functionality

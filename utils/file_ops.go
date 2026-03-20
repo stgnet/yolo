@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	errors "yolo/errors"
+	errors "github.com/scottstg/yolo/errors"
 )
 
 // SafetyConfig holds configuration for safety checks in file operations.

@@ -12,7 +12,7 @@ import (
 	"strings"
 	
 	"github.com/emersion/go-message/mail"
-	"yolo/tools/todo"
+	"github.com/scottstg/yolo/tools/todo"
 )
 
 // EmailMessage represents a parsed email from the inbox
