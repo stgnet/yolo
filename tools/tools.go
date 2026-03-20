@@ -74,8 +74,6 @@ func RegisterTools() []Tool {
 		&GOGTool{},
 		
 		// AI tools
-		&LearnTool{},
-		&ImplementTool{},
 		&ListModelsTool{},
 		&SwitchModelTool{},
 		

@@ -21,6 +21,7 @@ type YoloConfigData struct {
 	TerminalMode bool   `json:"terminal_mode,omitempty"` // true = classic split-screen UI; false (default) = buffer mode
 	DebugMode    *bool  `json:"debug_mode,omitempty"`    // false (default) = cleaner output; true = show full tool args/results verbatim
 	AutoMode     *bool  `json:"auto_mode,omitempty"`     // false (default) = wait for user input; true = enable autonomous mode
+	ThinkMode    *bool  `json:"think_mode,omitempty"`    // true (default) = show thinking output; false = hide thinking blocks
 }
 
 // YoloConfig owns the in-memory config and handles reading/writing to disk.
@@ -142,6 +143,25 @@ func (c *YoloConfig) GetAutoMode() bool {
 func (c *YoloConfig) SetAutoMode(enabled bool) {
 	c.mu.Lock()
 	c.Data.AutoMode = &enabled
+	c.mu.Unlock()
+	c.Save()
+}
+
+// GetThinkMode returns whether thinking output is shown. Defaults to true
+// when not explicitly set, showing thinking blocks by default.
+func (c *YoloConfig) GetThinkMode() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.Data.ThinkMode == nil {
+		return true // default on
+	}
+	return *c.Data.ThinkMode
+}
+
+// SetThinkMode updates the think mode setting and persists to disk.
+func (c *YoloConfig) SetThinkMode(enabled bool) {
+	c.mu.Lock()
+	c.Data.ThinkMode = &enabled
 	c.mu.Unlock()
 	c.Save()
 }

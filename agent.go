@@ -416,7 +416,7 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		a.cancelChat = cancel
 		a.mu.Unlock()
 
-		result, err := a.ollama.Chat(ctx, a.config.GetModel(), allMsgs, ollamaTools, nil)
+		result, err := a.ollama.Chat(ctx, a.config.GetModel(), allMsgs, ollamaTools, nil, a.config.GetThinkMode())
 		cancel()
 		a.mu.Lock()
 		a.cancelChat = nil
@@ -1208,7 +1208,7 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 			allMsgs = append(allMsgs, msgs...)
 			allMsgs = append(allMsgs, roundMsgs...)
 
-			chatResult, err := a.ollama.Chat(context.Background(), useModel, allMsgs, saTools, outFn)
+			chatResult, err := a.ollama.Chat(context.Background(), useModel, allMsgs, saTools, outFn, a.config.GetThinkMode())
 			if err != nil {
 				finalText = err.Error()
 				status = "error"
@@ -1529,6 +1529,37 @@ func (a *YoloAgent) handleCommand(cmd string) {
 			cprint(Red, "  Usage: /auto [on|off]")
 		}
 
+	case "/think":
+		switch strings.ToLower(strings.TrimSpace(arg)) {
+		case "on":
+			a.config.SetThinkMode(true)
+			cprint(Green, "  Thinking output enabled — showing [thinking] blocks")
+		case "off":
+			a.config.SetThinkMode(false)
+			cprint(Yellow, "  Thinking output disabled — hiding [thinking] blocks")
+		case "":
+			// Toggle
+			current := a.config.GetThinkMode()
+			a.config.SetThinkMode(!current)
+			if !current {
+				cprint(Green, "  Thinking output enabled — showing [thinking] blocks")
+			} else {
+				cprint(Yellow, "  Thinking output disabled — hiding [thinking] blocks")
+			}
+		default:
+			cprint(Red, "  Usage: /think [on|off]")
+		}
+
+	case "/todo":
+		if arg != "" {
+			// Add new todo with the argument as title
+			result := a.tools.addTodo(map[string]any{"title": arg})
+			cprint(Cyan, result)
+		} else {
+			// Show uncompleted todos
+			a.showUncompletedTodos()
+		}
+
 	case "/model":
 		cprint(Cyan, fmt.Sprintf("  Model: %s", a.config.GetModel()))
 
@@ -1629,6 +1660,18 @@ func (a *YoloAgent) showCacheStatus(arg string) {
 	cprint(Reset, fmt.Sprintf("  TTL: %v", searchCacheTTL))
 	if arg != "clear" {
 		cprint(Reset, "  Usage: /cache clear (to clear cache)")
+	}
+}
+
+// showUncompletedTodos displays only pending (incomplete) todo items.
+func (a *YoloAgent) showUncompletedTodos() {
+	output := getPendingTodos()
+	for _, line := range strings.Split(output, "\n") {
+		if line != "" {
+			cprint(Reset, "  "+line)
+		} else {
+			cprint(Reset, "")
+		}
 	}
 }
 

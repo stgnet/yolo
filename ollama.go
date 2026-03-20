@@ -259,7 +259,8 @@ func deduplicateToolCalls(calls []ParsedToolCall) []ParsedToolCall {
 // result. Display text is printed to the terminal as it arrives. The ctx
 // parameter allows the caller to cancel the request (e.g. on Ctrl-C).
 // If outFn is non-nil, it receives output text instead of the default globalUI.
-func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMessage, tools []ToolDef, outFn func(string)) (*ChatResult, error) {
+// If showThinking is false, thinking blocks will be hidden from output.
+func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMessage, tools []ToolDef, outFn func(string), showThinking bool) (*ChatResult, error) {
 	numCtx := DefaultNumCtx
 	if NumCtxOverride != "" {
 		if n, err := strconv.Atoi(NumCtxOverride); err == nil && n > 0 {
@@ -377,7 +378,9 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 		// Handle thinking tokens
 		if thinking != "" {
 			if !inThinking {
-				outPrint(fmt.Sprintf("%s[thinking] ", Gray))
+				if showThinking {
+					outPrint(fmt.Sprintf("%s[thinking] ", Gray))
+				}
 				inThinking = true
 			}
 			thinkingParts = append(thinkingParts, thinking)
