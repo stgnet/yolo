@@ -209,26 +209,29 @@ func TestCopyFileTool(t *testing.T) {
 
 func TestMoveFileTool(t *testing.T) {
 	tool := &MoveFileTool{}
-	source := "../go.mod"
-	dest := "test_tools/test_move_file.go.mod"
-	
+
+	// Create a temporary source file instead of moving go.mod
+	source := "test_tools/test_move_source.txt"
+	dest := "test_tools/test_move_dest.txt"
+	_ = os.MkdirAll("test_tools", 0755)
+	_ = os.WriteFile(source, []byte("move test content"), 0644)
+	defer func() {
+		_ = os.Remove(source)
+		_ = os.Remove(dest)
+	}()
+
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
 		"source": source,
 		"dest":   dest,
 	})
-	
+
 	if err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
-	
+
 	if !result.Success {
 		t.Errorf("Expected success, got error: %s", result.Error)
 	}
-	
-	// Cleanup - remove the moved file
-	defer func() {
-		_ = os.Remove(dest)
-	}()
 }
 
 func TestReadWebpageTool(t *testing.T) {
