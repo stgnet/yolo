@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"regexp"
@@ -1760,6 +1761,81 @@ func (a *YoloAgent) echoUserInput(text string) {
 	}
 }
 
+// sleepUntilInput sends a report email and waits until new input arrives.
+func (a *YoloAgent) sleepUntilInput() {
+	cprint(Yellow, "  === YOLO SLEEP MODE ===")
+	cprint(Reset, "  No pending todos found.")
+	cprint(Reset, "  Sending status report to scott@stg.net...")
+	
+	// Send email report
+	reportBody := "YOLO Autonomous Agent Status Report\n\n" +
+		"Status: IDLE (Sleep Mode)\n" +
+		"\nSummary:\n" +
+		"- No pending todos in the task list\n" +
+		"- YOLO has entered sleep mode to conserve resources\n" +
+		"- Waiting for new input via email or user interaction\n" +
+		"\nThe agent will resume autonomous operation when:\n" +
+		"1. A new email arrives and is processed\n" +
+		"2. User provides manual input\n" +
+		"3. New todos are added to the list\n" +
+		"\nTimestamp: " + time.Now().Format("2006-01-02 15:04:05 MST") + "\n" +
+		"\nYOLO - Your Own Living Operator"
+	
+	if err := sendEmailDirectly("scott@stg.net", "YOLO Status: Idle - No Pending Tasks", reportBody); err != nil {
+		cprint(Red, "  Failed to send status email: "+err.Error())
+	} else {
+		cprint(Green, "  Report sent successfully.")
+	}
+	
+	cprint(Reset, "  Entering sleep mode - waiting for input...")
+	cprint(Yellow, "  ====================================")
+	
+	// Wait in a loop checking for input
+	for {
+		time.Sleep(5 * time.Second) // Check every 5 seconds
+		
+		// Check if there's new user input
+		a.inputMgr.mu.Lock()
+		hasInput := len(a.inputMgr.buf) > 0
+		a.inputMgr.mu.Unlock()
+		
+		if hasInput {
+			cprint(Green, "  Input detected - resuming normal operation")
+			break
+		}
+		
+		// Check for new emails in the inbox
+		emailFiles := checkInboxFiles()
+		if len(emailFiles) > 0 {
+			cprint(Green, fmt.Sprintf("  %d new email(s) detected - resuming to process", len(emailFiles)))
+			break
+		}
+		
+		// Quiet status indicator
+		cprint(Gray, "  Sleeping... (press Enter or send email to wake)")
+	}
+}
+
+// checkInboxFiles returns list of files in the inbox directory
+func checkInboxFiles() []string {
+	files, _ := os.ReadDir("/var/mail/b-haven.org/yolo/new/")
+	var result []string
+	for _, f := range files {
+		if !f.IsDir() {
+			result = append(result, f.Name())
+		}
+	}
+	return result
+}
+
+// sendEmailDirectly sends an email using sendmail command
+func sendEmailDirectly(to, subject, body string) error {
+	emailInput := fmt.Sprintf("To: %s\nFrom: yolo@b-haven.org\nSubject: %s\n\n%s\n", to, subject, body)
+	cmd := exec.Command("sendmail", "-t")
+	cmd.Stdin = strings.NewReader(emailInput)
+	return cmd.Run()
+}
+
 // Run is the top-level entry point. It loads (or creates) session history,
 // initialises the terminal UI and input manager, registers signal handlers,
 // and enters the main event loop. It blocks until the user exits.
@@ -1882,6 +1958,15 @@ func (a *YoloAgent) Run() {
 			bufEmpty := len(a.inputMgr.buf) == 0
 			a.inputMgr.mu.Unlock()
 			if bufEmpty && a.config.GetAutoMode() {
+				// Check for pending todos before entering autonomous mode
+				todoList := todo.GetGlobalTodoList()
+				_, pendingCount, _ := todoList.GetStats()
+				// If no pending todos, send report and enter sleep mode
+				if pendingCount == 0 {
+					a.sleepUntilInput()
+					continue
+				}
+				
 				a.inputMgr.ClearLine()
 
 				a.mu.Lock()
