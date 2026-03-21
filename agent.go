@@ -99,7 +99,7 @@ func NewYoloAgent(opts ...*config.Config) *YoloAgent {
 		running:         true,
 		yoloCfg:         configToUse,
 		thinkingEnabled: true, // default: thinking is shown
-		tts:             NewTTSManager(), // disabled by default
+		tts:             NewTTSManager(),
 	}
 	a.tools = NewToolExecutor(baseDir, a)
 	return a
@@ -178,14 +178,12 @@ func (a *YoloAgent) checkBinaryFreshness() string {
 	})
 	if err == nil && len(newerFiles) > 0 {
 		w := fmt.Sprintf("NEEDS COMPILE: Source files newer than binary: %s. Run 'go build' when you are done with your current set of changes.", strings.Join(newerFiles, ", "))
-		cprint(Yellow, fmt.Sprintf("\n%s\n", w))
 		warnings = append(warnings, w)
 	}
 
 	// --- Check 2: executable on disk is newer than at startup → restart needed ---
 	if execModTime.After(a.binaryModTime) {
 		w := "NEEDS RESTART: The binary has been recompiled since this process started. You MUST use the restart tool now to apply the new version."
-		cprint(Yellow, fmt.Sprintf("\n%s\n", w))
 		warnings = append(warnings, w)
 	}
 
@@ -420,7 +418,6 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 	}
 	var toolLog []toolLogEntry
 	var finalText string
-
 	roundNum := 0
 	for {
 		allMsgs := make([]ChatMessage, 0, len(baseMsgs)+len(roundMsgs))
@@ -537,6 +534,12 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 				continue
 			}
 			finalText = result.DisplayText
+			// Speak the final response immediately
+			if result.ContentText != "" {
+				a.tts.Speak(result.ContentText)
+			} else if result.ThinkingText != "" {
+				a.tts.Speak(result.ThinkingText)
+			}
 			break
 		}
 
@@ -571,6 +574,13 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 			Content:   assistantContent,
 			ToolCalls: nativeTCs,
 		})
+
+		// Speak content text immediately as it appears (each round, not just the end).
+		// The model often emits response prose alongside tool calls — speak it now
+		// rather than waiting for the entire tool-calling loop to finish.
+		if result.ContentText != "" {
+			a.tts.Speak(result.ContentText)
+		}
 
 		// Execute each tool and add tool-role result.
 		// Track whether the user typed something mid-tool-loop.
@@ -725,10 +735,8 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 	if finalText != "" {
 		// Response was already streamed to the terminal by Chat(), just save to history
 		a.history.AddMessage("assistant", finalText, nil)
-		
-		// Speak the response if TTS is enabled
-		a.tts.Speak(finalText)
 	}
+
 }
 
 // parseTextToolCalls extracts tool calls from plain-text LLM output when the
@@ -1526,6 +1534,9 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		cprint(Reset, "  /debug [on|off]  Toggle debug mode (show full tool args/results)")
 		cprint(Reset, "  /auto [on|off]   Toggle autonomous mode (operate without user input)")
 		cprint(Reset, "  /think [on|off]  Toggle thinking output (show/hide [thinking] blocks)")
+		cprint(Reset, "  /tts [on|off]    Toggle text-to-speech output")
+		cprint(Reset, "  /tts voices      List available voices")
+		cprint(Reset, "  /tts voice NAME  Set TTS voice")
 		cprint(Reset, "  /todo            Show uncompleted todo items")
 		cprint(Reset, "  /todo <text>     Add a new todo item")
 		cprint(Reset, "  /learn           Run autonomous research for self-improvement")
@@ -1622,12 +1633,41 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		}
 
 	case "/tts":
-		switch strings.ToLower(strings.TrimSpace(arg)) {
-		case "on":
-			a.tts.SetEnabled(true)
-		case "off":
+		lower := strings.ToLower(strings.TrimSpace(arg))
+		switch {
+		case lower == "on":
+			if a.tts.Backend() == "none" {
+				cprint(Red, "  No TTS backend found (install say, espeak-ng, or espeak)")
+			} else {
+				a.tts.SetEnabled(true)
+				cprint(Green, fmt.Sprintf("  ✓ TTS enabled [%s] — YOLO will now speak responses", a.tts.Backend()))
+			}
+		case lower == "off":
 			a.tts.SetEnabled(false)
-		case "":
+			cprint(Yellow, "  ✗ TTS disabled — YOLO will no longer speak responses")
+		case lower == "voices":
+			voices := a.tts.ListVoices("en")
+			if len(voices) == 0 {
+				cprint(Red, "  No English voices found")
+			} else {
+				current := a.tts.GetVoice()
+				cprint(Cyan, fmt.Sprintf("  Available English voices (%d) [%s]:", len(voices), a.tts.Backend()))
+				for _, v := range voices {
+					marker := "  "
+					if v.Name == current {
+						marker = "→ "
+					}
+					cprint(Reset, fmt.Sprintf("    %s%-28s %s", marker, v.Name, v.Locale))
+				}
+			}
+		case strings.HasPrefix(lower, "voice "):
+			name := strings.TrimSpace(arg[6:]) // preserve original case
+			if err := a.tts.SetVoice(name); err != nil {
+				cprint(Red, fmt.Sprintf("  %s", err))
+			} else {
+				cprint(Green, fmt.Sprintf("  ✓ TTS voice set to: %s", a.tts.GetVoice()))
+			}
+		case lower == "":
 			// Toggle
 			current := a.tts.IsEnabled()
 			a.tts.SetEnabled(!current)
@@ -1637,7 +1677,7 @@ func (a *YoloAgent) handleCommand(cmd string) {
 				cprint(Yellow, "  ✗ TTS disabled — YOLO will no longer speak responses")
 			}
 		default:
-			cprint(Red, "  Usage: /tts [on|off]")
+			cprint(Red, "  Usage: /tts [on|off|voices|voice NAME]")
 		}
 
 	case "/todo":
@@ -1917,6 +1957,7 @@ func (a *YoloAgent) Run() {
 	a.inputMgr = NewInputManager(a)
 	a.inputMgr.Start()
 	defer a.inputMgr.Stop()
+	defer a.tts.Stop()
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGWINCH)
