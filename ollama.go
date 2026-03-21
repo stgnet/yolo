@@ -56,18 +56,21 @@ func toolDef(name, desc string, props map[string]ToolParam, required []string) T
 // OllamaClient communicates with the Ollama REST API for model listing,
 // context-length detection, and streaming chat completions.
 type OllamaClient struct {
-	baseURL  string
-	client   *http.Client
-	ctxCache map[string]int // cached context lengths per model
-	cacheMu  sync.RWMutex   // protects ctxCache from concurrent access
+	baseURL        string
+	numCtxOverride string           // from YOLO_NUM_CTX env; "" means auto-detect
+	client         *http.Client
+	ctxCache       map[string]int   // cached context lengths per model
+	cacheMu        sync.RWMutex     // protects ctxCache from concurrent access
 }
 
 // NewOllamaClient creates a client pointing at the given Ollama API base URL.
-func NewOllamaClient(baseURL string) *OllamaClient {
+// numCtxOverride is the YOLO_NUM_CTX value ("" means auto-detect from model).
+func NewOllamaClient(baseURL, numCtxOverride string) *OllamaClient {
 	return &OllamaClient{
-		baseURL:  strings.TrimRight(baseURL, "/"),
-		client:   &http.Client{Timeout: 300 * time.Second},
-		ctxCache: make(map[string]int),
+		baseURL:        strings.TrimRight(baseURL, "/"),
+		numCtxOverride: numCtxOverride,
+		client:         &http.Client{Timeout: 300 * time.Second},
+		ctxCache:       make(map[string]int),
 	}
 }
 
@@ -262,8 +265,8 @@ func deduplicateToolCalls(calls []ParsedToolCall) []ParsedToolCall {
 // If showThinking is false, thinking blocks will be hidden from output.
 func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMessage, tools []ToolDef, outFn func(string), showThinking bool) (*ChatResult, error) {
 	numCtx := DefaultNumCtx
-	if NumCtxOverride != "" {
-		if n, err := strconv.Atoi(NumCtxOverride); err == nil && n > 0 {
+	if c.numCtxOverride != "" {
+		if n, err := strconv.Atoi(c.numCtxOverride); err == nil && n > 0 {
 			numCtx = n
 		}
 	} else if cached, ok := c.getAndDeleteContextCache(model); ok {

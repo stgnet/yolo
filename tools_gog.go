@@ -8,7 +8,7 @@ import "strings"
 func (t *ToolExecutor) gog(args map[string]any) string {
 	command := getStringArg(args, "command", "")
 	if command == "" {
-		return "Error: command parameter is required. Examples:\n  - 'gmail search inbox:unread --max 5'\n  - 'calendar list events'\n  - 'drive ls'\n  - 'contacts list'"
+		return errorMessage("command parameter is required. Examples:\n  - 'gmail search inbox:unread --max 5'\n  - 'calendar list events'\n  - 'drive ls'\n  - 'contacts list'")
 	}
 
 	// Use the runCommand tool to execute gog with JSON output
@@ -16,7 +16,7 @@ func (t *ToolExecutor) gog(args map[string]any) string {
 	result := t.runCommand(fullCommand)
 
 	if result == "" {
-		return "Error: gog command returned no output"
+		return errorMessage("gog command returned no output")
 	}
 
 	// Check for common error patterns

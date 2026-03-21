@@ -44,6 +44,15 @@ type HistoryData struct {
 	EvolutionLog []EvolutionEntry `json:"evolution_log"`
 }
 
+// History pruning limits. Messages and evolution entries beyond these
+// counts are dropped (oldest first) on every save to prevent unbounded
+// growth. MaxHistoryMessages is set well above MaxContextMessages (40)
+// so there is scrollback for /history without the file growing forever.
+const (
+	MaxHistoryMessages  = 200
+	MaxEvolutionEntries = 100
+)
+
 // HistoryManager owns the in-memory HistoryData and handles reading and
 // writing it to disk.  All mutating methods are goroutine-safe.
 type HistoryManager struct {
@@ -96,6 +105,14 @@ func (h *HistoryManager) Load() bool {
 func (h *HistoryManager) Save() error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+
+	// Prune old messages and evolution entries to prevent unbounded growth.
+	if len(h.Data.Messages) > MaxHistoryMessages {
+		h.Data.Messages = h.Data.Messages[len(h.Data.Messages)-MaxHistoryMessages:]
+	}
+	if len(h.Data.EvolutionLog) > MaxEvolutionEntries {
+		h.Data.EvolutionLog = h.Data.EvolutionLog[len(h.Data.EvolutionLog)-MaxEvolutionEntries:]
+	}
 
 	if err := os.MkdirAll(h.yoloDir, 0o755); err != nil {
 		return fmt.Errorf("create history dir: %w", err)

@@ -10,9 +10,9 @@ import (
 
 // ─── Yolo Config ─────────────────────────────────────────────────────
 //
-// YoloConfig manages persistent configuration stored in .yolo/config.json,
-// separate from conversation history. This survives history resets and
-// can be extended with additional settings in the future.
+// YoloConfig is the single configuration system for YOLO. It manages both
+// persistent settings (stored in .yolo/config.json) and runtime paths
+// derived from environment variables and working directory.
 
 // YoloConfigData is the top-level JSON structure for config.json.
 type YoloConfigData struct {
@@ -26,19 +26,45 @@ type YoloConfigData struct {
 
 // YoloConfig owns the in-memory config and handles reading/writing to disk.
 type YoloConfig struct {
-	yoloDir    string
-	configFile string
-	Data       YoloConfigData
-	mu         sync.Mutex
+	yoloDir        string // working directory
+	configFile     string // path to .yolo/config.json
+	ollamaURL      string // Ollama API base URL (from OLLAMA_URL env, default http://localhost:11434)
+	numCtxOverride string // context window override (from YOLO_NUM_CTX env)
+	subagentDir    string // path to .yolo/subagents/
+	Data           YoloConfigData
+	mu             sync.Mutex
 }
 
-// NewYoloConfig creates a config manager that stores its file in yoloDir.
-func NewYoloConfig(yoloDir string) *YoloConfig {
-	return &YoloConfig{
-		yoloDir:    yoloDir,
-		configFile: filepath.Join(yoloDir, ".yolo", "config.json"),
-		Data:       YoloConfigData{Version: 1},
+// NewYoloConfig creates a config manager rooted in the given working directory.
+// Runtime paths are derived from the working directory and environment variables.
+func NewYoloConfig(workDir string) *YoloConfig {
+	ollamaURL := os.Getenv("OLLAMA_URL")
+	if ollamaURL == "" {
+		ollamaURL = "http://localhost:11434"
 	}
+	return &YoloConfig{
+		yoloDir:        workDir,
+		configFile:     filepath.Join(workDir, ".yolo", "config.json"),
+		ollamaURL:      ollamaURL,
+		numCtxOverride: os.Getenv("YOLO_NUM_CTX"),
+		subagentDir:    filepath.Join(workDir, ".yolo", "subagents"),
+		Data:           YoloConfigData{Version: 1},
+	}
+}
+
+// GetOllamaURL returns the Ollama API base URL.
+func (c *YoloConfig) GetOllamaURL() string {
+	return c.ollamaURL
+}
+
+// GetNumCtxOverride returns the context window override from YOLO_NUM_CTX, or "".
+func (c *YoloConfig) GetNumCtxOverride() string {
+	return c.numCtxOverride
+}
+
+// GetSubagentDir returns the subagent results directory.
+func (c *YoloConfig) GetSubagentDir() string {
+	return c.subagentDir
 }
 
 // Load reads config.json from disk. Returns true on success.

@@ -102,13 +102,13 @@ func (t *ToolExecutor) sendEmail(args map[string]any) string {
 	to := getStringArg(args, "to", "")
 
 	if subject == "" || body == "" {
-		return "Error: subject and body parameters are required"
+		return errorMessage("subject and body parameters are required")
 	}
 
 	// Validate email format using proper regex
 	emailRegex := regexp.MustCompile(AllowedSenderRegex)
 	if !emailRegex.MatchString(to) {
-		return fmt.Sprintf("Error: invalid email address '%s'", to)
+		return errorMessage("invalid email address '%s'", to)
 	}
 
 	// Get email configuration (uses local SMTP relay by default, no auth needed)
@@ -121,7 +121,7 @@ func (t *ToolExecutor) sendEmail(args map[string]any) string {
 
 	// Validate sender is not denylisted
 	if !validateSender(to) {
-		return fmt.Sprintf("Error: email address '%s' is not allowed", to)
+		return errorMessage("email address '%s' is not allowed", to)
 	}
 
 	// Encode headers safely to prevent header injection
@@ -133,7 +133,7 @@ func (t *ToolExecutor) sendEmail(args map[string]any) string {
 		var err error
 		attachments, err = loadAttachments(attachmentPaths)
 		if err != nil {
-			return fmt.Sprintf("Error loading attachments: %v", err)
+			return errorMessage("loading attachments: %v", err)
 		}
 	}
 
@@ -147,7 +147,7 @@ func (t *ToolExecutor) sendEmail(args map[string]any) string {
 	client := email.New(cfg)
 	err := client.Send(msg)
 	if err != nil {
-		return fmt.Sprintf("Error sending email: %v", err)
+		return errorMessage("sending email: %v", err)
 	}
 
 	var sb strings.Builder
@@ -171,13 +171,13 @@ func (t *ToolExecutor) sendReport(args map[string]any) string {
 	attachTodo := getBoolArg(args, "attach_todo", true) // Default: include todo list
 
 	if body == "" {
-		return "Error: body parameter is required"
+		return errorMessage("body parameter is required")
 	}
 
 	// Validate email format for recipient
 	matched, _ := regexp.MatchString(AllowedSenderRegex, to)
 	if !matched {
-		return fmt.Errorf("invalid to address: %s", to).Error()
+		return errorMessage("invalid to address: %s", to)
 	}
 
 	// Append todo list to the report if not already included and attach_todo is true
@@ -193,7 +193,7 @@ func (t *ToolExecutor) sendReport(args map[string]any) string {
 
 	// Validate sender is not denylisted
 	if !validateSender(to) {
-		return fmt.Sprintf("Error: email address '%s' is not allowed", to)
+		return errorMessage("email address '%s' is not allowed", to)
 	}
 
 	// Encode headers safely to prevent header injection
@@ -208,7 +208,7 @@ func (t *ToolExecutor) sendReport(args map[string]any) string {
 	client := email.New(cfg)
 	err := client.Send(msg)
 	if err != nil {
-		return fmt.Sprintf("Error sending report: %v", err)
+		return errorMessage("sending report: %v", err)
 	}
 
 	var sb strings.Builder

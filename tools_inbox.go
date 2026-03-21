@@ -50,7 +50,7 @@ func (t *ToolExecutor) checkInbox(args map[string]any) string {
 	// Read all files in the inbox directory
 	files, err := os.ReadDir(InboxPath)
 	if err != nil {
-		return fmt.Sprintf("Error reading inbox: %v", err)
+		return errorMessage("reading inbox: %v", err)
 	}
 
 	if len(files) == 0 {
@@ -467,7 +467,7 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 	// Read all files in the inbox directory
 	files, err := os.ReadDir(InboxPath)
 	if err != nil {
-		return fmt.Sprintf("Error reading inbox: %v", err)
+		return errorMessage("reading inbox: %v", err)
 	}
 
 	if len(files) == 0 {

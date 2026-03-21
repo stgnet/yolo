@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -16,8 +17,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/scottstg/yolo/config"
-	"github.com/scottstg/yolo/tools/todo"
 )
 
 // ─── Main Agent ───────────────────────────────────────────────────────
@@ -58,26 +57,21 @@ type YoloAgent struct {
 	pendingHandoffs []*handoffResult   // in-flight background tool executions
 	mu              sync.Mutex         // protects busy, cancelChat, subagentCounter, handoffCounter, pendingHandoffs
 	cancelChat      context.CancelFunc // cancels the in-flight Chat HTTP request
-	yoloCfg         *config.Config     // thread-safe configuration
 	thinkingEnabled bool               // true when thinking output is enabled (default: true)
 }
 
 // NewYoloAgent creates an agent rooted in the current working directory
-// and connects to Ollama. Accepts optional config for dependency injection.
-func NewYoloAgent(opts ...*config.Config) *YoloAgent {
-	// Use passed config or fall back to default for backward compatibility
-	configToUse := config.DefaultConfig()
-	if len(opts) > 0 && opts[0] != nil {
-		configToUse = opts[0]
-	}
-
+// and connects to Ollama.
+func NewYoloAgent() *YoloAgent {
 	baseDir, _ := os.Getwd()
 	execPath, _ := os.Executable()
+
+	cfg := NewYoloConfig(baseDir)
 
 	// Clear stale subagent results from any prior run so that
 	// listSubagents/readSubagentResult don't return leftover data and the
 	// monotonic ID counter (starting at 0) doesn't collide with old files.
-	if files, err := filepath.Glob(filepath.Join(configToUse.GetSubagentDir(), "agent_*.json")); err == nil {
+	if files, err := filepath.Glob(filepath.Join(cfg.GetSubagentDir(), "agent_*.json")); err == nil {
 		for _, f := range files {
 			os.Remove(f)
 		}
@@ -93,11 +87,10 @@ func NewYoloAgent(opts ...*config.Config) *YoloAgent {
 		baseDir:         baseDir,
 		scriptPath:      execPath,
 		binaryModTime:   binaryModTime,
-		ollama:          NewOllamaClient(configToUse.GetOllamaURL()),
+		ollama:          NewOllamaClient(cfg.GetOllamaURL(), cfg.GetNumCtxOverride()),
 		history:         NewHistoryManager(baseDir),
-		config:          NewYoloConfig(baseDir),
+		config:          cfg,
 		running:         true,
-		yoloCfg:         configToUse,
 		thinkingEnabled: true, // default: thinking is shown
 		tts:             NewTTSManager(),
 	}
@@ -137,7 +130,7 @@ func (a *YoloAgent) getSystemPrompt() string {
 	prompt = strings.ReplaceAll(prompt, "{knowledgeBase}", kbSection)
 
 	// Inject pending todos so the agent is aware of outstanding work
-	todoContext := todo.GetGlobalTodoList().FormatPendingTodos()
+	todoContext := GetGlobalTodoList().FormatPendingTodos()
 	prompt += "\n" + todoContext
 
 	return prompt
@@ -178,12 +171,14 @@ func (a *YoloAgent) checkBinaryFreshness() string {
 	})
 	if err == nil && len(newerFiles) > 0 {
 		w := fmt.Sprintf("NEEDS COMPILE: Source files newer than binary: %s. Run 'go build' when you are done with your current set of changes.", strings.Join(newerFiles, ", "))
+		cprint(Yellow, fmt.Sprintf("\n%s\n", w))
 		warnings = append(warnings, w)
 	}
 
 	// --- Check 2: executable on disk is newer than at startup → restart needed ---
 	if execModTime.After(a.binaryModTime) {
 		w := "NEEDS RESTART: The binary has been recompiled since this process started. You MUST use the restart tool now to apply the new version."
+		cprint(Yellow, fmt.Sprintf("\n%s\n", w))
 		warnings = append(warnings, w)
 	}
 
@@ -1233,8 +1228,8 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 	if useModel == "" {
 		useModel = a.config.GetModel()
 	}
-	os.MkdirAll(a.yoloCfg.GetSubagentDir(), 0o755)
-	resultFile := filepath.Join(a.yoloCfg.GetSubagentDir(), fmt.Sprintf("agent_%d.json", aid))
+	os.MkdirAll(a.config.GetSubagentDir(), 0o755)
+	resultFile := filepath.Join(a.config.GetSubagentDir(), fmt.Sprintf("agent_%d.json", aid))
 
 	// Write an initial "in-progress" result file so the parent agent can
 	// see that this subagent exists and is still working.
@@ -1907,6 +1902,15 @@ func (a *YoloAgent) Run() {
 	a.config.Load()
 	hasHistory := a.history.Load()
 
+	// Check Ollama connectivity early with a short timeout so the user
+	// gets a clear message instead of a cryptic HTTP error on first chat.
+	{
+		check := &http.Client{Timeout: 3 * time.Second}
+		if _, err := check.Get(a.config.GetOllamaURL() + "/api/tags"); err != nil {
+			cprint(Yellow, fmt.Sprintf("  Warning: Cannot reach Ollama at %s — is it running?", a.config.GetOllamaURL()))
+		}
+	}
+
 	hasModel := a.config.GetModel() != ""
 	if hasModel {
 		// Config has a model; display happens later via displaySessionResumption()
@@ -2024,7 +2028,7 @@ func (a *YoloAgent) Run() {
 			a.inputMgr.mu.Unlock()
 			if bufEmpty && a.config.GetAutoMode() {
 				// Check for pending todos before entering autonomous mode
-				todoList := todo.GetGlobalTodoList()
+				todoList := GetGlobalTodoList()
 				_, pendingCount, _ := todoList.GetStats()
 				// If no pending todos, send report and enter sleep mode
 				if pendingCount == 0 {

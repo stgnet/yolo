@@ -17,7 +17,7 @@ type playwrightMCPExecutor struct {
 }
 
 // playwrightActionResult represents the result of a browser operation
-type playwrichtActionResult struct {
+type playwrightActionResult struct {
 	Status     string `json:"status"`
 	URL        string `json:"url,omitempty"`
 	Title      string `json:"title,omitempty"`
@@ -45,10 +45,10 @@ const playwright = require('@playwright/test');
   const page = await context.newPage();
   
   // Navigate to the URL
-  await page.navigate('%s', { waitUntil: '%s' });
-  
+  await page.goto('%s', { waitUntil: '%s' });
+
   // Get page info
-  const title = page.titleText;
+  const title = await page.title();
   const url = page.url();
   
   // Optionally take screenshot
@@ -77,7 +77,7 @@ const playwright = require('@playwright/test');
 		return fmt.Sprintf("Error navigating to %s: %v\nOutput: %s", url, err, string(output))
 	}
 
-	var result playwrichtActionResult
+	var result playwrightActionResult
 	if err := json.Unmarshal(output, &result); err == nil {
 		if result.Error != "" {
 			return fmt.Sprintf("Browser error: %s", result.Error)

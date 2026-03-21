@@ -50,34 +50,17 @@ func TestEscapeJSBackticks(t *testing.T) {
 }
 
 // TestNavigateScriptUsesCorrectAPI verifies the navigate method generates
-// valid Playwright JavaScript.
-// Flaws:
-//   - Uses page.navigate() instead of page.goto()
-//   - Uses page.titleText instead of await page.title()
+// valid Playwright JavaScript using page.goto() and await page.title().
 func TestNavigateScriptUsesCorrectAPI(t *testing.T) {
 	executor := newPlaywrightMCPExecutor(t.TempDir())
 
-	// We can't run the script (no Node.js/Playwright guaranteed), but we can
-	// verify the generated script uses correct API methods by examining what
-	// navigate() would produce. Since navigate() runs the script, we test
-	// by checking the source code expectations.
-
-	// The navigate function generates a script with page.navigate() on line 48,
-	// but Playwright's API is page.goto(). This will cause a runtime error:
-	// "page.navigate is not a function"
-	//
-	// Also uses page.titleText on line 51, but the correct API is:
-	// const title = await page.title();
-
-	// Run it and expect failure (navigate is not a real Playwright method)
+	// Run against an unreachable address — we're testing that the script
+	// is generated, not that Playwright is installed.
 	result := executor.navigate("http://127.0.0.1:1", "domcontentloaded")
 
-	// If node is available, the script will fail because page.navigate doesn't exist.
-	// We check that it either errors or returns unexpected results.
-	if !strings.Contains(result, "Error") && !strings.Contains(result, "error") && !strings.Contains(result, "not a function") {
-		// If it somehow succeeded, the API usage is wrong
-		t.Logf("navigate() result: %s", result)
-		t.Log("NOTE: navigate() uses page.navigate() instead of page.goto() — this is wrong Playwright API")
+	// Should get a connection error, not "page.navigate is not a function"
+	if strings.Contains(result, "not a function") {
+		t.Error("navigate() is generating invalid Playwright API calls")
 	}
 }
 
@@ -166,15 +149,13 @@ func TestPlaywrightMCPNoStatePersistence(t *testing.T) {
 	t.Error("Multi-step browser automation is impossible: navigate+click requires state persistence across actions, but each action creates a new browser")
 }
 
-// TestPlaywrightMCPTypoInStructName checks for the typo in the result struct name.
-// Flaw: "playwrichtActionResult" should be "playwrightActionResult"
-func TestPlaywrightMCPTypoInStructName(t *testing.T) {
-	// This test documents the typo. The struct compiles fine, but the name
-	// is misleading: "playwricht" vs "playwright"
-	var result playwrichtActionResult
+// TestPlaywrightActionResultStruct verifies the result struct works correctly.
+func TestPlaywrightActionResultStruct(t *testing.T) {
+	var result playwrightActionResult
 	result.Status = "ok"
+	result.Title = "Test Page"
+	result.URL = "https://example.com"
 	if result.Status != "ok" {
-		t.Error("unexpected")
+		t.Error("unexpected status")
 	}
-	t.Log("NOTE: struct is named 'playwrichtActionResult' — should be 'playwrightActionResult' (typo: 'cht' vs 'ght')")
 }
