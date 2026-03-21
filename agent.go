@@ -1518,9 +1518,8 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		cprint(Reset, "  /debug [on|off]  Toggle debug mode (show full tool args/results)")
 		cprint(Reset, "  /auto [on|off]   Toggle autonomous mode (operate without user input)")
 		cprint(Reset, "  /think [on|off]  Toggle thinking output (show/hide [thinking] blocks)")
-		cprint(Reset, "  /tts [on|off]    Toggle text-to-speech output")
-		cprint(Reset, "  /tts voices      List available voices")
-		cprint(Reset, "  /tts voice NAME  Set TTS voice")
+		cprint(Reset, "  /tts [on|off|voices] Toggle/list TTS voices")
+		cprint(Reset, "  /voice [NAME]    Show or set TTS voice")
 		cprint(Reset, "  /todo            Show uncompleted todo items")
 		cprint(Reset, "  /todo <text>     Add a new todo item")
 		cprint(Reset, "  /learn           Run autonomous research for self-improvement")
@@ -1646,15 +1645,6 @@ func (a *YoloAgent) handleCommand(cmd string) {
 					cprint(Reset, fmt.Sprintf("    %s%-28s %s", marker, v.Name, v.Locale))
 				}
 			}
-		case strings.HasPrefix(lower, "voice "):
-			name := strings.TrimSpace(arg[6:]) // preserve original case
-			if err := a.tts.SetVoice(name); err != nil {
-				cprint(Red, fmt.Sprintf("  %s", err))
-			} else {
-				voice := a.tts.GetVoice()
-				a.config.SetTTSVoice(voice)
-				cprint(Green, fmt.Sprintf("  ✓ TTS voice set to: %s", voice))
-			}
 		case lower == "":
 			// Toggle
 			current := a.tts.IsEnabled()
@@ -1666,7 +1656,22 @@ func (a *YoloAgent) handleCommand(cmd string) {
 				cprint(Yellow, "  ✗ TTS disabled — YOLO will no longer speak responses")
 			}
 		default:
-			cprint(Red, "  Usage: /tts [on|off|voices|voice NAME]")
+			cprint(Red, "  Usage: /tts [on|off|voices]")
+		}
+
+	case "/voice":
+		if arg == "" {
+			current := a.tts.GetVoice()
+			cprint(Cyan, fmt.Sprintf("  Current TTS voice: %s", current))
+		} else {
+			name := strings.TrimSpace(arg)
+			if err := a.tts.SetVoice(name); err != nil {
+				cprint(Red, fmt.Sprintf("  %s", err))
+			} else {
+				voice := a.tts.GetVoice()
+				a.config.SetTTSVoice(voice)
+				cprint(Green, fmt.Sprintf("  ✓ TTS voice set to: %s", voice))
+			}
 		}
 
 	case "/todo":
