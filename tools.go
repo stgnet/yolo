@@ -118,9 +118,10 @@ var ollamaTools = []ToolDef{
 		}, []string{"url"}),
 	toolDef("send_email", "Send an email via sendmail from yolo@b-haven.org. Postfix handles DKIM signing automatically.",
 		map[string]ToolParam{
-			"to":      {Type: "string", Description: "Recipient email address (default: scott@stg.net)"},
-			"subject": {Type: "string", Description: "Email subject (required)"},
-			"body":    {Type: "string", Description: "Email body (required)"},
+			"to":          {Type: "string", Description: "Recipient email address (default: scott@stg.net)"},
+			"subject":     {Type: "string", Description: "Email subject (required)"},
+			"body":        {Type: "string", Description: "Email body (required)"},
+			"attachments": {Type: "array[string]", Description: "List of file paths to attach to the email"},
 		}, []string{"subject", "body"}),
 	toolDef("send_report", "Send a progress report email to scott@stg.net from yolo@b-haven.org. Postfix handles DKIM signing automatically.",
 		map[string]ToolParam{

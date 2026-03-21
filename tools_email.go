@@ -129,11 +129,29 @@ func (t *ToolExecutor) sendEmail(args map[string]any) string {
 
 	// Load attachments if specified
 	var attachments []email.Attachment
-	if attachmentPaths, ok := args["attachments"].([]string); ok && len(attachmentPaths) > 0 {
-		var err error
-		attachments, err = loadAttachments(attachmentPaths)
-		if err != nil {
-			return errorMessage("loading attachments: %v", err)
+	
+	// Handle attachments - JSON arrays may be parsed as []interface{} rather than []string
+	if attachmentArg, ok := args["attachments"]; ok && attachmentArg != nil {
+		var attachmentPaths []string
+		
+		// Try to convert to string slice (handles both []string and []interface{})
+		switch v := attachmentArg.(type) {
+		case []string:
+			attachmentPaths = v
+		case []interface{}:
+			for _, item := range v {
+				if str, ok := item.(string); ok && str != "" {
+					attachmentPaths = append(attachmentPaths, str)
+				}
+			}
+		}
+		
+		if len(attachmentPaths) > 0 {
+			var err error
+			attachments, err = loadAttachments(attachmentPaths)
+			if err != nil {
+				return errorMessage("loading attachments: %v", err)
+			}
 		}
 	}
 
