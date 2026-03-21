@@ -199,10 +199,21 @@ func (t *ToolExecutor) sendReport(args map[string]any) string {
 	// Encode headers safely to prevent header injection
 	safeSubject := encodeHeader(subject)
 
+	// Load attachments if specified
+	var attachments []email.Attachment
+	if attachmentPaths, ok := args["attachments"].([]string); ok && len(attachmentPaths) > 0 {
+		var err error
+		attachments, err = loadAttachments(attachmentPaths)
+		if err != nil {
+			return errorMessage("loading attachments: %v", err)
+		}
+	}
+
 	msg := &email.Message{
-		To:      []string{to},
-		Subject: safeSubject,
-		Body:    body,
+		To:          []string{to},
+		Subject:     safeSubject,
+		Body:        body,
+		Attachments: attachments,
 	}
 
 	client := email.New(cfg)
@@ -216,5 +227,8 @@ func (t *ToolExecutor) sendReport(args map[string]any) string {
 	sb.WriteString(fmt.Sprintf("   To: %s\n", to))
 	sb.WriteString(fmt.Sprintf("   From: yolo@b-haven.org\n"))
 	sb.WriteString(fmt.Sprintf("   Subject: %s\n", safeSubject))
+	if len(attachments) > 0 {
+		sb.WriteString(fmt.Sprintf("   Attachments: %d file(s)\n", len(attachments)))
+	}
 	return sb.String()
 }

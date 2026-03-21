@@ -171,14 +171,14 @@ func (a *YoloAgent) checkBinaryFreshness() string {
 	})
 	if err == nil && len(newerFiles) > 0 {
 		w := fmt.Sprintf("NEEDS COMPILE: Source files newer than binary: %s. Run 'go build' when you are done with your current set of changes.", strings.Join(newerFiles, ", "))
-		cprint(Yellow, fmt.Sprintf("\n%s\n", w))
+		cprint(Yellow, w)
 		warnings = append(warnings, w)
 	}
 
 	// --- Check 2: executable on disk is newer than at startup → restart needed ---
 	if execModTime.After(a.binaryModTime) {
 		w := "NEEDS RESTART: The binary has been recompiled since this process started. You MUST use the restart tool now to apply the new version."
-		cprint(Yellow, fmt.Sprintf("\n%s\n", w))
+		cprint(Yellow, w)
 		warnings = append(warnings, w)
 	}
 
@@ -573,8 +573,11 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		// Speak content text immediately as it appears (each round, not just the end).
 		// The model often emits response prose alongside tool calls — speak it now
 		// rather than waiting for the entire tool-calling loop to finish.
+		// Fall back to ThinkingText for models that put prose in thinking tokens.
 		if result.ContentText != "" {
 			a.tts.Speak(result.ContentText)
+		} else if result.ThinkingText != "" {
+			a.tts.Speak(result.ThinkingText)
 		}
 
 		// Execute each tool and add tool-role result.

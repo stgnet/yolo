@@ -298,6 +298,9 @@ func cleanTextForTTS(text string) string {
 	// Remove ANSI escape sequences
 	text = ansiRegex.ReplaceAllString(text, "")
 
+	// Strip tool call markup that may be embedded in content/thinking text
+	text = stripTextToolCalls(text)
+
 	// Remove fenced code blocks entirely — code is not useful spoken aloud
 	text = fencedCodeRe.ReplaceAllString(text, "")
 
