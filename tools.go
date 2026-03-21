@@ -378,8 +378,8 @@ func getIntArg(args map[string]any, key string, fallback int) int {
 			return val
 		case string:
 			n := 0
-			fmt.Sscanf(val, "%d", &n)
-			if n > 0 {
+			count, _ := fmt.Sscanf(val, "%d", &n)
+			if count == 1 {
 				return n
 			}
 		}
