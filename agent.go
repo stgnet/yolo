@@ -449,7 +449,9 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		a.cancelChat = cancel
 		a.mu.Unlock()
 
-		result, err := a.ollama.Chat(ctx, a.config.GetModel(), allMsgs, ollamaTools, nil, a.config.GetThinkMode())
+		result, err := a.ollama.Chat(ctx, a.config.GetModel(), allMsgs, ollamaTools, nil, a.config.GetThinkMode(), func(line string) {
+			a.tts.Speak(line)
+		})
 		cancel()
 		a.mu.Lock()
 		a.cancelChat = nil
@@ -529,12 +531,6 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 				continue
 			}
 			finalText = result.DisplayText
-			// Speak the final response immediately
-			if result.ContentText != "" {
-				a.tts.Speak(result.ContentText)
-			} else if result.ThinkingText != "" {
-				a.tts.Speak(result.ThinkingText)
-			}
 			break
 		}
 
@@ -569,16 +565,6 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 			Content:   assistantContent,
 			ToolCalls: nativeTCs,
 		})
-
-		// Speak content text immediately as it appears (each round, not just the end).
-		// The model often emits response prose alongside tool calls — speak it now
-		// rather than waiting for the entire tool-calling loop to finish.
-		// Fall back to ThinkingText for models that put prose in thinking tokens.
-		if result.ContentText != "" {
-			a.tts.Speak(result.ContentText)
-		} else if result.ThinkingText != "" {
-			a.tts.Speak(result.ThinkingText)
-		}
 
 		// Execute each tool and add tool-role result.
 		// Track whether the user typed something mid-tool-loop.
@@ -1282,7 +1268,7 @@ func (a *YoloAgent) spawnSubagent(task, model string) string {
 			allMsgs = append(allMsgs, msgs...)
 			allMsgs = append(allMsgs, roundMsgs...)
 
-			chatResult, err := a.ollama.Chat(context.Background(), useModel, allMsgs, saTools, outFn, a.config.GetThinkMode())
+			chatResult, err := a.ollama.Chat(context.Background(), useModel, allMsgs, saTools, outFn, a.config.GetThinkMode(), nil)
 			if err != nil {
 				finalText = err.Error()
 				status = "error"
@@ -1638,10 +1624,12 @@ func (a *YoloAgent) handleCommand(cmd string) {
 				cprint(Red, "  No TTS backend found (install say, espeak-ng, or espeak)")
 			} else {
 				a.tts.SetEnabled(true)
+				a.config.SetTTSEnabled(true)
 				cprint(Green, fmt.Sprintf("  ✓ TTS enabled [%s] — YOLO will now speak responses", a.tts.Backend()))
 			}
 		case lower == "off":
 			a.tts.SetEnabled(false)
+			a.config.SetTTSEnabled(false)
 			cprint(Yellow, "  ✗ TTS disabled — YOLO will no longer speak responses")
 		case lower == "voices":
 			voices := a.tts.ListVoices("en")
@@ -1663,12 +1651,15 @@ func (a *YoloAgent) handleCommand(cmd string) {
 			if err := a.tts.SetVoice(name); err != nil {
 				cprint(Red, fmt.Sprintf("  %s", err))
 			} else {
-				cprint(Green, fmt.Sprintf("  ✓ TTS voice set to: %s", a.tts.GetVoice()))
+				voice := a.tts.GetVoice()
+				a.config.SetTTSVoice(voice)
+				cprint(Green, fmt.Sprintf("  ✓ TTS voice set to: %s", voice))
 			}
 		case lower == "":
 			// Toggle
 			current := a.tts.IsEnabled()
 			a.tts.SetEnabled(!current)
+			a.config.SetTTSEnabled(!current)
 			if !current {
 				cprint(Green, "  ✓ TTS enabled — YOLO will now speak responses")
 			} else {
@@ -1904,6 +1895,14 @@ func sendEmailDirectly(to, subject, body string) error {
 func (a *YoloAgent) Run() {
 	a.config.Load()
 	hasHistory := a.history.Load()
+
+	// Restore TTS settings from config
+	if voice := a.config.GetTTSVoice(); voice != "" {
+		a.tts.SetVoice(voice)
+	}
+	if enabled := a.config.GetTTSEnabled(); enabled != nil {
+		a.tts.SetEnabled(*enabled)
+	}
 
 	// Check Ollama connectivity early with a short timeout so the user
 	// gets a clear message instead of a cryptic HTTP error on first chat.

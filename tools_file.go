@@ -438,13 +438,15 @@ func (t *ToolExecutor) searchFiles(args map[string]any) string {
 		rel, _ := filepath.Rel(t.baseDir, path)
 		if pattern != "**/*" {
 			matched := false
-			// Handle **/ prefix patterns by matching against basename
+			// Handle **/ prefix patterns by matching against basename (matches anywhere)
 			if strings.HasPrefix(pattern, "**/") {
 				basePattern := strings.TrimPrefix(pattern, "**/")
 				matched, _ = filepath.Match(basePattern, filepath.Base(path))
 			} else if !strings.Contains(pattern, "/") {
-				// Simple pattern without path separators - match against basename
-				matched, _ = filepath.Match(pattern, filepath.Base(path))
+				// Simple pattern without path separators - only match files in root directory
+				if !strings.Contains(rel, string(filepath.Separator)) {
+					matched, _ = filepath.Match(pattern, rel)
+				}
 			} else {
 				// Pattern with path separators - match against relative path
 				matched, _ = filepath.Match(pattern, rel)

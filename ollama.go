@@ -263,7 +263,9 @@ func deduplicateToolCalls(calls []ParsedToolCall) []ParsedToolCall {
 // parameter allows the caller to cancel the request (e.g. on Ctrl-C).
 // If outFn is non-nil, it receives output text instead of the default globalUI.
 // If showThinking is false, thinking blocks will be hidden from output.
-func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMessage, tools []ToolDef, outFn func(string), showThinking bool) (*ChatResult, error) {
+// If speakFn is non-nil, completed lines of content text are sent to it
+// as they stream in (for TTS), rather than waiting for the full response.
+func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMessage, tools []ToolDef, outFn func(string), showThinking bool, speakFn func(string)) (*ChatResult, error) {
 	numCtx := DefaultNumCtx
 	if c.numCtxOverride != "" {
 		if n, err := strconv.Atoi(c.numCtxOverride); err == nil && n > 0 {
@@ -320,6 +322,9 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 	var toolCalls []ParsedToolCall
 	inThinking := false
 	inToolActivity := false
+	// ttsLineBuf accumulates content text until a newline, then flushes
+	// the completed line to speakFn for immediate TTS output.
+	var ttsLineBuf string
 	// activeOpenMarker records which open marker started the current tool
 	// activity block so we can look for its correct corresponding close.
 	var activeOpenMarker string
@@ -452,6 +457,22 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 				inThinking = false
 			}
 			contentParts = append(contentParts, content)
+
+			// Feed completed lines to TTS as they stream in
+			if speakFn != nil {
+				ttsLineBuf += content
+				for {
+					idx := strings.Index(ttsLineBuf, "\n")
+					if idx < 0 {
+						break
+					}
+					line := ttsLineBuf[:idx]
+					ttsLineBuf = ttsLineBuf[idx+1:]
+					if strings.TrimSpace(line) != "" {
+						speakFn(line)
+					}
+				}
+			}
 
 			// Buffer content to detect tool activity markers that may span
 			// token boundaries. Recognizes both [tool activity] blocks and
@@ -611,6 +632,11 @@ func (c *OllamaClient) Chat(ctx context.Context, model string, messages []ChatMe
 	// Redraw input line after streaming output is done (only for main agent output)
 	if outFn == nil && globalUI != nil {
 		globalUI.OutputFinishLine()
+	}
+
+	// Flush any remaining TTS line buffer
+	if speakFn != nil && strings.TrimSpace(ttsLineBuf) != "" {
+		speakFn(ttsLineBuf)
 	}
 
 	contentText := strings.Join(contentParts, "")

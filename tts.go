@@ -24,6 +24,9 @@ var (
 	listBulletRe   = regexp.MustCompile(`(?m)^\s*[-*+]\s+`)
 	numberedListRe = regexp.MustCompile(`(?m)^\s*\d+\.\s+`)
 	multiSpaceRe   = regexp.MustCompile(`\s{2,}`)
+	// Matches a dot between word characters (e.g., "main.go", "config.json")
+	// so TTS says "dot" instead of treating it as a sentence-ending period.
+	midWordDotRe   = regexp.MustCompile(`(\w)\.(\w)`)
 )
 
 // ─── TTS Backend Interface ─────────────────────────
@@ -216,12 +219,16 @@ func (t *TTSManager) GetVoice() string {
 	return t.voice
 }
 
-// SetVoice changes the TTS voice. Returns an error if the voice is not available.
+// SetVoice changes the TTS voice. Accepts exact or partial name matches
+// (case-insensitive). Returns an error if no voice matches.
 func (t *TTSManager) SetVoice(name string) error {
 	if t.backend == nil {
 		return fmt.Errorf("no TTS backend available")
 	}
 	voices := t.backend.ListVoices("")
+	nameLower := strings.ToLower(name)
+
+	// Try exact match first
 	for _, v := range voices {
 		if strings.EqualFold(v.Name, name) {
 			t.mu.Lock()
@@ -230,6 +237,28 @@ func (t *TTSManager) SetVoice(name string) error {
 			return nil
 		}
 	}
+
+	// Try partial match (case-insensitive substring)
+	var matches []TTSVoice
+	for _, v := range voices {
+		if strings.Contains(strings.ToLower(v.Name), nameLower) {
+			matches = append(matches, v)
+		}
+	}
+	if len(matches) == 1 {
+		t.mu.Lock()
+		t.voice = matches[0].Name
+		t.mu.Unlock()
+		return nil
+	}
+	if len(matches) > 1 {
+		names := make([]string, len(matches))
+		for i, m := range matches {
+			names[i] = m.Name
+		}
+		return fmt.Errorf("ambiguous voice %q — matches: %s", name, strings.Join(names, ", "))
+	}
+
 	return fmt.Errorf("voice %q not found — use /tts voices to list available voices", name)
 }
 
@@ -325,6 +354,10 @@ func cleanTextForTTS(text string) string {
 	// Strip list bullet prefixes
 	text = listBulletRe.ReplaceAllString(text, "")
 	text = numberedListRe.ReplaceAllString(text, "")
+
+	// Convert dots between word characters to "dot" so TTS pronounces
+	// filenames like "main.go" as "main dot go" instead of swallowing the period.
+	text = midWordDotRe.ReplaceAllString(text, "$1 dot $2")
 
 	// Replace characters that cause TTS artifacts with spaces.
 	// Keep colons and semicolons — they create natural pauses.

@@ -585,7 +585,7 @@ func (t *ToolExecutor) generateLLMText(prompt string, streaming bool) string {
 		{Role: "user", Content: prompt},
 	}
 
-	result, err := t.agent.ollama.Chat(ctx, t.agent.config.GetModel(), msgs, nil, nil, true)
+	result, err := t.agent.ollama.Chat(ctx, t.agent.config.GetModel(), msgs, nil, nil, true, nil)
 	if err != nil {
 		log.Printf("Error generating LLM text: %v", err)
 		return ""
