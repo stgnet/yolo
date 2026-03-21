@@ -22,6 +22,8 @@ type YoloConfigData struct {
 	DebugMode    *bool  `json:"debug_mode,omitempty"`    // false (default) = cleaner output; true = show full tool args/results verbatim
 	AutoMode     *bool  `json:"auto_mode,omitempty"`     // false (default) = wait for user input; true = enable autonomous mode
 	ThinkMode    *bool  `json:"think_mode,omitempty"`    // true (default) = show thinking output; false = hide thinking blocks
+	TTSVoice     string `json:"tts_voice,omitempty"`     // TTS voice name (default: platform-specific)
+	TTSEnabled   *bool  `json:"tts_enabled,omitempty"`   // nil = default (enabled if backend found); true/false = explicit
 }
 
 // YoloConfig owns the in-memory config and handles reading/writing to disk.
@@ -188,6 +190,37 @@ func (c *YoloConfig) GetThinkMode() bool {
 func (c *YoloConfig) SetThinkMode(enabled bool) {
 	c.mu.Lock()
 	c.Data.ThinkMode = &enabled
+	c.mu.Unlock()
+	c.Save()
+}
+
+// GetTTSVoice returns the configured TTS voice name, or "" for platform default.
+func (c *YoloConfig) GetTTSVoice() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Data.TTSVoice
+}
+
+// SetTTSVoice updates the TTS voice and persists to disk.
+func (c *YoloConfig) SetTTSVoice(voice string) {
+	c.mu.Lock()
+	c.Data.TTSVoice = voice
+	c.mu.Unlock()
+	c.Save()
+}
+
+// GetTTSEnabled returns the configured TTS enabled state.
+// Returns nil if not explicitly set (use platform default).
+func (c *YoloConfig) GetTTSEnabled() *bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Data.TTSEnabled
+}
+
+// SetTTSEnabled updates the TTS enabled state and persists to disk.
+func (c *YoloConfig) SetTTSEnabled(enabled bool) {
+	c.mu.Lock()
+	c.Data.TTSEnabled = &enabled
 	c.mu.Unlock()
 	c.Save()
 }
