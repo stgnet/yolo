@@ -58,6 +58,7 @@ type YoloAgent struct {
 	mu              sync.Mutex         // protects busy, cancelChat, subagentCounter, handoffCounter, pendingHandoffs
 	cancelChat      context.CancelFunc // cancels the in-flight Chat HTTP request
 	thinkingEnabled bool               // true when thinking output is enabled (default: true)
+	sleeping        bool               // true when already in sleep mode (prevents repeated announcements)
 }
 
 // NewYoloAgent creates an agent rooted in the current working directory
@@ -1819,59 +1820,66 @@ func (a *YoloAgent) echoUserInput(text string) {
 	}
 }
 
-// sleepUntilInput sends a report email and waits until new input arrives.
+// sleepUntilInput waits until new input arrives. On the first call it sends a
+// one-time status report email and prints a console announcement. Subsequent
+// calls (while still sleeping) just do a quiet 60-second poll.
 func (a *YoloAgent) sleepUntilInput() {
-	cprint(Yellow, "  === YOLO SLEEP MODE ===")
-	cprint(Reset, "  No pending todos found.")
-	cprint(Reset, "  Sending status report to scott@stg.net...")
-	
-	// Send email report
-	reportBody := "YOLO Autonomous Agent Status Report\n\n" +
-		"Status: IDLE (Sleep Mode)\n" +
-		"\nSummary:\n" +
-		"- No pending todos in the task list\n" +
-		"- YOLO has entered sleep mode to conserve resources\n" +
-		"- Waiting for new input via email or user interaction\n" +
-		"\nThe agent will resume autonomous operation when:\n" +
-		"1. A new email arrives and is processed\n" +
-		"2. User provides manual input\n" +
-		"3. New todos are added to the list\n" +
-		"\nTimestamp: " + time.Now().Format("2006-01-02 15:04:05 MST") + "\n" +
-		"\nYOLO - Your Own Living Operator"
-	
-	if err := sendEmailDirectly("scott@stg.net", "YOLO Status: Idle - No Pending Tasks", reportBody); err != nil {
-		cprint(Red, "  Failed to send status email: "+err.Error())
-	} else {
-		cprint(Green, "  Report sent successfully.")
+	// Only announce and send email the very first time we enter sleep mode.
+	if !a.sleeping {
+		a.sleeping = true
+		cprint(Yellow, "  === YOLO SLEEP MODE ===")
+		cprint(Reset, "  No pending todos found.")
+		cprint(Reset, "  Sending status report to scott@stg.net...")
+
+		reportBody := "YOLO Autonomous Agent Status Report\n\n" +
+			"Status: IDLE (Sleep Mode)\n" +
+			"\nSummary:\n" +
+			"- No pending todos in the task list\n" +
+			"- YOLO has entered sleep mode to conserve resources\n" +
+			"- Waiting for new input via email or user interaction\n" +
+			"\nThe agent will resume autonomous operation when:\n" +
+			"1. A new email arrives and is processed\n" +
+			"2. User provides manual input\n" +
+			"3. New todos are added to the list\n" +
+			"\nTimestamp: " + time.Now().Format("2006-01-02 15:04:05 MST") + "\n" +
+			"\nYOLO - Your Own Living Operator"
+
+		if err := sendEmailDirectly("scott@stg.net", "YOLO Status: Idle - No Pending Tasks", reportBody); err != nil {
+			cprint(Red, "  Failed to send status email: "+err.Error())
+		} else {
+			cprint(Green, "  Report sent successfully.")
+		}
+
+		cprint(Reset, "  Entering sleep mode - waiting for input...")
+		cprint(Yellow, "  ====================================")
 	}
-	
-	cprint(Reset, "  Entering sleep mode - waiting for input...")
-	cprint(Yellow, "  ====================================")
-	
-	// Wait in a loop checking for input
-	for {
-		time.Sleep(5 * time.Second) // Check every 5 seconds
-		
+
+	// Quiet sleep: wait 60 seconds, checking for wake conditions.
+	// We break the 60s into 5s intervals so we can respond within ~5s
+	// while still keeping the outer loop quiet (no console/email spam).
+	for i := 0; i < 12; i++ {
+		time.Sleep(5 * time.Second)
+
 		// Check if there's new user input
 		a.inputMgr.mu.Lock()
 		hasInput := len(a.inputMgr.buf) > 0
 		a.inputMgr.mu.Unlock()
-		
+
 		if hasInput {
 			cprint(Green, "  Input detected - resuming normal operation")
-			break
+			a.sleeping = false
+			return
 		}
-		
+
 		// Check for new emails in the inbox
 		emailFiles := checkInboxFiles()
 		if len(emailFiles) > 0 {
 			cprint(Green, fmt.Sprintf("  %d new email(s) detected - resuming to process", len(emailFiles)))
-			break
+			a.sleeping = false
+			return
 		}
-		
-		// Quiet status indicator
-		cprint(Gray, "  Sleeping... (press Enter or send email to wake)")
 	}
+	// Still sleeping — return to the main loop which will call us again quietly.
 }
 
 // checkInboxFiles returns list of files in the inbox directory
@@ -2042,7 +2050,10 @@ func (a *YoloAgent) Run() {
 					a.sleepUntilInput()
 					continue
 				}
-				
+
+				// Waking from sleep due to new todos — reset sleep state
+				a.sleeping = false
+
 				a.inputMgr.ClearLine()
 
 				a.mu.Lock()
