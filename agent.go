@@ -16,7 +16,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
 )
 
 // ─── Main Agent ───────────────────────────────────────────────────────
@@ -1894,6 +1893,21 @@ func checkInboxFiles() []string {
 	return result
 }
 
+// getUnreadEmailCount returns the number of unread emails in the inbox
+func getUnreadEmailCount() int {
+	files, err := os.ReadDir("/var/mail/b-haven.org/yolo/new/")
+	if err != nil {
+		return 0
+	}
+	count := 0
+	for _, f := range files {
+		if !f.IsDir() {
+			count++
+		}
+	}
+	return count
+}
+
 // sendEmailDirectly sends an email using sendmail command
 func sendEmailDirectly(to, subject, body string) error {
 	emailInput := fmt.Sprintf("To: %s\nFrom: yolo@b-haven.org\nSubject: %s\n\n%s\n", to, subject, body)
@@ -2048,8 +2062,8 @@ func (a *YoloAgent) Run() {
 				// Check for pending todos before entering autonomous mode
 				todoList := GetGlobalTodoList()
 				_, pendingCount, _ := todoList.GetStats()
-				// If no pending todos and not waking for email, enter sleep mode
-				if pendingCount == 0 && !a.wakeForEmail {
+				// If no pending todos, no unread emails, and not waking for email, enter sleep mode
+				if pendingCount == 0 && getUnreadEmailCount() == 0 && !a.wakeForEmail {
 					a.sleepUntilInput()
 					continue
 				}
