@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -84,6 +85,7 @@ func (t *ToolExecutor) editFile(args map[string]any) string {
 	path := getStringArg(args, "path", "")
 	oldText := getStringArg(args, "old_text", "")
 	newText := getStringArg(args, "new_text", "")
+	mode := getStringArg(args, "mode", "first")
 	if path == "" {
 		return errorMessage("path is required")
 	}
@@ -103,11 +105,55 @@ func (t *ToolExecutor) editFile(args map[string]any) string {
 		return errorMessage("old_text not found in %s", path)
 	}
 
-	content = strings.Replace(content, oldText, newText, 1)
-	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+	// Count occurrences
+	count := strings.Count(content, oldText)
+
+	var editedContent string
+	replacedCount := 0
+
+	switch mode {
+	case "all":
+		// Replace all occurrences
+		editedContent = strings.Replace(content, oldText, newText, -1)
+		replacedCount = count
+	case "first", "":
+		// Default: replace first occurrence only
+		editedContent = strings.Replace(content, oldText, newText, 1)
+		replacedCount = 1
+	default:
+		// Handle nth:N mode (replace Nth occurrence, 1-based)
+		var nth int
+		if strings.HasPrefix(mode, "nth:") {
+			nthStr := strings.TrimPrefix(mode, "nth:")
+			var parseErr error
+			nth, parseErr = strconv.Atoi(nthStr)
+			if parseErr != nil || nth < 1 || nth > count {
+				return errorMessage("invalid mode '%s': use 'first', 'all', or 'nth:N' where N is 1-%d", mode, count)
+			}
+		} else {
+			return errorMessage("invalid mode '%s': use 'first', 'all', or 'nth:N'", mode)
+		}
+
+		// Replace only the nth occurrence
+		parts := strings.Split(content, oldText)
+		if len(parts) != count+1 {
+			return errorMessage("unexpected split result")
+		}
+		if nth > len(parts)-1 {
+			return errorMessage("occurrence %d not found (only %d occurrences)", nth, count)
+		}
+		parts[nth-1] = parts[nth-1] + newText
+		editedContent = strings.Join(parts, oldText)
+		replacedCount = 1
+	}
+
+	if err := os.WriteFile(full, []byte(editedContent), 0o644); err != nil {
 		return errorMessage("could not write to %s: %v", path, err)
 	}
 
+	if replacedCount == count && count > 1 {
+		return fmt.Sprintf("Edited %s (replaced all %d occurrences)", path, replacedCount)
+	}
 	return fmt.Sprintf("Edited %s", path)
 }
 

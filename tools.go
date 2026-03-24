@@ -34,11 +34,12 @@ var ollamaTools = []ToolDef{
 			"path":    {Type: "string", Description: "Relative path"},
 			"content": {Type: "string", Description: "File contents"},
 		}, []string{"path", "content"}),
-	toolDef("edit_file", "Replace first occurrence of old_text with new_text in a file",
+	toolDef("edit_file", "Replace occurrences of old_text with new_text in a file. Use mode to control which occurrences to replace.",
 		map[string]ToolParam{
 			"path":     {Type: "string", Description: "Relative path"},
 			"old_text": {Type: "string", Description: "Text to find"},
 			"new_text": {Type: "string", Description: "Replacement text"},
+			"mode":     {Type: "string", Description: "Replacement mode: 'first' (default, single replacement), 'all' (replace all occurrences), or 'nth:N' (replace Nth occurrence where N is 1-based)"},
 		}, []string{"path", "old_text", "new_text"}),
 	toolDef("list_files", "List files matching a glob pattern. Use **/*.ext to search recursively; plain *.ext only matches the top-level directory.",
 		map[string]ToolParam{
