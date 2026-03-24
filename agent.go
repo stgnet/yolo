@@ -59,6 +59,7 @@ type YoloAgent struct {
 	cancelChat      context.CancelFunc // cancels the in-flight Chat HTTP request
 	thinkingEnabled bool               // true when thinking output is enabled (default: true)
 	sleeping        bool               // true when already in sleep mode (prevents repeated announcements)
+	wakeForEmail    bool               // true when sleep was interrupted by new email
 }
 
 // NewYoloAgent creates an agent rooted in the current working directory
@@ -1867,7 +1868,6 @@ func (a *YoloAgent) sleepUntilInput() {
 
 		if hasInput {
 			cprint(Green, "  Input detected - resuming normal operation")
-			a.sleeping = false
 			return
 		}
 
@@ -1875,7 +1875,7 @@ func (a *YoloAgent) sleepUntilInput() {
 		emailFiles := checkInboxFiles()
 		if len(emailFiles) > 0 {
 			cprint(Green, fmt.Sprintf("  %d new email(s) detected - resuming to process", len(emailFiles)))
-			a.sleeping = false
+			a.wakeForEmail = true
 			return
 		}
 	}
@@ -2020,6 +2020,9 @@ func (a *YoloAgent) Run() {
 				a.handleCommand(stripped)
 				a.showPrompt()
 			} else if stripped != "" {
+				// User interaction resets sleep state so next sleep entry announces fresh
+				a.sleeping = false
+
 				a.mu.Lock()
 				a.busy = true
 				a.mu.Unlock()
@@ -2045,14 +2048,15 @@ func (a *YoloAgent) Run() {
 				// Check for pending todos before entering autonomous mode
 				todoList := GetGlobalTodoList()
 				_, pendingCount, _ := todoList.GetStats()
-				// If no pending todos, send report and enter sleep mode
-				if pendingCount == 0 {
+				// If no pending todos and not waking for email, enter sleep mode
+				if pendingCount == 0 && !a.wakeForEmail {
 					a.sleepUntilInput()
 					continue
 				}
 
-				// Waking from sleep due to new todos — reset sleep state
+				// Waking from sleep due to new todos or email — reset sleep state
 				a.sleeping = false
+				a.wakeForEmail = false
 
 				a.inputMgr.ClearLine()
 
