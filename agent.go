@@ -51,6 +51,7 @@ type YoloAgent struct {
 	inputMgr        *InputManager      // async terminal input
 	tts             *TTSManager        // text-to-speech manager
 	memory          *MemoryManager     // tiered memory system (MEMORY.md + daily logs)
+	mcp             *MCPManager        // MCP server connections and tools
 	running         bool               // false signals the main loop to exit
 	busy            bool               // true while the agent is processing a chat round
 	subagentCounter int                // monotonic ID for spawned sub-agents
@@ -99,7 +100,29 @@ func NewYoloAgent() *YoloAgent {
 		memory:          NewMemoryManager(filepath.Join(baseDir, ".yolo")),
 	}
 	a.tools = NewToolExecutor(baseDir, a)
+
+	// Initialize MCP server connections (non-fatal if mcp.json missing)
+	a.mcp = NewMCPManager(filepath.Join(baseDir, ".yolo"))
+	if err := a.mcp.Start(); err != nil {
+		cprint(Yellow, fmt.Sprintf("  MCP: config error: %v", err))
+	}
+
 	return a
+}
+
+// allTools returns the combined set of native + MCP tools for the LLM.
+func (a *YoloAgent) allTools() []ToolDef {
+	if a.mcp == nil {
+		return ollamaTools
+	}
+	mcpTools := a.mcp.GetToolDefs()
+	if len(mcpTools) == 0 {
+		return ollamaTools
+	}
+	all := make([]ToolDef, 0, len(ollamaTools)+len(mcpTools))
+	all = append(all, ollamaTools...)
+	all = append(all, mcpTools...)
+	return all
 }
 
 // getSystemPrompt loads SYSTEM_PROMPT.md and interpolates runtime values
@@ -459,7 +482,7 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		a.cancelChat = cancel
 		a.mu.Unlock()
 
-		result, err := a.ollama.Chat(ctx, a.config.GetModel(), allMsgs, ollamaTools, nil, a.config.GetThinkMode(), func(line string) {
+		result, err := a.ollama.Chat(ctx, a.config.GetModel(), allMsgs, a.allTools(), nil, a.config.GetThinkMode(), func(line string) {
 			a.tts.Speak(line)
 		})
 		cancel()
@@ -1535,6 +1558,8 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		cprint(Reset, "  /memory          Show memory status, tiers, and line counts")
 		cprint(Reset, "  /memory show     Show MEMORY.md contents")
 		cprint(Reset, "  /memory logs     List daily context logs")
+		cprint(Reset, "  /mcp             Show MCP server status and tools")
+		cprint(Reset, "  /mcp reload      Reconnect to MCP servers")
 		cprint(Reset, "  /learn           Run autonomous research for self-improvement")
 		cprint(Reset, "  /restart         Restart YOLO")
 		cprint(Reset, "  /exit, /quit     Exit YOLO")
@@ -1700,6 +1725,9 @@ func (a *YoloAgent) handleCommand(cmd string) {
 	case "/memory":
 		a.showMemoryStatus(arg)
 
+	case "/mcp":
+		a.showMCPStatus(arg)
+
 	case "/model":
 		cprint(Cyan, fmt.Sprintf("  Model: %s", a.config.GetModel()))
 
@@ -1851,6 +1879,40 @@ func (a *YoloAgent) showMemoryStatus(arg string) {
 		cprint(Reset, "  /memory show   Show MEMORY.md contents")
 		cprint(Reset, "  /memory logs   List daily context logs")
 		cprint(Reset, "  /memory today  Show today's log entries")
+	}
+}
+
+// showMCPStatus displays MCP server status or reloads connections.
+func (a *YoloAgent) showMCPStatus(arg string) {
+	if a.mcp == nil {
+		cprint(Red, "  MCP manager not initialized")
+		return
+	}
+
+	sub := strings.ToLower(strings.TrimSpace(arg))
+	switch sub {
+	case "reload":
+		cprint(Cyan, "  Reconnecting to MCP servers...")
+		a.mcp.Close()
+		a.mcp = NewMCPManager(filepath.Join(a.baseDir, ".yolo"))
+		if err := a.mcp.Start(); err != nil {
+			cprint(Red, fmt.Sprintf("  MCP reload error: %v", err))
+		} else {
+			names := a.mcp.GetToolNames()
+			cprint(Green, fmt.Sprintf("  MCP reloaded: %d tools available", len(names)))
+		}
+	default:
+		status := a.mcp.ServerStatus()
+		if status == "No MCP servers connected" {
+			cprint(Yellow, "  "+status)
+			cprint(Reset, "  Configure servers in .yolo/mcp.json")
+			cprint(Reset, "  /mcp reload  Reconnect after config changes")
+		} else {
+			cprint(Cyan, "MCP Servers:")
+			for _, line := range strings.Split(strings.TrimRight(status, "\n"), "\n") {
+				cprint(Reset, line)
+			}
+		}
 	}
 }
 

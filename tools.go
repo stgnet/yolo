@@ -356,6 +356,10 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 	case "memory_search":
 		return t.memorySearch(args)
 	default:
+		// Check if this is an MCP tool
+		if t.agent != nil && t.agent.mcp != nil && t.agent.mcp.IsMCPTool(name) {
+			return t.agent.mcp.ExecuteTool(name, args)
+		}
 		return errorMessage("unknown tool '%s'. Available tools: %s", name, strings.Join(validTools, ", "))
 	}
 }
