@@ -34,13 +34,33 @@ var ollamaTools = []ToolDef{
 			"path":    {Type: "string", Description: "Relative path"},
 			"content": {Type: "string", Description: "File contents"},
 		}, []string{"path", "content"}),
-	toolDef("edit_file", "Replace occurrences of old_text with new_text in a file. Use mode to control which occurrences to replace.",
+	toolDef("edit_file", "Replace text in a file. By default replaces first occurrence. Use replace_all for all, occurrence for Nth (-1=last).",
 		map[string]ToolParam{
-			"path":     {Type: "string", Description: "Relative path"},
-			"old_text": {Type: "string", Description: "Text to find"},
-			"new_text": {Type: "string", Description: "Replacement text"},
-			"mode":     {Type: "string", Description: "Replacement mode: 'first' (default, single replacement), 'all' (replace all occurrences), or 'nth:N' (replace Nth occurrence where N is 1-based)"},
+			"path":        {Type: "string", Description: "Relative path"},
+			"old_text":    {Type: "string", Description: "Text to find"},
+			"new_text":    {Type: "string", Description: "Replacement text"},
+			"replace_all": {Type: "boolean", Description: "Replace all occurrences (default: false)"},
+			"occurrence":  {Type: "integer", Description: "Which occurrence to replace: 0/omit=first, -1=last, N=Nth (default: first)"},
+			"dry_run":     {Type: "boolean", Description: "Preview what would change without modifying the file (default: false)"},
 		}, []string{"path", "old_text", "new_text"}),
+	toolDef("edit_file_lines", "Replace a range of lines in a file with new content. Lines are 1-based.",
+		map[string]ToolParam{
+			"path":       {Type: "string", Description: "Relative path"},
+			"start_line": {Type: "integer", Description: "First line to replace (1-based)"},
+			"end_line":   {Type: "integer", Description: "Last line to replace (inclusive)"},
+			"content":    {Type: "string", Description: "New content to insert (empty string to delete lines)"},
+			"dry_run":    {Type: "boolean", Description: "Preview what would change without modifying the file"},
+		}, []string{"path", "start_line", "end_line", "content"}),
+	toolDef("patch_file", "Apply a unified diff (like git diff or diff -u) to a file. Supports multiple hunks.",
+		map[string]ToolParam{
+			"path":    {Type: "string", Description: "Relative path to the file to patch"},
+			"diff":    {Type: "string", Description: "Unified diff content with @@ hunk headers and +/- lines"},
+			"dry_run": {Type: "boolean", Description: "Preview what would change without modifying the file"},
+		}, []string{"path", "diff"}),
+	toolDef("undo_edit", "Revert the most recent edit to a file. Only one level of undo is available per file.",
+		map[string]ToolParam{
+			"path": {Type: "string", Description: "Relative path to the file to revert"},
+		}, []string{"path"}),
 	toolDef("list_files", "List files matching a glob pattern. Use **/*.ext to search recursively; plain *.ext only matches the top-level directory.",
 		map[string]ToolParam{
 			"pattern": {Type: "string", Description: "Glob pattern (default: *). Use **/*.ext for recursive matching."},
@@ -108,14 +128,24 @@ var ollamaTools = []ToolDef{
 		map[string]ToolParam{
 			"command": {Type: "string", Description: "gog subcommand and arguments (e.g., 'gmail search newer_than:1d --max 5', 'calendar list events', 'drive list')"},
 		}, []string{"command"}),
-	toolDef("web_search", "Search the web using DuckDuckGo. Returns instant answers, related topics, and abstract snippets from search results.",
+	toolDef("web_search", "Search the web. Uses SearXNG (if SEARXNG_URL is set) or DuckDuckGo. Returns search results with titles, URLs, and snippets.",
 		map[string]ToolParam{
-			"query": {Type: "string", Description: "Search query (required)"},
-			"count": {Type: "integer", Description: "Number of results to return (default: 5, max: 10)"},
+			"query":  {Type: "string", Description: "Search query (required)"},
+			"count":  {Type: "integer", Description: "Number of results to return (default: 5, max: 10)"},
+			"engine": {Type: "string", Description: "Search engine: 'searxng', 'duckduckgo'/'ddg', or omit for auto (SearXNG if configured, else DDG)"},
 		}, []string{"query"}),
-	toolDef("read_webpage", "Fetch a webpage URL and return its text content. HTML is converted to plain text. Useful for reading documentation, articles, or any web page.",
+	toolDef("read_webpage", "Fetch a webpage URL and extract readable article content. Uses readability-style extraction to remove boilerplate.",
 		map[string]ToolParam{
-			"url": {Type: "string", Description: "URL to fetch (required). Will be prefixed with https:// if no scheme is provided."},
+			"url":  {Type: "string", Description: "URL to fetch (required). Will be prefixed with https:// if no scheme is provided."},
+			"mode": {Type: "string", Description: "Extraction mode: 'auto' (smart article detection, default), 'article' (strict article only), 'full' (all text)"},
+		}, []string{"url"}),
+	toolDef("screenshot", "Capture a screenshot of a web page. Requires Playwright (node) or Chromium.",
+		map[string]ToolParam{
+			"url":       {Type: "string", Description: "URL to screenshot (required)"},
+			"path":      {Type: "string", Description: "Output file path (default: /tmp/screenshot.png)"},
+			"full_page": {Type: "boolean", Description: "Capture full scrollable page (default: false, viewport only)"},
+			"width":     {Type: "integer", Description: "Viewport width in pixels (default: 1280)"},
+			"height":    {Type: "integer", Description: "Viewport height in pixels (default: 720)"},
 		}, []string{"url"}),
 	toolDef("send_email", "Send an email via sendmail from yolo@b-haven.org. Postfix handles DKIM signing automatically.",
 		map[string]ToolParam{
@@ -165,6 +195,61 @@ var ollamaTools = []ToolDef{
 			"timeout":   {Type: "integer", Description: "Timeout in milliseconds for operations (default: 5000)"},
 			"path":      {Type: "string", Description: "File path for screenshot output (default: /tmp/screenshot.png)"},
 		}, []string{"action"}),
+	toolDef("memory_read", "Read the agent's curated MEMORY.md file containing durable facts, user preferences, and key decisions.",
+		map[string]ToolParam{}, nil),
+	toolDef("memory_write", "Replace the contents of MEMORY.md with curated durable facts. Cap: 100 lines. Include user preferences, project conventions, coding style, key decisions.",
+		map[string]ToolParam{
+			"content": {Type: "string", Description: "Complete new contents for MEMORY.md (max 100 lines)"},
+		}, []string{"content"}),
+	toolDef("memory_log", "Append an observation to today's daily context log (memory/YYYY-MM-DD.md). Use for raw observations, discoveries, and session notes.",
+		map[string]ToolParam{
+			"entry": {Type: "string", Description: "Observation or note to log (will be timestamped automatically)"},
+		}, []string{"entry"}),
+	toolDef("memory_promote", "Retrieve daily logs for review and distillation into MEMORY.md. Returns current MEMORY.md + recent daily logs with instructions to curate.",
+		map[string]ToolParam{
+			"days": {Type: "integer", Description: "Number of past days to review (default: 7, max: 30)"},
+		}, nil),
+	toolDef("memory_search", "Search across all memory files (MEMORY.md and daily logs) for a keyword or phrase.",
+		map[string]ToolParam{
+			"query": {Type: "string", Description: "Search term (case-insensitive)"},
+		}, []string{"query"}),
+	toolDef("schedule_add", "Add a scheduled task that fires on a cron schedule. The prompt is injected as a system message when the schedule fires.",
+		map[string]ToolParam{
+			"name":   {Type: "string", Description: "Human-readable name for the schedule"},
+			"cron":   {Type: "string", Description: "Cron expression: 'minute hour day month weekday' (e.g., '0 9 * * *' for 9 AM daily, '*/10 * * * *' for every 10 min)"},
+			"prompt": {Type: "string", Description: "Task prompt to execute when the schedule fires"},
+		}, []string{"name", "cron", "prompt"}),
+	toolDef("schedule_remove", "Remove a scheduled task by ID or name.",
+		map[string]ToolParam{
+			"id": {Type: "string", Description: "Schedule ID or name to remove"},
+		}, []string{"id"}),
+	toolDef("schedule_list", "List all scheduled tasks with their status, next run time, and run history.",
+		map[string]ToolParam{}, nil),
+	toolDef("schedule_toggle", "Enable or disable a scheduled task.",
+		map[string]ToolParam{
+			"id":      {Type: "string", Description: "Schedule ID or name"},
+			"enabled": {Type: "boolean", Description: "true to enable, false to disable"},
+		}, []string{"id", "enabled"}),
+	toolDef("project_map", "Generate a hierarchical file tree of the project with sizes. Useful for understanding codebase structure at a glance.",
+		map[string]ToolParam{
+			"max_depth":  {Type: "integer", Description: "Maximum directory depth (default: 4)"},
+			"show_sizes": {Type: "boolean", Description: "Show file sizes (default: true)"},
+			"pattern":    {Type: "string", Description: "Filter files by glob pattern (e.g., '*.go', '*.py')"},
+		}, nil),
+	toolDef("dependency_graph", "Parse source file imports to show package/module dependency relationships. Supports Go, Python, JavaScript/TypeScript, and Rust.",
+		map[string]ToolParam{
+			"package": {Type: "string", Description: "Filter to a specific package/directory (optional)"},
+		}, nil),
+	toolDef("symbol_search", "Search for function, type, class, and variable definitions across the codebase. Supports Go, Python, JS/TS, Rust, Java, C/C++.",
+		map[string]ToolParam{
+			"query":   {Type: "string", Description: "Symbol name or substring to search for (case-insensitive)"},
+			"kind":    {Type: "string", Description: "Filter by kind: func, type, class, var, const (default: all)"},
+			"pattern": {Type: "string", Description: "File glob pattern (default: all source files)"},
+		}, []string{"query"}),
+	toolDef("project_summary", "Get or refresh a cached summary of the project: file counts, line counts, languages, and per-file metadata stored in .yolo/project-map.json.",
+		map[string]ToolParam{
+			"refresh": {Type: "boolean", Description: "Force rescan of all files (default: false, uses cache)"},
+		}, nil),
 }
 
 // ─── Tool Executor ───────────────────────────────────────────────────
@@ -172,11 +257,14 @@ var ollamaTools = []ToolDef{
 // validTools is the canonical list of tool names recognised by Execute.
 // It is also used by parseTextToolCalls to filter bracket-format matches.
 var validTools = []string{
-	"read_file", "write_file", "edit_file", "list_files",
+	"read_file", "write_file", "edit_file", "edit_file_lines", "patch_file", "undo_edit", "list_files",
 	"search_files", "run_command", "spawn_subagent",
 	"list_subagents", "read_subagent_result", "summarize_subagents",
 	"list_models", "switch_model", "think", "restart",
-	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "read_webpage", "send_email", "send_report", "check_inbox", "process_inbox_with_response", "add_todo", "complete_todo", "delete_todo", "list_todos", "check_ollama_status", "playwright_mcp",
+	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "read_webpage", "screenshot", "send_email", "send_report", "check_inbox", "process_inbox_with_response", "add_todo", "complete_todo", "delete_todo", "list_todos", "check_ollama_status", "playwright_mcp",
+	"memory_read", "memory_write", "memory_log", "memory_promote", "memory_search",
+	"schedule_add", "schedule_remove", "schedule_list", "schedule_toggle",
+	"project_map", "dependency_graph", "symbol_search", "project_summary",
 }
 
 // fileNameRegex extracts the agent ID from filenames like "agent_1.json"
@@ -269,6 +357,12 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 		return t.writeFile(args)
 	case "edit_file":
 		return t.editFile(args)
+	case "edit_file_lines":
+		return t.editFileLines(args)
+	case "patch_file":
+		return t.patchFile(args)
+	case "undo_edit":
+		return t.undoEdit(args)
 	case "list_files":
 		return t.listFiles(args)
 	case "search_files":
@@ -304,9 +398,11 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 	case "gog":
 		return t.gog(args)
 	case "web_search":
-		return t.webSearch(args)
+		return t.webSearchEnhanced(args)
 	case "read_webpage":
-		return t.readWebpage(args)
+		return t.readWebpageReadable(args)
+	case "screenshot":
+		return t.screenshot(args)
 	case "send_email":
 		return t.sendEmail(args)
 	case "send_report":
@@ -327,7 +423,37 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 		return t.checkOllamaStatus(args)
 	case "playwright_mcp":
 		return t.playwrightMCP(args)
+	case "memory_read":
+		return t.memoryRead(args)
+	case "memory_write":
+		return t.memoryWrite(args)
+	case "memory_log":
+		return t.memoryLog(args)
+	case "memory_promote":
+		return t.memoryPromote(args)
+	case "memory_search":
+		return t.memorySearch(args)
+	case "schedule_add":
+		return t.scheduleAdd(args)
+	case "schedule_remove":
+		return t.scheduleRemove(args)
+	case "schedule_list":
+		return t.scheduleList(args)
+	case "schedule_toggle":
+		return t.scheduleToggle(args)
+	case "project_map":
+		return t.projectMap(args)
+	case "dependency_graph":
+		return t.dependencyGraph(args)
+	case "symbol_search":
+		return t.symbolSearch(args)
+	case "project_summary":
+		return t.projectSummary(args)
 	default:
+		// Check if this is an MCP tool
+		if t.agent != nil && t.agent.mcp != nil && t.agent.mcp.IsMCPTool(name) {
+			return t.agent.mcp.ExecuteTool(name, args)
+		}
 		return errorMessage("unknown tool '%s'. Available tools: %s", name, strings.Join(validTools, ", "))
 	}
 }

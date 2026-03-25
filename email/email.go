@@ -136,7 +136,7 @@ func (c *Client) sendViaSendmail(msg *Message) error {
 // buildMultipartMessage creates a multipart MIME message with attachments
 func (c *Client) buildMultipartMessage(msg *Message) bytes.Buffer {
 	var buf bytes.Buffer
-	boundary := "YOLO边界" + getRFC2822Date() // Use unique boundary with timestamp
+boundary := "yolo-" + strings.ReplaceAll(strings.ReplaceAll(getRFC2822Date(), " ", "-"), ":", "") + "="
 
 	// Build headers
 	buf.WriteString(fmt.Sprintf("From: %s\r\n", c.config.From))
