@@ -38,25 +38,23 @@ func TestGetSystemPrompt(t *testing.T) {
 
 // TestCheckBinaryFreshness verifies binary freshness checking
 func TestCheckBinaryFreshness(t *testing.T) {
-	origDir, _ := os.Getwd()
-	defer os.Chdir(origDir)
-	
-	os.Chdir(os.TempDir())
-	
 	tmpDir := t.TempDir()
 	exePath := filepath.Join(tmpDir, "test_exe")
-	
+
 	err := os.WriteFile(exePath, []byte("dummy"), 0755)
 	if err != nil {
 		t.Fatal(err)
 	}
-	
-	agent := NewYoloAgent()
-	agent.scriptPath = exePath
-	agent.binaryModTime = time.Now().Add(-1 * time.Hour)
-	
+
+	agent := &YoloAgent{
+		baseDir:       tmpDir,
+		scriptPath:    exePath,
+		binaryModTime: time.Now().Add(-1 * time.Hour),
+		config:        NewYoloConfig(tmpDir),
+	}
+
 	result := agent.checkBinaryFreshness()
-	
+
 	if !strings.Contains(result, "NEEDS") && result != "" {
 		t.Logf("Binary freshness check result: %s", result)
 	}
@@ -64,10 +62,14 @@ func TestCheckBinaryFreshness(t *testing.T) {
 
 // TestCheckEmailInbox verifies email inbox checking
 func TestCheckEmailInbox(t *testing.T) {
-	agent := NewYoloAgent()
-	
+	tmpDir := t.TempDir()
+	agent := &YoloAgent{
+		baseDir: tmpDir,
+		config:  NewYoloConfig(tmpDir),
+	}
+
 	result := agent.checkEmailInbox()
-	
+
 	if result != "" {
 		t.Logf("Email inbox check found: %s", result)
 	}
@@ -239,9 +241,11 @@ func TestParseTextToolCalls(t *testing.T) {
 // TestShowCacheStatus tests cache status display
 func TestShowCacheStatus(t *testing.T) {
 	tmpDir := t.TempDir()
-	agent := NewYoloAgent()
-	agent.baseDir = tmpDir
-	
+	agent := &YoloAgent{
+		baseDir: tmpDir,
+		config:  NewYoloConfig(tmpDir),
+	}
+
 	// Should not panic
 	agent.showCacheStatus("")
 }
@@ -249,9 +253,11 @@ func TestShowCacheStatus(t *testing.T) {
 // TestShowUncompletedTodos tests displaying uncompleted todos
 func TestShowUncompletedTodos(t *testing.T) {
 	tmpDir := t.TempDir()
-	agent := NewYoloAgent()
-	agent.baseDir = tmpDir
-	
+	agent := &YoloAgent{
+		baseDir: tmpDir,
+		config:  NewYoloConfig(tmpDir),
+	}
+
 	// Should not panic (even if no todos)
 	agent.showUncompletedTodos()
 }
@@ -325,11 +331,15 @@ func TestShowPrompt(t *testing.T) {
 // TestSwitchModel tests model switching
 func TestSwitchModel(t *testing.T) {
 	tmpDir := t.TempDir()
-	agent := NewYoloAgent()
-	agent.baseDir = tmpDir
-	
+	agent := &YoloAgent{
+		baseDir: tmpDir,
+		history: NewHistoryManager(tmpDir),
+		config:  NewYoloConfig(tmpDir),
+		ollama:  NewOllamaClient("http://localhost:11434", ""),
+	}
+
 	result := agent.switchModel("qwen3.5:27b-q4_K_M")
-	
+
 	if result == "" {
 		t.Error("Expected non-empty result from switchModel")
 	}
@@ -338,11 +348,15 @@ func TestSwitchModel(t *testing.T) {
 // TestSpawnSubagent tests subagent spawning
 func TestSpawnSubagent(t *testing.T) {
 	tmpDir := t.TempDir()
-	agent := NewYoloAgent()
-	agent.baseDir = tmpDir
-	
+	agent := &YoloAgent{
+		baseDir: tmpDir,
+		history: NewHistoryManager(tmpDir),
+		config:  NewYoloConfig(tmpDir),
+		ollama:  NewOllamaClient("http://localhost:11434", ""),
+	}
+
 	result := agent.spawnSubagent("test task", "qwen3.5:27b-q4_K_M")
-	
+
 	if result == "" {
 		t.Error("Expected non-empty result from spawnSubagent")
 	}
