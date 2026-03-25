@@ -220,6 +220,26 @@ var ollamaTools = []ToolDef{
 			"id":      {Type: "string", Description: "Schedule ID or name"},
 			"enabled": {Type: "boolean", Description: "true to enable, false to disable"},
 		}, []string{"id", "enabled"}),
+	toolDef("project_map", "Generate a hierarchical file tree of the project with sizes. Useful for understanding codebase structure at a glance.",
+		map[string]ToolParam{
+			"max_depth":  {Type: "integer", Description: "Maximum directory depth (default: 4)"},
+			"show_sizes": {Type: "boolean", Description: "Show file sizes (default: true)"},
+			"pattern":    {Type: "string", Description: "Filter files by glob pattern (e.g., '*.go', '*.py')"},
+		}, nil),
+	toolDef("dependency_graph", "Parse source file imports to show package/module dependency relationships. Supports Go, Python, JavaScript/TypeScript, and Rust.",
+		map[string]ToolParam{
+			"package": {Type: "string", Description: "Filter to a specific package/directory (optional)"},
+		}, nil),
+	toolDef("symbol_search", "Search for function, type, class, and variable definitions across the codebase. Supports Go, Python, JS/TS, Rust, Java, C/C++.",
+		map[string]ToolParam{
+			"query":   {Type: "string", Description: "Symbol name or substring to search for (case-insensitive)"},
+			"kind":    {Type: "string", Description: "Filter by kind: func, type, class, var, const (default: all)"},
+			"pattern": {Type: "string", Description: "File glob pattern (default: all source files)"},
+		}, []string{"query"}),
+	toolDef("project_summary", "Get or refresh a cached summary of the project: file counts, line counts, languages, and per-file metadata stored in .yolo/project-map.json.",
+		map[string]ToolParam{
+			"refresh": {Type: "boolean", Description: "Force rescan of all files (default: false, uses cache)"},
+		}, nil),
 }
 
 // ─── Tool Executor ───────────────────────────────────────────────────
@@ -234,6 +254,7 @@ var validTools = []string{
 	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "read_webpage", "send_email", "send_report", "check_inbox", "process_inbox_with_response", "add_todo", "complete_todo", "delete_todo", "list_todos", "check_ollama_status", "playwright_mcp",
 	"memory_read", "memory_write", "memory_log", "memory_promote", "memory_search",
 	"schedule_add", "schedule_remove", "schedule_list", "schedule_toggle",
+	"project_map", "dependency_graph", "symbol_search", "project_summary",
 }
 
 // fileNameRegex extracts the agent ID from filenames like "agent_1.json"
@@ -408,6 +429,14 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 		return t.scheduleList(args)
 	case "schedule_toggle":
 		return t.scheduleToggle(args)
+	case "project_map":
+		return t.projectMap(args)
+	case "dependency_graph":
+		return t.dependencyGraph(args)
+	case "symbol_search":
+		return t.symbolSearch(args)
+	case "project_summary":
+		return t.projectSummary(args)
 	default:
 		// Check if this is an MCP tool
 		if t.agent != nil && t.agent.mcp != nil && t.agent.mcp.IsMCPTool(name) {
