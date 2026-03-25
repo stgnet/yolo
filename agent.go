@@ -50,6 +50,7 @@ type YoloAgent struct {
 	tools           *ToolExecutor      // tool dispatcher
 	inputMgr        *InputManager      // async terminal input
 	tts             *TTSManager        // text-to-speech manager
+	memory          *MemoryManager     // tiered memory system (MEMORY.md + daily logs)
 	running         bool               // false signals the main loop to exit
 	busy            bool               // true while the agent is processing a chat round
 	subagentCounter int                // monotonic ID for spawned sub-agents
@@ -95,6 +96,7 @@ func NewYoloAgent() *YoloAgent {
 		running:         true,
 		thinkingEnabled: true, // default: thinking is shown
 		tts:             NewTTSManager(),
+		memory:          NewMemoryManager(filepath.Join(baseDir, ".yolo")),
 	}
 	a.tools = NewToolExecutor(baseDir, a)
 	return a
@@ -119,6 +121,12 @@ func (a *YoloAgent) getSystemPrompt() string {
 		kbSection = "\n## Knowledge Base\n" + string(content)
 	}
 
+	// Load tiered memory (MEMORY.md + recent daily logs)
+	var memorySection string
+	if a.memory != nil {
+		memorySection = a.memory.GetSystemPromptContext()
+	}
+
 	// Replace template variables in the system prompt
 	prompt := string(templateContent)
 	prompt = strings.ReplaceAll(prompt, "{baseDir}", a.baseDir)
@@ -129,7 +137,7 @@ func (a *YoloAgent) getSystemPrompt() string {
 		prompt = strings.ReplaceAll(prompt, "{model}", "unknown")
 	}
 	prompt = strings.ReplaceAll(prompt, "{timestamp}", time.Now().Format(time.RFC3339))
-	prompt = strings.ReplaceAll(prompt, "{knowledgeBase}", kbSection)
+	prompt = strings.ReplaceAll(prompt, "{knowledgeBase}", kbSection+memorySection)
 
 	// Inject pending todos so the agent is aware of outstanding work
 	todoContext := GetGlobalTodoList().FormatPendingTodos()
@@ -1524,6 +1532,9 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		cprint(Reset, "  /voice [NAME]    Show or set TTS voice")
 		cprint(Reset, "  /todo            Show uncompleted todo items")
 		cprint(Reset, "  /todo <text>     Add a new todo item")
+		cprint(Reset, "  /memory          Show memory status, tiers, and line counts")
+		cprint(Reset, "  /memory show     Show MEMORY.md contents")
+		cprint(Reset, "  /memory logs     List daily context logs")
 		cprint(Reset, "  /learn           Run autonomous research for self-improvement")
 		cprint(Reset, "  /restart         Restart YOLO")
 		cprint(Reset, "  /exit, /quit     Exit YOLO")
@@ -1686,6 +1697,9 @@ func (a *YoloAgent) handleCommand(cmd string) {
 			a.showUncompletedTodos()
 		}
 
+	case "/memory":
+		a.showMemoryStatus(arg)
+
 	case "/model":
 		cprint(Cyan, fmt.Sprintf("  Model: %s", a.config.GetModel()))
 
@@ -1777,6 +1791,66 @@ func (a *YoloAgent) showCacheStatus(arg string) {
 	cprint(Reset, fmt.Sprintf("  TTL: %v", searchCacheTTL))
 	if arg != "clear" {
 		cprint(Reset, "  Usage: /cache clear (to clear cache)")
+	}
+}
+
+// showMemoryStatus displays memory tier information or contents.
+func (a *YoloAgent) showMemoryStatus(arg string) {
+	if a.memory == nil {
+		cprint(Red, "  Memory manager not initialized")
+		return
+	}
+
+	sub := strings.ToLower(strings.TrimSpace(arg))
+	switch sub {
+	case "show":
+		content := a.memory.ReadMemory()
+		if content == "" {
+			cprint(Yellow, "  MEMORY.md is empty or does not exist")
+		} else {
+			lines := a.memory.MemoryLineCount()
+			cprint(Cyan, fmt.Sprintf("  MEMORY.md (%d/%d lines):", lines, MaxMemoryLines))
+			for _, line := range strings.Split(content, "\n") {
+				cprint(Reset, "  "+line)
+			}
+		}
+	case "logs":
+		dates := a.memory.ListDailyLogs()
+		if len(dates) == 0 {
+			cprint(Yellow, "  No daily context logs found")
+		} else {
+			cprint(Cyan, fmt.Sprintf("  Daily context logs (%d):", len(dates)))
+			for _, d := range dates {
+				cprint(Reset, "    "+d+".md")
+			}
+		}
+	case "today":
+		content := a.memory.ReadDailyLog(time.Now())
+		if content == "" {
+			cprint(Yellow, "  No entries for today")
+		} else {
+			cprint(Cyan, fmt.Sprintf("  Today's log (%s):", time.Now().Format("2006-01-02")))
+			for _, line := range strings.Split(content, "\n") {
+				if line != "" {
+					cprint(Reset, "  "+line)
+				}
+			}
+		}
+	default:
+		// Show overview
+		memLines := a.memory.MemoryLineCount()
+		dates := a.memory.ListDailyLogs()
+		cprint(Cyan, "Memory Tiers:")
+		cprint(Reset, fmt.Sprintf("  MEMORY.md:    %d/%d lines (curated durable facts)", memLines, MaxMemoryLines))
+		cprint(Reset, fmt.Sprintf("  Daily logs:   %d files", len(dates)))
+		kbPath := filepath.Join(a.baseDir, ".yolo", "knowledge.md")
+		if info, err := os.Stat(kbPath); err == nil {
+			cprint(Reset, fmt.Sprintf("  knowledge.md: %d bytes (legacy)", info.Size()))
+		}
+		cprint(Reset, "")
+		cprint(Reset, "  /memory show   Show MEMORY.md contents")
+		cprint(Reset, "  /memory logs   List daily context logs")
+		cprint(Reset, "  /memory today  Show today's log entries")
 	}
 }
 

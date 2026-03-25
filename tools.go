@@ -164,6 +164,24 @@ var ollamaTools = []ToolDef{
 			"timeout":   {Type: "integer", Description: "Timeout in milliseconds for operations (default: 5000)"},
 			"path":      {Type: "string", Description: "File path for screenshot output (default: /tmp/screenshot.png)"},
 		}, []string{"action"}),
+	toolDef("memory_read", "Read the agent's curated MEMORY.md file containing durable facts, user preferences, and key decisions.",
+		map[string]ToolParam{}, nil),
+	toolDef("memory_write", "Replace the contents of MEMORY.md with curated durable facts. Cap: 100 lines. Include user preferences, project conventions, coding style, key decisions.",
+		map[string]ToolParam{
+			"content": {Type: "string", Description: "Complete new contents for MEMORY.md (max 100 lines)"},
+		}, []string{"content"}),
+	toolDef("memory_log", "Append an observation to today's daily context log (memory/YYYY-MM-DD.md). Use for raw observations, discoveries, and session notes.",
+		map[string]ToolParam{
+			"entry": {Type: "string", Description: "Observation or note to log (will be timestamped automatically)"},
+		}, []string{"entry"}),
+	toolDef("memory_promote", "Retrieve daily logs for review and distillation into MEMORY.md. Returns current MEMORY.md + recent daily logs with instructions to curate.",
+		map[string]ToolParam{
+			"days": {Type: "integer", Description: "Number of past days to review (default: 7, max: 30)"},
+		}, nil),
+	toolDef("memory_search", "Search across all memory files (MEMORY.md and daily logs) for a keyword or phrase.",
+		map[string]ToolParam{
+			"query": {Type: "string", Description: "Search term (case-insensitive)"},
+		}, []string{"query"}),
 }
 
 // ─── Tool Executor ───────────────────────────────────────────────────
@@ -176,6 +194,7 @@ var validTools = []string{
 	"list_subagents", "read_subagent_result", "summarize_subagents",
 	"list_models", "switch_model", "think", "restart",
 	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "read_webpage", "send_email", "send_report", "check_inbox", "process_inbox_with_response", "add_todo", "complete_todo", "delete_todo", "list_todos", "check_ollama_status", "playwright_mcp",
+	"memory_read", "memory_write", "memory_log", "memory_promote", "memory_search",
 }
 
 // fileNameRegex extracts the agent ID from filenames like "agent_1.json"
@@ -326,6 +345,16 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 		return t.checkOllamaStatus(args)
 	case "playwright_mcp":
 		return t.playwrightMCP(args)
+	case "memory_read":
+		return t.memoryRead(args)
+	case "memory_write":
+		return t.memoryWrite(args)
+	case "memory_log":
+		return t.memoryLog(args)
+	case "memory_promote":
+		return t.memoryPromote(args)
+	case "memory_search":
+		return t.memorySearch(args)
 	default:
 		return errorMessage("unknown tool '%s'. Available tools: %s", name, strings.Join(validTools, ", "))
 	}
