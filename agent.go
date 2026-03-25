@@ -52,6 +52,7 @@ type YoloAgent struct {
 	tts             *TTSManager        // text-to-speech manager
 	memory          *MemoryManager     // tiered memory system (MEMORY.md + daily logs)
 	mcp             *MCPManager        // MCP server connections and tools
+	contextMgr      *ContextManager    // context window compaction and summary
 	running         bool               // false signals the main loop to exit
 	busy            bool               // true while the agent is processing a chat round
 	subagentCounter int                // monotonic ID for spawned sub-agents
@@ -98,6 +99,7 @@ func NewYoloAgent() *YoloAgent {
 		thinkingEnabled: true, // default: thinking is shown
 		tts:             NewTTSManager(),
 		memory:          NewMemoryManager(filepath.Join(baseDir, ".yolo")),
+		contextMgr:      NewContextManager(filepath.Join(baseDir, ".yolo")),
 	}
 	a.tools = NewToolExecutor(baseDir, a)
 
@@ -431,11 +433,41 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		a.history.AddMessage("system", baseMsg, nil)
 	}
 
+	// Determine dynamic context limit based on model's context window
+	contextLimit := MaxContextMessages
+	if a.ollama != nil {
+		if modelCtx := a.ollama.GetModelContextLength(a.config.GetModel()); modelCtx > 0 {
+			contextLimit = DynamicContextLimit(modelCtx)
+		}
+	}
+
+	// Auto-compact if approaching context limit
+	if a.contextMgr != nil && a.contextMgr.NeedsCompaction(len(a.history.Data.Messages), contextLimit) {
+		cprint(Gray, "  [auto-compacting conversation history...]")
+		ctx := context.Background()
+		if compacted, err := CompactHistory(ctx, a.ollama, a.config.GetModel(), a.history, a.contextMgr, CompactionKeepRecent); err != nil {
+			cprint(Yellow, fmt.Sprintf("  [compaction failed: %v]", err))
+		} else if compacted > 0 {
+			cprint(Gray, fmt.Sprintf("  [compacted %d messages into summary]", compacted))
+		}
+	}
+
 	// Base context from persistent history
 	baseMsgs := []ChatMessage{
 		{Role: "system", Content: a.getSystemPrompt()},
 	}
-	baseMsgs = append(baseMsgs, a.history.GetContextMessages(MaxContextMessages)...)
+
+	// Inject conversation summary if available
+	if a.contextMgr != nil {
+		if summary := a.contextMgr.GetSummary(); summary != "" {
+			baseMsgs = append(baseMsgs, ChatMessage{
+				Role:    "system",
+				Content: "[Conversation summary from earlier in this session]\n" + summary,
+			})
+		}
+	}
+
+	baseMsgs = append(baseMsgs, a.history.GetContextMessages(contextLimit)...)
 
 	// In-memory messages for the current tool-calling chain
 	var roundMsgs []ChatMessage
@@ -1560,6 +1592,8 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		cprint(Reset, "  /memory logs     List daily context logs")
 		cprint(Reset, "  /mcp             Show MCP server status and tools")
 		cprint(Reset, "  /mcp reload      Reconnect to MCP servers")
+		cprint(Reset, "  /compact         Summarize older messages to free context window")
+		cprint(Reset, "  /context         Show context window stats and summary status")
 		cprint(Reset, "  /learn           Run autonomous research for self-improvement")
 		cprint(Reset, "  /restart         Restart YOLO")
 		cprint(Reset, "  /exit, /quit     Exit YOLO")
@@ -1759,7 +1793,16 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		if err := a.history.Save(); err != nil {
 			cprint(Red, fmt.Sprintf("  Warning: could not save history: %v\n", err))
 		}
-		cprint(Cyan, "  History cleared (config preserved)")
+		if a.contextMgr != nil {
+			a.contextMgr.ClearSummary()
+		}
+		cprint(Cyan, "  History cleared (config and summary preserved)")
+
+	case "/compact":
+		a.runCompaction()
+
+	case "/context":
+		a.showContextStatus()
 
 	case "/cache":
 		a.showCacheStatus(arg)
@@ -1912,6 +1955,69 @@ func (a *YoloAgent) showMCPStatus(arg string) {
 			for _, line := range strings.Split(strings.TrimRight(status, "\n"), "\n") {
 				cprint(Reset, line)
 			}
+		}
+	}
+}
+
+// runCompaction manually triggers conversation compaction.
+func (a *YoloAgent) runCompaction() {
+	if a.contextMgr == nil {
+		cprint(Red, "  Context manager not initialized")
+		return
+	}
+
+	msgCount := len(a.history.Data.Messages)
+	if msgCount <= CompactionKeepRecent {
+		cprint(Yellow, fmt.Sprintf("  Only %d messages — nothing to compact (minimum %d to keep)", msgCount, CompactionKeepRecent))
+		return
+	}
+
+	cprint(Cyan, fmt.Sprintf("  Compacting %d messages (keeping %d recent)...", msgCount-CompactionKeepRecent, CompactionKeepRecent))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	compacted, err := CompactHistory(ctx, a.ollama, a.config.GetModel(), a.history, a.contextMgr, CompactionKeepRecent)
+	if err != nil {
+		cprint(Red, fmt.Sprintf("  Compaction failed: %v", err))
+		return
+	}
+
+	cprint(Green, fmt.Sprintf("  Compacted %d messages into summary", compacted))
+	cprint(Reset, fmt.Sprintf("  Messages remaining: %d", len(a.history.Data.Messages)))
+}
+
+// showContextStatus displays context window statistics.
+func (a *YoloAgent) showContextStatus() {
+	msgCount := len(a.history.Data.Messages)
+
+	// Get dynamic context limit
+	contextLimit := MaxContextMessages
+	modelCtx := 0
+	if a.ollama != nil {
+		modelCtx = a.ollama.GetModelContextLength(a.config.GetModel())
+		if modelCtx > 0 {
+			contextLimit = DynamicContextLimit(modelCtx)
+		}
+	}
+
+	cprint(Cyan, "Context Window:")
+	cprint(Reset, fmt.Sprintf("  History messages: %d", msgCount))
+	cprint(Reset, fmt.Sprintf("  Context limit: %d messages (static default: %d)", contextLimit, MaxContextMessages))
+	if modelCtx > 0 {
+		cprint(Reset, fmt.Sprintf("  Model context: %d tokens", modelCtx))
+	} else {
+		cprint(Reset, fmt.Sprintf("  Model context: unknown (using default %d)", DefaultNumCtx))
+	}
+
+	threshold := int(float64(contextLimit) * CompactionThreshold)
+	cprint(Reset, fmt.Sprintf("  Auto-compact at: %d messages", threshold))
+
+	if a.contextMgr != nil {
+		status := a.contextMgr.GetStatus()
+		if status != "" {
+			cprint(Cyan, "Summary:")
+			cprint(Reset, status)
 		}
 	}
 }
