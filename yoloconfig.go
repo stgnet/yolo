@@ -34,6 +34,7 @@ type YoloConfig struct {
 	numCtxOverride string // context window override (from YOLO_NUM_CTX env)
 	subagentDir    string // path to .yolo/subagents/
 	Data           YoloConfigData
+	loaded         bool // true after Load() succeeds or first Save() on new config
 	mu             sync.Mutex
 }
 
@@ -70,25 +71,50 @@ func (c *YoloConfig) GetSubagentDir() string {
 }
 
 // Load reads config.json from disk. Returns true on success.
+// Must be called before any Set*/Save to avoid overwriting saved settings.
 func (c *YoloConfig) Load() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	data, err := os.ReadFile(c.configFile)
 	if err != nil {
+		// File doesn't exist yet — mark as loaded so Save() knows this is
+		// intentional (first run) rather than a missed Load().
+		c.loaded = true
 		return false
 	}
 	if err := json.Unmarshal(data, &c.Data); err != nil {
 		c.Data = YoloConfigData{Version: 1}
 		return false
 	}
+	c.loaded = true
 	return true
 }
 
 // Save writes the current config to config.json atomically.
+// If Load() was never called, Save reads the existing file first and merges
+// in-memory changes on top, so that fields set by a prior session are not
+// silently dropped.
 func (c *YoloConfig) Save() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.saveLocked()
+}
+
+// saveLocked performs the actual save. Must be called with c.mu held.
+func (c *YoloConfig) saveLocked() error {
+	// Guard: if Load() was never called, read the existing file and merge
+	// our in-memory fields on top so we don't wipe saved settings.
+	if !c.loaded {
+		if existing, err := os.ReadFile(c.configFile); err == nil {
+			var disk YoloConfigData
+			if json.Unmarshal(existing, &disk) == nil {
+				c.mergeOnto(&disk)
+				c.Data = disk
+			}
+		}
+		c.loaded = true
+	}
 
 	if err := os.MkdirAll(filepath.Dir(c.configFile), 0o755); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
@@ -107,6 +133,33 @@ func (c *YoloConfig) Save() error {
 	return nil
 }
 
+// mergeOnto applies non-zero in-memory fields from c.Data onto disk,
+// preserving any disk fields that are not set in memory.
+// Must be called with c.mu held.
+func (c *YoloConfig) mergeOnto(disk *YoloConfigData) {
+	if c.Data.Model != "" {
+		disk.Model = c.Data.Model
+	}
+	if c.Data.TerminalMode {
+		disk.TerminalMode = c.Data.TerminalMode
+	}
+	if c.Data.DebugMode != nil {
+		disk.DebugMode = c.Data.DebugMode
+	}
+	if c.Data.AutoMode != nil {
+		disk.AutoMode = c.Data.AutoMode
+	}
+	if c.Data.ThinkMode != nil {
+		disk.ThinkMode = c.Data.ThinkMode
+	}
+	if c.Data.TTSVoice != "" {
+		disk.TTSVoice = c.Data.TTSVoice
+	}
+	if c.Data.TTSEnabled != nil {
+		disk.TTSEnabled = c.Data.TTSEnabled
+	}
+}
+
 // GetModel returns the configured model name.
 func (c *YoloConfig) GetModel() string {
 	c.mu.Lock()
@@ -117,9 +170,9 @@ func (c *YoloConfig) GetModel() string {
 // SetModel updates the model and persists to disk.
 func (c *YoloConfig) SetModel(model string) {
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.Data.Model = model
-	c.mu.Unlock()
-	c.Save()
+	c.saveLocked()
 }
 
 // GetTerminalMode returns whether classic split-screen terminal mode is enabled.
@@ -132,9 +185,9 @@ func (c *YoloConfig) GetTerminalMode() bool {
 // SetTerminalMode updates the terminal mode setting and persists to disk.
 func (c *YoloConfig) SetTerminalMode(enabled bool) {
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.Data.TerminalMode = enabled
-	c.mu.Unlock()
-	c.Save()
+	c.saveLocked()
 }
 
 // GetDebugMode returns whether debug mode is enabled. Defaults to false
@@ -151,9 +204,9 @@ func (c *YoloConfig) GetDebugMode() bool {
 // SetDebugMode updates the debug mode setting and persists to disk.
 func (c *YoloConfig) SetDebugMode(enabled bool) {
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.Data.DebugMode = &enabled
-	c.mu.Unlock()
-	c.Save()
+	c.saveLocked()
 }
 
 // GetAutoMode returns whether autonomous mode is enabled. Defaults to false
@@ -170,9 +223,9 @@ func (c *YoloConfig) GetAutoMode() bool {
 // SetAutoMode updates the auto mode setting and persists to disk.
 func (c *YoloConfig) SetAutoMode(enabled bool) {
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.Data.AutoMode = &enabled
-	c.mu.Unlock()
-	c.Save()
+	c.saveLocked()
 }
 
 // GetThinkMode returns whether thinking output is shown. Defaults to true
@@ -189,9 +242,9 @@ func (c *YoloConfig) GetThinkMode() bool {
 // SetThinkMode updates the think mode setting and persists to disk.
 func (c *YoloConfig) SetThinkMode(enabled bool) {
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.Data.ThinkMode = &enabled
-	c.mu.Unlock()
-	c.Save()
+	c.saveLocked()
 }
 
 // GetTTSVoice returns the configured TTS voice name, or "" for platform default.
@@ -204,9 +257,9 @@ func (c *YoloConfig) GetTTSVoice() string {
 // SetTTSVoice updates the TTS voice and persists to disk.
 func (c *YoloConfig) SetTTSVoice(voice string) {
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.Data.TTSVoice = voice
-	c.mu.Unlock()
-	c.Save()
+	c.saveLocked()
 }
 
 // GetTTSEnabled returns the configured TTS enabled state.
@@ -220,7 +273,7 @@ func (c *YoloConfig) GetTTSEnabled() *bool {
 // SetTTSEnabled updates the TTS enabled state and persists to disk.
 func (c *YoloConfig) SetTTSEnabled(enabled bool) {
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.Data.TTSEnabled = &enabled
-	c.mu.Unlock()
-	c.Save()
+	c.saveLocked()
 }
