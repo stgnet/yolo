@@ -1167,7 +1167,7 @@ func parseFuncCallArgs(s string) map[string]any {
 // so the LLM can see the error and adjust before continuing.
 func isFileMutationTool(name string) bool {
 	switch name {
-	case "write_file", "edit_file", "move_file":
+	case "write_file", "edit_file", "edit_file_lines", "patch_file", "undo_edit", "move_file":
 		return true
 	}
 	return false

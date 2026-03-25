@@ -34,12 +34,33 @@ var ollamaTools = []ToolDef{
 			"path":    {Type: "string", Description: "Relative path"},
 			"content": {Type: "string", Description: "File contents"},
 		}, []string{"path", "content"}),
-	toolDef("edit_file", "Replace first occurrence of old_text with new_text in a file",
+	toolDef("edit_file", "Replace text in a file. By default replaces first occurrence. Use replace_all for all, occurrence for Nth (-1=last).",
 		map[string]ToolParam{
-			"path":     {Type: "string", Description: "Relative path"},
-			"old_text": {Type: "string", Description: "Text to find"},
-			"new_text": {Type: "string", Description: "Replacement text"},
+			"path":        {Type: "string", Description: "Relative path"},
+			"old_text":    {Type: "string", Description: "Text to find"},
+			"new_text":    {Type: "string", Description: "Replacement text"},
+			"replace_all": {Type: "boolean", Description: "Replace all occurrences (default: false)"},
+			"occurrence":  {Type: "integer", Description: "Which occurrence to replace: 0/omit=first, -1=last, N=Nth (default: first)"},
+			"dry_run":     {Type: "boolean", Description: "Preview what would change without modifying the file (default: false)"},
 		}, []string{"path", "old_text", "new_text"}),
+	toolDef("edit_file_lines", "Replace a range of lines in a file with new content. Lines are 1-based.",
+		map[string]ToolParam{
+			"path":       {Type: "string", Description: "Relative path"},
+			"start_line": {Type: "integer", Description: "First line to replace (1-based)"},
+			"end_line":   {Type: "integer", Description: "Last line to replace (inclusive)"},
+			"content":    {Type: "string", Description: "New content to insert (empty string to delete lines)"},
+			"dry_run":    {Type: "boolean", Description: "Preview what would change without modifying the file"},
+		}, []string{"path", "start_line", "end_line", "content"}),
+	toolDef("patch_file", "Apply a unified diff (like git diff or diff -u) to a file. Supports multiple hunks.",
+		map[string]ToolParam{
+			"path":    {Type: "string", Description: "Relative path to the file to patch"},
+			"diff":    {Type: "string", Description: "Unified diff content with @@ hunk headers and +/- lines"},
+			"dry_run": {Type: "boolean", Description: "Preview what would change without modifying the file"},
+		}, []string{"path", "diff"}),
+	toolDef("undo_edit", "Revert the most recent edit to a file. Only one level of undo is available per file.",
+		map[string]ToolParam{
+			"path": {Type: "string", Description: "Relative path to the file to revert"},
+		}, []string{"path"}),
 	toolDef("list_files", "List files matching a glob pattern. Use **/*.ext to search recursively; plain *.ext only matches the top-level directory.",
 		map[string]ToolParam{
 			"pattern": {Type: "string", Description: "Glob pattern (default: *). Use **/*.ext for recursive matching."},
@@ -206,7 +227,7 @@ var ollamaTools = []ToolDef{
 // validTools is the canonical list of tool names recognised by Execute.
 // It is also used by parseTextToolCalls to filter bracket-format matches.
 var validTools = []string{
-	"read_file", "write_file", "edit_file", "list_files",
+	"read_file", "write_file", "edit_file", "edit_file_lines", "patch_file", "undo_edit", "list_files",
 	"search_files", "run_command", "spawn_subagent",
 	"list_subagents", "read_subagent_result", "summarize_subagents",
 	"list_models", "switch_model", "think", "restart",
@@ -305,6 +326,12 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 		return t.writeFile(args)
 	case "edit_file":
 		return t.editFile(args)
+	case "edit_file_lines":
+		return t.editFileLines(args)
+	case "patch_file":
+		return t.patchFile(args)
+	case "undo_edit":
+		return t.undoEdit(args)
 	case "list_files":
 		return t.listFiles(args)
 	case "search_files":
