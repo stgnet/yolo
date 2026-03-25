@@ -50,6 +50,7 @@ type YoloAgent struct {
 	tools           *ToolExecutor      // tool dispatcher
 	inputMgr        *InputManager      // async terminal input
 	tts             *TTSManager        // text-to-speech manager
+	stt             *STTManager        // speech-to-text manager
 	memory          *MemoryManager     // tiered memory system (MEMORY.md + daily logs)
 	mcp             *MCPManager        // MCP server connections and tools
 	contextMgr      *ContextManager    // context window compaction and summary
@@ -99,6 +100,7 @@ func NewYoloAgent() *YoloAgent {
 		running:         true,
 		thinkingEnabled: true, // default: thinking is shown
 		tts:             NewTTSManager(),
+		stt:             NewSTTManager(),
 		memory:          NewMemoryManager(filepath.Join(baseDir, ".yolo")),
 		contextMgr:      NewContextManager(filepath.Join(baseDir, ".yolo")),
 	}
@@ -1595,6 +1597,8 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		cprint(Reset, "  /think [on|off]  Toggle thinking output (show/hide [thinking] blocks)")
 		cprint(Reset, "  /tts [on|off|voices] Toggle/list TTS voices")
 		cprint(Reset, "  /voice [NAME]    Show or set TTS voice")
+		cprint(Reset, "  /listen          Record and transcribe voice input (one-shot)")
+		cprint(Reset, "  /stt             Show STT status and configuration")
 		cprint(Reset, "  /todo            Show uncompleted todo items")
 		cprint(Reset, "  /todo <text>     Add a new todo item")
 		cprint(Reset, "  /memory          Show memory status, tiers, and line counts")
@@ -1738,8 +1742,29 @@ func (a *YoloAgent) handleCommand(cmd string) {
 			} else {
 				cprint(Yellow, "  ✗ TTS disabled — YOLO will no longer speak responses")
 			}
+		case strings.HasPrefix(lower, "backend "):
+			backendName := strings.TrimSpace(strings.TrimPrefix(lower, "backend "))
+			if err := a.tts.SetBackend(backendName); err != nil {
+				cprint(Red, fmt.Sprintf("  %s", err))
+			} else {
+				cprint(Green, fmt.Sprintf("  ✓ TTS backend set to: %s", a.tts.Backend()))
+			}
+		case lower == "backends":
+			backends := a.tts.AvailableBackends()
+			if len(backends) == 0 {
+				cprint(Red, "  No TTS backends found")
+			} else {
+				cprint(Cyan, fmt.Sprintf("  Available TTS backends (%d):", len(backends)))
+				for _, b := range backends {
+					marker := "  "
+					if b == a.tts.Backend() {
+						marker = "→ "
+					}
+					cprint(Reset, fmt.Sprintf("    %s%s", marker, b))
+				}
+			}
 		default:
-			cprint(Red, "  Usage: /tts [on|off|voices]")
+			cprint(Red, "  Usage: /tts [on|off|voices|backends|backend <name>]")
 		}
 
 	case "/voice":
@@ -1756,6 +1781,12 @@ func (a *YoloAgent) handleCommand(cmd string) {
 				cprint(Green, fmt.Sprintf("  ✓ TTS voice set to: %s", voice))
 			}
 		}
+
+	case "/listen":
+		a.handleListen()
+
+	case "/stt":
+		a.showSTTStatus(arg)
 
 	case "/todo":
 		if arg != "" {
@@ -2064,6 +2095,90 @@ func (a *YoloAgent) showCronStatus(arg string) {
 				cprint(Reset, line)
 			}
 		}
+	}
+}
+
+// handleListen records a single utterance via STT and injects it as user input.
+func (a *YoloAgent) handleListen() {
+	if a.stt == nil || !a.stt.Available() {
+		cprint(Red, "  STT not available")
+		if a.stt != nil {
+			cprint(Reset, fmt.Sprintf("  Backend: %s, Recorder: %s", a.stt.BackendName(), a.stt.RecorderName()))
+		}
+		cprint(Reset, "  Install whisper (or whisper-cpp) and a recorder (sox/arecord/ffmpeg)")
+		return
+	}
+
+	dur := a.stt.GetDuration()
+	cprint(Cyan, fmt.Sprintf("  Listening for %v... (speak now)", dur))
+
+	ctx, cancel := context.WithTimeout(context.Background(), dur+10*time.Second)
+	defer cancel()
+
+	text, err := a.stt.Listen(ctx)
+	if err != nil {
+		cprint(Red, fmt.Sprintf("  Listen error: %v", err))
+		return
+	}
+	if text == "" {
+		cprint(Yellow, "  No speech detected")
+		return
+	}
+
+	cprint(Green, fmt.Sprintf("  Heard: %s", text))
+
+	// Process as user input
+	a.mu.Lock()
+	a.busy = true
+	a.mu.Unlock()
+
+	a.chatWithAgent(text, false)
+
+	a.mu.Lock()
+	a.busy = false
+	a.mu.Unlock()
+
+	a.showPrompt()
+}
+
+// showSTTStatus displays STT configuration and status.
+func (a *YoloAgent) showSTTStatus(arg string) {
+	if a.stt == nil {
+		cprint(Red, "  STT manager not initialized")
+		return
+	}
+
+	sub := strings.ToLower(strings.TrimSpace(arg))
+	switch {
+	case strings.HasPrefix(sub, "wake "):
+		word := strings.TrimSpace(strings.TrimPrefix(sub, "wake "))
+		if word == "off" || word == "none" {
+			a.stt.SetWakeWord("")
+			cprint(Green, "  Wake word disabled")
+		} else {
+			a.stt.SetWakeWord(word)
+			cprint(Green, fmt.Sprintf("  Wake word set to: %q", word))
+		}
+	case strings.HasPrefix(sub, "duration "):
+		durStr := strings.TrimSpace(strings.TrimPrefix(sub, "duration "))
+		dur, err := time.ParseDuration(durStr)
+		if err != nil {
+			cprint(Red, fmt.Sprintf("  Invalid duration: %v (use e.g. 5s, 10s)", err))
+			return
+		}
+		a.stt.SetDuration(dur)
+		cprint(Green, fmt.Sprintf("  Recording duration set to: %v", a.stt.GetDuration()))
+	default:
+		cprint(Cyan, "Speech-to-Text:")
+		status := a.stt.GetStatus()
+		for _, line := range strings.Split(strings.TrimRight(status, "\n"), "\n") {
+			cprint(Reset, line)
+		}
+		cprint(Reset, "")
+		cprint(Reset, "  /listen              Record and transcribe")
+		cprint(Reset, "  /stt wake <word>     Set wake word")
+		cprint(Reset, "  /stt wake off        Disable wake word")
+		cprint(Reset, "  /stt duration <dur>  Set recording duration (e.g. 5s)")
 	}
 }
 
