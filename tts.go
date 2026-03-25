@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -50,7 +52,11 @@ type TTSVoice struct {
 }
 
 // detectBackend finds the best available TTS backend on this system.
+// Priority: piper > say (macOS) > espeak-ng > espeak
 func detectBackend() ttsBackend {
+	if path, err := exec.LookPath("piper"); err == nil {
+		return &piperBackend{path: path}
+	}
 	if path, err := exec.LookPath("say"); err == nil {
 		return &sayBackend{path: path}
 	}
@@ -61,6 +67,24 @@ func detectBackend() ttsBackend {
 		return &espeakBackend{path: path, ng: false}
 	}
 	return nil
+}
+
+// detectAllBackends returns all available TTS backends.
+func detectAllBackends() []ttsBackend {
+	var backends []ttsBackend
+	if path, err := exec.LookPath("piper"); err == nil {
+		backends = append(backends, &piperBackend{path: path})
+	}
+	if path, err := exec.LookPath("say"); err == nil {
+		backends = append(backends, &sayBackend{path: path})
+	}
+	if path, err := exec.LookPath("espeak-ng"); err == nil {
+		backends = append(backends, &espeakBackend{path: path, ng: true})
+	}
+	if path, err := exec.LookPath("espeak"); err == nil {
+		backends = append(backends, &espeakBackend{path: path, ng: false})
+	}
+	return backends
 }
 
 // ─── macOS "say" backend ────────────────────────────
@@ -155,6 +179,107 @@ func (b *espeakBackend) ListVoices(localeFilter string) []TTSVoice {
 		}
 		voices = append(voices, TTSVoice{Name: name, Locale: locale})
 	}
+	sort.Slice(voices, func(i, j int) bool {
+		return voices[i].Name < voices[j].Name
+	})
+	return voices
+}
+
+// ─── piper-tts backend ──────────────────────────────
+//
+// Piper is a fast, local, neural TTS engine. It reads text from stdin
+// and outputs raw audio which is piped to aplay/paplay/sox.
+// Install: https://github.com/rhasspy/piper
+
+type piperBackend struct {
+	path  string
+	model string // path to .onnx model file (auto-detected if empty)
+}
+
+func (b *piperBackend) Name() string { return "piper" }
+
+func (b *piperBackend) DefaultVoice() string { return "en_US-lessac-medium" }
+
+func (b *piperBackend) Speak(text, voice string) error {
+	// Piper reads from stdin and outputs WAV to stdout
+	// We pipe to aplay (Linux) for playback
+	model := b.model
+	if model == "" {
+		model = voice
+	}
+
+	// Try to find an audio player
+	player := "aplay"
+	playerArgs := []string{"-q", "-"}
+	if _, err := exec.LookPath("aplay"); err != nil {
+		if _, err := exec.LookPath("paplay"); err == nil {
+			player = "paplay"
+			playerArgs = []string{"--raw", "--channels=1", "--rate=22050", "--format=s16le"}
+		} else if _, err := exec.LookPath("play"); err == nil {
+			player = "play"
+			playerArgs = []string{"-q", "-t", "wav", "-"}
+		} else {
+			return fmt.Errorf("no audio player found (install aplay, paplay, or sox)")
+		}
+	}
+
+	piperCmd := exec.Command(b.path, "--model", model, "--output-raw")
+	piperCmd.Stdin = strings.NewReader(text)
+
+	playCmd := exec.Command(player, playerArgs...)
+	var err error
+	playCmd.Stdin, err = piperCmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("pipe setup: %w", err)
+	}
+
+	if err := playCmd.Start(); err != nil {
+		return fmt.Errorf("start player: %w", err)
+	}
+	if err := piperCmd.Run(); err != nil {
+		playCmd.Process.Kill()
+		return fmt.Errorf("piper: %w", err)
+	}
+	return playCmd.Wait()
+}
+
+func (b *piperBackend) ListVoices(localeFilter string) []TTSVoice {
+	// Piper uses model files as "voices". List available models
+	// from common install locations.
+	var voices []TTSVoice
+	modelDirs := []string{
+		"/usr/share/piper-voices",
+		filepath.Join(os.Getenv("HOME"), ".local/share/piper-voices"),
+		filepath.Join(os.Getenv("HOME"), ".piper/models"),
+	}
+
+	for _, dir := range modelDirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			name := e.Name()
+			if !strings.HasSuffix(name, ".onnx") {
+				continue
+			}
+			voiceName := strings.TrimSuffix(name, ".onnx")
+			locale := "unknown"
+			// Extract locale from voice name (e.g., "en_US-lessac-medium")
+			parts := strings.SplitN(voiceName, "-", 2)
+			if len(parts) >= 1 {
+				locale = strings.ReplaceAll(parts[0], "_", "-")
+			}
+			if localeFilter != "" && !strings.HasPrefix(locale, localeFilter) {
+				continue
+			}
+			voices = append(voices, TTSVoice{
+				Name:   filepath.Join(dir, name),
+				Locale: locale,
+			})
+		}
+	}
+
 	sort.Slice(voices, func(i, j int) bool {
 		return voices[i].Name < voices[j].Name
 	})
@@ -318,6 +443,38 @@ func (t *TTSManager) Stop() {
 		close(t.queue)
 		t.closed = true
 	}
+}
+
+// AvailableBackends returns the names of all detected TTS backends.
+func (t *TTSManager) AvailableBackends() []string {
+	backends := detectAllBackends()
+	names := make([]string, len(backends))
+	for i, b := range backends {
+		names[i] = b.Name()
+	}
+	return names
+}
+
+// SetBackend switches to a different TTS backend by name.
+func (t *TTSManager) SetBackend(name string) error {
+	backends := detectAllBackends()
+	for _, b := range backends {
+		if strings.EqualFold(b.Name(), name) {
+			t.mu.Lock()
+			t.backend = b
+			t.voice = b.DefaultVoice()
+			t.mu.Unlock()
+			return nil
+		}
+	}
+	var available []string
+	for _, b := range backends {
+		available = append(available, b.Name())
+	}
+	if len(available) == 0 {
+		return fmt.Errorf("no TTS backends available")
+	}
+	return fmt.Errorf("backend %q not found (available: %s)", name, strings.Join(available, ", "))
 }
 
 // ─── Text Cleaning ──────────────────────────────────

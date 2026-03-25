@@ -50,6 +50,11 @@ type YoloAgent struct {
 	tools           *ToolExecutor      // tool dispatcher
 	inputMgr        *InputManager      // async terminal input
 	tts             *TTSManager        // text-to-speech manager
+	stt             *STTManager        // speech-to-text manager
+	memory          *MemoryManager     // tiered memory system (MEMORY.md + daily logs)
+	mcp             *MCPManager        // MCP server connections and tools
+	contextMgr      *ContextManager    // context window compaction and summary
+	cron            *CronManager       // scheduled tasks (cron.json)
 	running         bool               // false signals the main loop to exit
 	busy            bool               // true while the agent is processing a chat round
 	subagentCounter int                // monotonic ID for spawned sub-agents
@@ -95,9 +100,43 @@ func NewYoloAgent() *YoloAgent {
 		running:         true,
 		thinkingEnabled: true, // default: thinking is shown
 		tts:             NewTTSManager(),
+		stt:             NewSTTManager(),
+		memory:          NewMemoryManager(filepath.Join(baseDir, ".yolo")),
+		contextMgr:      NewContextManager(filepath.Join(baseDir, ".yolo")),
 	}
 	a.tools = NewToolExecutor(baseDir, a)
+
+	// Initialize MCP server connections (non-fatal if mcp.json missing)
+	a.mcp = NewMCPManager(filepath.Join(baseDir, ".yolo"))
+	if err := a.mcp.Start(); err != nil {
+		cprint(Yellow, fmt.Sprintf("  MCP: config error: %v", err))
+	}
+
+	// Initialize scheduler (loads cron.json, starts background ticker)
+	a.cron = NewCronManager(filepath.Join(baseDir, ".yolo"))
+	a.cron.Load()
+	a.cron.Start(func(sched CronSchedule) {
+		cprint(Cyan, fmt.Sprintf("  [cron] firing: %s", sched.Name))
+		a.history.AddMessage("system",
+			fmt.Sprintf("[Scheduled task fired: %s]\n%s", sched.Name, sched.Prompt), nil)
+	})
+
 	return a
+}
+
+// allTools returns the combined set of native + MCP tools for the LLM.
+func (a *YoloAgent) allTools() []ToolDef {
+	if a.mcp == nil {
+		return ollamaTools
+	}
+	mcpTools := a.mcp.GetToolDefs()
+	if len(mcpTools) == 0 {
+		return ollamaTools
+	}
+	all := make([]ToolDef, 0, len(ollamaTools)+len(mcpTools))
+	all = append(all, ollamaTools...)
+	all = append(all, mcpTools...)
+	return all
 }
 
 // getSystemPrompt loads SYSTEM_PROMPT.md and interpolates runtime values
@@ -119,6 +158,12 @@ func (a *YoloAgent) getSystemPrompt() string {
 		kbSection = "\n## Knowledge Base\n" + string(content)
 	}
 
+	// Load tiered memory (MEMORY.md + recent daily logs)
+	var memorySection string
+	if a.memory != nil {
+		memorySection = a.memory.GetSystemPromptContext()
+	}
+
 	// Replace template variables in the system prompt
 	prompt := string(templateContent)
 	prompt = strings.ReplaceAll(prompt, "{baseDir}", a.baseDir)
@@ -129,7 +174,7 @@ func (a *YoloAgent) getSystemPrompt() string {
 		prompt = strings.ReplaceAll(prompt, "{model}", "unknown")
 	}
 	prompt = strings.ReplaceAll(prompt, "{timestamp}", time.Now().Format(time.RFC3339))
-	prompt = strings.ReplaceAll(prompt, "{knowledgeBase}", kbSection)
+	prompt = strings.ReplaceAll(prompt, "{knowledgeBase}", kbSection+memorySection)
 
 	// Inject pending todos so the agent is aware of outstanding work
 	todoContext := GetGlobalTodoList().FormatPendingTodos()
@@ -400,11 +445,41 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		a.history.AddMessage("system", baseMsg, nil)
 	}
 
+	// Determine dynamic context limit based on model's context window
+	contextLimit := MaxContextMessages
+	if a.ollama != nil {
+		if modelCtx := a.ollama.GetModelContextLength(a.config.GetModel()); modelCtx > 0 {
+			contextLimit = DynamicContextLimit(modelCtx)
+		}
+	}
+
+	// Auto-compact if approaching context limit
+	if a.contextMgr != nil && a.contextMgr.NeedsCompaction(len(a.history.Data.Messages), contextLimit) {
+		cprint(Gray, "  [auto-compacting conversation history...]")
+		ctx := context.Background()
+		if compacted, err := CompactHistory(ctx, a.ollama, a.config.GetModel(), a.history, a.contextMgr, CompactionKeepRecent); err != nil {
+			cprint(Yellow, fmt.Sprintf("  [compaction failed: %v]", err))
+		} else if compacted > 0 {
+			cprint(Gray, fmt.Sprintf("  [compacted %d messages into summary]", compacted))
+		}
+	}
+
 	// Base context from persistent history
 	baseMsgs := []ChatMessage{
 		{Role: "system", Content: a.getSystemPrompt()},
 	}
-	baseMsgs = append(baseMsgs, a.history.GetContextMessages(MaxContextMessages)...)
+
+	// Inject conversation summary if available
+	if a.contextMgr != nil {
+		if summary := a.contextMgr.GetSummary(); summary != "" {
+			baseMsgs = append(baseMsgs, ChatMessage{
+				Role:    "system",
+				Content: "[Conversation summary from earlier in this session]\n" + summary,
+			})
+		}
+	}
+
+	baseMsgs = append(baseMsgs, a.history.GetContextMessages(contextLimit)...)
 
 	// In-memory messages for the current tool-calling chain
 	var roundMsgs []ChatMessage
@@ -451,7 +526,7 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		a.cancelChat = cancel
 		a.mu.Unlock()
 
-		result, err := a.ollama.Chat(ctx, a.config.GetModel(), allMsgs, ollamaTools, nil, a.config.GetThinkMode(), func(line string) {
+		result, err := a.ollama.Chat(ctx, a.config.GetModel(), allMsgs, a.allTools(), nil, a.config.GetThinkMode(), func(line string) {
 			a.tts.Speak(line)
 		})
 		cancel()
@@ -1094,7 +1169,7 @@ func parseFuncCallArgs(s string) map[string]any {
 // so the LLM can see the error and adjust before continuing.
 func isFileMutationTool(name string) bool {
 	switch name {
-	case "write_file", "edit_file", "move_file":
+	case "write_file", "edit_file", "edit_file_lines", "patch_file", "undo_edit", "move_file":
 		return true
 	}
 	return false
@@ -1522,8 +1597,18 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		cprint(Reset, "  /think [on|off]  Toggle thinking output (show/hide [thinking] blocks)")
 		cprint(Reset, "  /tts [on|off|voices] Toggle/list TTS voices")
 		cprint(Reset, "  /voice [NAME]    Show or set TTS voice")
+		cprint(Reset, "  /listen          Record and transcribe voice input (one-shot)")
+		cprint(Reset, "  /stt             Show STT status and configuration")
 		cprint(Reset, "  /todo            Show uncompleted todo items")
 		cprint(Reset, "  /todo <text>     Add a new todo item")
+		cprint(Reset, "  /memory          Show memory status, tiers, and line counts")
+		cprint(Reset, "  /memory show     Show MEMORY.md contents")
+		cprint(Reset, "  /memory logs     List daily context logs")
+		cprint(Reset, "  /mcp             Show MCP server status and tools")
+		cprint(Reset, "  /mcp reload      Reconnect to MCP servers")
+		cprint(Reset, "  /compact         Summarize older messages to free context window")
+		cprint(Reset, "  /context         Show context window stats and summary status")
+		cprint(Reset, "  /cron            Show scheduled tasks")
 		cprint(Reset, "  /learn           Run autonomous research for self-improvement")
 		cprint(Reset, "  /restart         Restart YOLO")
 		cprint(Reset, "  /exit, /quit     Exit YOLO")
@@ -1657,8 +1742,29 @@ func (a *YoloAgent) handleCommand(cmd string) {
 			} else {
 				cprint(Yellow, "  ✗ TTS disabled — YOLO will no longer speak responses")
 			}
+		case strings.HasPrefix(lower, "backend "):
+			backendName := strings.TrimSpace(strings.TrimPrefix(lower, "backend "))
+			if err := a.tts.SetBackend(backendName); err != nil {
+				cprint(Red, fmt.Sprintf("  %s", err))
+			} else {
+				cprint(Green, fmt.Sprintf("  ✓ TTS backend set to: %s", a.tts.Backend()))
+			}
+		case lower == "backends":
+			backends := a.tts.AvailableBackends()
+			if len(backends) == 0 {
+				cprint(Red, "  No TTS backends found")
+			} else {
+				cprint(Cyan, fmt.Sprintf("  Available TTS backends (%d):", len(backends)))
+				for _, b := range backends {
+					marker := "  "
+					if b == a.tts.Backend() {
+						marker = "→ "
+					}
+					cprint(Reset, fmt.Sprintf("    %s%s", marker, b))
+				}
+			}
 		default:
-			cprint(Red, "  Usage: /tts [on|off|voices]")
+			cprint(Red, "  Usage: /tts [on|off|voices|backends|backend <name>]")
 		}
 
 	case "/voice":
@@ -1676,6 +1782,12 @@ func (a *YoloAgent) handleCommand(cmd string) {
 			}
 		}
 
+	case "/listen":
+		a.handleListen()
+
+	case "/stt":
+		a.showSTTStatus(arg)
+
 	case "/todo":
 		if arg != "" {
 			// Add new todo with the argument as title
@@ -1685,6 +1797,12 @@ func (a *YoloAgent) handleCommand(cmd string) {
 			// Show uncompleted todos
 			a.showUncompletedTodos()
 		}
+
+	case "/memory":
+		a.showMemoryStatus(arg)
+
+	case "/mcp":
+		a.showMCPStatus(arg)
 
 	case "/model":
 		cprint(Cyan, fmt.Sprintf("  Model: %s", a.config.GetModel()))
@@ -1717,7 +1835,19 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		if err := a.history.Save(); err != nil {
 			cprint(Red, fmt.Sprintf("  Warning: could not save history: %v\n", err))
 		}
-		cprint(Cyan, "  History cleared (config preserved)")
+		if a.contextMgr != nil {
+			a.contextMgr.ClearSummary()
+		}
+		cprint(Cyan, "  History cleared (config and summary preserved)")
+
+	case "/compact":
+		a.runCompaction()
+
+	case "/context":
+		a.showContextStatus()
+
+	case "/cron":
+		a.showCronStatus(arg)
 
 	case "/cache":
 		a.showCacheStatus(arg)
@@ -1777,6 +1907,278 @@ func (a *YoloAgent) showCacheStatus(arg string) {
 	cprint(Reset, fmt.Sprintf("  TTL: %v", searchCacheTTL))
 	if arg != "clear" {
 		cprint(Reset, "  Usage: /cache clear (to clear cache)")
+	}
+}
+
+// showMemoryStatus displays memory tier information or contents.
+func (a *YoloAgent) showMemoryStatus(arg string) {
+	if a.memory == nil {
+		cprint(Red, "  Memory manager not initialized")
+		return
+	}
+
+	sub := strings.ToLower(strings.TrimSpace(arg))
+	switch sub {
+	case "show":
+		content := a.memory.ReadMemory()
+		if content == "" {
+			cprint(Yellow, "  MEMORY.md is empty or does not exist")
+		} else {
+			lines := a.memory.MemoryLineCount()
+			cprint(Cyan, fmt.Sprintf("  MEMORY.md (%d/%d lines):", lines, MaxMemoryLines))
+			for _, line := range strings.Split(content, "\n") {
+				cprint(Reset, "  "+line)
+			}
+		}
+	case "logs":
+		dates := a.memory.ListDailyLogs()
+		if len(dates) == 0 {
+			cprint(Yellow, "  No daily context logs found")
+		} else {
+			cprint(Cyan, fmt.Sprintf("  Daily context logs (%d):", len(dates)))
+			for _, d := range dates {
+				cprint(Reset, "    "+d+".md")
+			}
+		}
+	case "today":
+		content := a.memory.ReadDailyLog(time.Now())
+		if content == "" {
+			cprint(Yellow, "  No entries for today")
+		} else {
+			cprint(Cyan, fmt.Sprintf("  Today's log (%s):", time.Now().Format("2006-01-02")))
+			for _, line := range strings.Split(content, "\n") {
+				if line != "" {
+					cprint(Reset, "  "+line)
+				}
+			}
+		}
+	default:
+		// Show overview
+		memLines := a.memory.MemoryLineCount()
+		dates := a.memory.ListDailyLogs()
+		cprint(Cyan, "Memory Tiers:")
+		cprint(Reset, fmt.Sprintf("  MEMORY.md:    %d/%d lines (curated durable facts)", memLines, MaxMemoryLines))
+		cprint(Reset, fmt.Sprintf("  Daily logs:   %d files", len(dates)))
+		kbPath := filepath.Join(a.baseDir, ".yolo", "knowledge.md")
+		if info, err := os.Stat(kbPath); err == nil {
+			cprint(Reset, fmt.Sprintf("  knowledge.md: %d bytes (legacy)", info.Size()))
+		}
+		cprint(Reset, "")
+		cprint(Reset, "  /memory show   Show MEMORY.md contents")
+		cprint(Reset, "  /memory logs   List daily context logs")
+		cprint(Reset, "  /memory today  Show today's log entries")
+	}
+}
+
+// showMCPStatus displays MCP server status or reloads connections.
+func (a *YoloAgent) showMCPStatus(arg string) {
+	if a.mcp == nil {
+		cprint(Red, "  MCP manager not initialized")
+		return
+	}
+
+	sub := strings.ToLower(strings.TrimSpace(arg))
+	switch sub {
+	case "reload":
+		cprint(Cyan, "  Reconnecting to MCP servers...")
+		a.mcp.Close()
+		a.mcp = NewMCPManager(filepath.Join(a.baseDir, ".yolo"))
+		if err := a.mcp.Start(); err != nil {
+			cprint(Red, fmt.Sprintf("  MCP reload error: %v", err))
+		} else {
+			names := a.mcp.GetToolNames()
+			cprint(Green, fmt.Sprintf("  MCP reloaded: %d tools available", len(names)))
+		}
+	default:
+		status := a.mcp.ServerStatus()
+		if status == "No MCP servers connected" {
+			cprint(Yellow, "  "+status)
+			cprint(Reset, "  Configure servers in .yolo/mcp.json")
+			cprint(Reset, "  /mcp reload  Reconnect after config changes")
+		} else {
+			cprint(Cyan, "MCP Servers:")
+			for _, line := range strings.Split(strings.TrimRight(status, "\n"), "\n") {
+				cprint(Reset, line)
+			}
+		}
+	}
+}
+
+// runCompaction manually triggers conversation compaction.
+func (a *YoloAgent) runCompaction() {
+	if a.contextMgr == nil {
+		cprint(Red, "  Context manager not initialized")
+		return
+	}
+
+	msgCount := len(a.history.Data.Messages)
+	if msgCount <= CompactionKeepRecent {
+		cprint(Yellow, fmt.Sprintf("  Only %d messages — nothing to compact (minimum %d to keep)", msgCount, CompactionKeepRecent))
+		return
+	}
+
+	cprint(Cyan, fmt.Sprintf("  Compacting %d messages (keeping %d recent)...", msgCount-CompactionKeepRecent, CompactionKeepRecent))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	compacted, err := CompactHistory(ctx, a.ollama, a.config.GetModel(), a.history, a.contextMgr, CompactionKeepRecent)
+	if err != nil {
+		cprint(Red, fmt.Sprintf("  Compaction failed: %v", err))
+		return
+	}
+
+	cprint(Green, fmt.Sprintf("  Compacted %d messages into summary", compacted))
+	cprint(Reset, fmt.Sprintf("  Messages remaining: %d", len(a.history.Data.Messages)))
+}
+
+// showContextStatus displays context window statistics.
+func (a *YoloAgent) showContextStatus() {
+	msgCount := len(a.history.Data.Messages)
+
+	// Get dynamic context limit
+	contextLimit := MaxContextMessages
+	modelCtx := 0
+	if a.ollama != nil {
+		modelCtx = a.ollama.GetModelContextLength(a.config.GetModel())
+		if modelCtx > 0 {
+			contextLimit = DynamicContextLimit(modelCtx)
+		}
+	}
+
+	cprint(Cyan, "Context Window:")
+	cprint(Reset, fmt.Sprintf("  History messages: %d", msgCount))
+	cprint(Reset, fmt.Sprintf("  Context limit: %d messages (static default: %d)", contextLimit, MaxContextMessages))
+	if modelCtx > 0 {
+		cprint(Reset, fmt.Sprintf("  Model context: %d tokens", modelCtx))
+	} else {
+		cprint(Reset, fmt.Sprintf("  Model context: unknown (using default %d)", DefaultNumCtx))
+	}
+
+	threshold := int(float64(contextLimit) * CompactionThreshold)
+	cprint(Reset, fmt.Sprintf("  Auto-compact at: %d messages", threshold))
+
+	if a.contextMgr != nil {
+		status := a.contextMgr.GetStatus()
+		if status != "" {
+			cprint(Cyan, "Summary:")
+			cprint(Reset, status)
+		}
+	}
+}
+
+// showCronStatus displays scheduled task info or removes a schedule.
+func (a *YoloAgent) showCronStatus(arg string) {
+	if a.cron == nil {
+		cprint(Red, "  Scheduler not initialized")
+		return
+	}
+
+	sub := strings.ToLower(strings.TrimSpace(arg))
+	switch {
+	case strings.HasPrefix(sub, "remove "):
+		idOrName := strings.TrimSpace(strings.TrimPrefix(sub, "remove "))
+		if a.cron.RemoveSchedule(idOrName) {
+			cprint(Green, fmt.Sprintf("  Schedule '%s' removed", idOrName))
+		} else {
+			cprint(Red, fmt.Sprintf("  Schedule '%s' not found", idOrName))
+		}
+	default:
+		status := a.cron.FormatStatus()
+		if status == "No schedules configured" {
+			cprint(Yellow, "  "+status)
+			cprint(Reset, "  Use the schedule_add tool to create schedules")
+			cprint(Reset, "  /cron remove <name>  Remove a schedule")
+		} else {
+			cprint(Cyan, "Scheduled Tasks:")
+			for _, line := range strings.Split(strings.TrimRight(status, "\n"), "\n") {
+				cprint(Reset, line)
+			}
+		}
+	}
+}
+
+// handleListen records a single utterance via STT and injects it as user input.
+func (a *YoloAgent) handleListen() {
+	if a.stt == nil || !a.stt.Available() {
+		cprint(Red, "  STT not available")
+		if a.stt != nil {
+			cprint(Reset, fmt.Sprintf("  Backend: %s, Recorder: %s", a.stt.BackendName(), a.stt.RecorderName()))
+		}
+		cprint(Reset, "  Install whisper (or whisper-cpp) and a recorder (sox/arecord/ffmpeg)")
+		return
+	}
+
+	dur := a.stt.GetDuration()
+	cprint(Cyan, fmt.Sprintf("  Listening for %v... (speak now)", dur))
+
+	ctx, cancel := context.WithTimeout(context.Background(), dur+10*time.Second)
+	defer cancel()
+
+	text, err := a.stt.Listen(ctx)
+	if err != nil {
+		cprint(Red, fmt.Sprintf("  Listen error: %v", err))
+		return
+	}
+	if text == "" {
+		cprint(Yellow, "  No speech detected")
+		return
+	}
+
+	cprint(Green, fmt.Sprintf("  Heard: %s", text))
+
+	// Process as user input
+	a.mu.Lock()
+	a.busy = true
+	a.mu.Unlock()
+
+	a.chatWithAgent(text, false)
+
+	a.mu.Lock()
+	a.busy = false
+	a.mu.Unlock()
+
+	a.showPrompt()
+}
+
+// showSTTStatus displays STT configuration and status.
+func (a *YoloAgent) showSTTStatus(arg string) {
+	if a.stt == nil {
+		cprint(Red, "  STT manager not initialized")
+		return
+	}
+
+	sub := strings.ToLower(strings.TrimSpace(arg))
+	switch {
+	case strings.HasPrefix(sub, "wake "):
+		word := strings.TrimSpace(strings.TrimPrefix(sub, "wake "))
+		if word == "off" || word == "none" {
+			a.stt.SetWakeWord("")
+			cprint(Green, "  Wake word disabled")
+		} else {
+			a.stt.SetWakeWord(word)
+			cprint(Green, fmt.Sprintf("  Wake word set to: %q", word))
+		}
+	case strings.HasPrefix(sub, "duration "):
+		durStr := strings.TrimSpace(strings.TrimPrefix(sub, "duration "))
+		dur, err := time.ParseDuration(durStr)
+		if err != nil {
+			cprint(Red, fmt.Sprintf("  Invalid duration: %v (use e.g. 5s, 10s)", err))
+			return
+		}
+		a.stt.SetDuration(dur)
+		cprint(Green, fmt.Sprintf("  Recording duration set to: %v", a.stt.GetDuration()))
+	default:
+		cprint(Cyan, "Speech-to-Text:")
+		status := a.stt.GetStatus()
+		for _, line := range strings.Split(strings.TrimRight(status, "\n"), "\n") {
+			cprint(Reset, line)
+		}
+		cprint(Reset, "")
+		cprint(Reset, "  /listen              Record and transcribe")
+		cprint(Reset, "  /stt wake <word>     Set wake word")
+		cprint(Reset, "  /stt wake off        Disable wake word")
+		cprint(Reset, "  /stt duration <dur>  Set recording duration (e.g. 5s)")
 	}
 }
 
@@ -1876,6 +2278,13 @@ func (a *YoloAgent) sleepUntilInput() {
 		if len(emailFiles) > 0 {
 			cprint(Green, fmt.Sprintf("  %d new email(s) detected - resuming to process", len(emailFiles)))
 			a.wakeForEmail = true
+			return
+		}
+
+		// Check for due scheduled tasks
+		if a.cron != nil && a.cron.HasDueSchedules() {
+			cprint(Green, "  Scheduled task due - resuming to execute")
+			a.cron.checkSchedules()
 			return
 		}
 	}
@@ -2073,6 +2482,11 @@ func (a *YoloAgent) Run() {
 				a.showPrompt()
 			}
 		}
+	}
+
+	// Stop background scheduler
+	if a.cron != nil {
+		a.cron.Stop()
 	}
 
 	if err := a.history.Save(); err != nil {
