@@ -53,6 +53,7 @@ type YoloAgent struct {
 	memory          *MemoryManager     // tiered memory system (MEMORY.md + daily logs)
 	mcp             *MCPManager        // MCP server connections and tools
 	contextMgr      *ContextManager    // context window compaction and summary
+	cron            *CronManager       // scheduled tasks (cron.json)
 	running         bool               // false signals the main loop to exit
 	busy            bool               // true while the agent is processing a chat round
 	subagentCounter int                // monotonic ID for spawned sub-agents
@@ -108,6 +109,15 @@ func NewYoloAgent() *YoloAgent {
 	if err := a.mcp.Start(); err != nil {
 		cprint(Yellow, fmt.Sprintf("  MCP: config error: %v", err))
 	}
+
+	// Initialize scheduler (loads cron.json, starts background ticker)
+	a.cron = NewCronManager(filepath.Join(baseDir, ".yolo"))
+	a.cron.Load()
+	a.cron.Start(func(sched CronSchedule) {
+		cprint(Cyan, fmt.Sprintf("  [cron] firing: %s", sched.Name))
+		a.history.AddMessage("system",
+			fmt.Sprintf("[Scheduled task fired: %s]\n%s", sched.Name, sched.Prompt), nil)
+	})
 
 	return a
 }
@@ -1594,6 +1604,7 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		cprint(Reset, "  /mcp reload      Reconnect to MCP servers")
 		cprint(Reset, "  /compact         Summarize older messages to free context window")
 		cprint(Reset, "  /context         Show context window stats and summary status")
+		cprint(Reset, "  /cron            Show scheduled tasks")
 		cprint(Reset, "  /learn           Run autonomous research for self-improvement")
 		cprint(Reset, "  /restart         Restart YOLO")
 		cprint(Reset, "  /exit, /quit     Exit YOLO")
@@ -1803,6 +1814,9 @@ func (a *YoloAgent) handleCommand(cmd string) {
 
 	case "/context":
 		a.showContextStatus()
+
+	case "/cron":
+		a.showCronStatus(arg)
 
 	case "/cache":
 		a.showCacheStatus(arg)
@@ -2022,6 +2036,37 @@ func (a *YoloAgent) showContextStatus() {
 	}
 }
 
+// showCronStatus displays scheduled task info or removes a schedule.
+func (a *YoloAgent) showCronStatus(arg string) {
+	if a.cron == nil {
+		cprint(Red, "  Scheduler not initialized")
+		return
+	}
+
+	sub := strings.ToLower(strings.TrimSpace(arg))
+	switch {
+	case strings.HasPrefix(sub, "remove "):
+		idOrName := strings.TrimSpace(strings.TrimPrefix(sub, "remove "))
+		if a.cron.RemoveSchedule(idOrName) {
+			cprint(Green, fmt.Sprintf("  Schedule '%s' removed", idOrName))
+		} else {
+			cprint(Red, fmt.Sprintf("  Schedule '%s' not found", idOrName))
+		}
+	default:
+		status := a.cron.FormatStatus()
+		if status == "No schedules configured" {
+			cprint(Yellow, "  "+status)
+			cprint(Reset, "  Use the schedule_add tool to create schedules")
+			cprint(Reset, "  /cron remove <name>  Remove a schedule")
+		} else {
+			cprint(Cyan, "Scheduled Tasks:")
+			for _, line := range strings.Split(strings.TrimRight(status, "\n"), "\n") {
+				cprint(Reset, line)
+			}
+		}
+	}
+}
+
 // showUncompletedTodos displays only pending (incomplete) todo items.
 func (a *YoloAgent) showUncompletedTodos() {
 	output := getPendingTodos()
@@ -2118,6 +2163,13 @@ func (a *YoloAgent) sleepUntilInput() {
 		if len(emailFiles) > 0 {
 			cprint(Green, fmt.Sprintf("  %d new email(s) detected - resuming to process", len(emailFiles)))
 			a.wakeForEmail = true
+			return
+		}
+
+		// Check for due scheduled tasks
+		if a.cron != nil && a.cron.HasDueSchedules() {
+			cprint(Green, "  Scheduled task due - resuming to execute")
+			a.cron.checkSchedules()
 			return
 		}
 	}
@@ -2315,6 +2367,11 @@ func (a *YoloAgent) Run() {
 				a.showPrompt()
 			}
 		}
+	}
+
+	// Stop background scheduler
+	if a.cron != nil {
+		a.cron.Stop()
 	}
 
 	if err := a.history.Save(); err != nil {

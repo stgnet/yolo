@@ -182,6 +182,23 @@ var ollamaTools = []ToolDef{
 		map[string]ToolParam{
 			"query": {Type: "string", Description: "Search term (case-insensitive)"},
 		}, []string{"query"}),
+	toolDef("schedule_add", "Add a scheduled task that fires on a cron schedule. The prompt is injected as a system message when the schedule fires.",
+		map[string]ToolParam{
+			"name":   {Type: "string", Description: "Human-readable name for the schedule"},
+			"cron":   {Type: "string", Description: "Cron expression: 'minute hour day month weekday' (e.g., '0 9 * * *' for 9 AM daily, '*/10 * * * *' for every 10 min)"},
+			"prompt": {Type: "string", Description: "Task prompt to execute when the schedule fires"},
+		}, []string{"name", "cron", "prompt"}),
+	toolDef("schedule_remove", "Remove a scheduled task by ID or name.",
+		map[string]ToolParam{
+			"id": {Type: "string", Description: "Schedule ID or name to remove"},
+		}, []string{"id"}),
+	toolDef("schedule_list", "List all scheduled tasks with their status, next run time, and run history.",
+		map[string]ToolParam{}, nil),
+	toolDef("schedule_toggle", "Enable or disable a scheduled task.",
+		map[string]ToolParam{
+			"id":      {Type: "string", Description: "Schedule ID or name"},
+			"enabled": {Type: "boolean", Description: "true to enable, false to disable"},
+		}, []string{"id", "enabled"}),
 }
 
 // ─── Tool Executor ───────────────────────────────────────────────────
@@ -195,6 +212,7 @@ var validTools = []string{
 	"list_models", "switch_model", "think", "restart",
 	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "read_webpage", "send_email", "send_report", "check_inbox", "process_inbox_with_response", "add_todo", "complete_todo", "delete_todo", "list_todos", "check_ollama_status", "playwright_mcp",
 	"memory_read", "memory_write", "memory_log", "memory_promote", "memory_search",
+	"schedule_add", "schedule_remove", "schedule_list", "schedule_toggle",
 }
 
 // fileNameRegex extracts the agent ID from filenames like "agent_1.json"
@@ -355,6 +373,14 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 		return t.memoryPromote(args)
 	case "memory_search":
 		return t.memorySearch(args)
+	case "schedule_add":
+		return t.scheduleAdd(args)
+	case "schedule_remove":
+		return t.scheduleRemove(args)
+	case "schedule_list":
+		return t.scheduleList(args)
+	case "schedule_toggle":
+		return t.scheduleToggle(args)
 	default:
 		// Check if this is an MCP tool
 		if t.agent != nil && t.agent.mcp != nil && t.agent.mcp.IsMCPTool(name) {
