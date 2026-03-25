@@ -128,14 +128,24 @@ var ollamaTools = []ToolDef{
 		map[string]ToolParam{
 			"command": {Type: "string", Description: "gog subcommand and arguments (e.g., 'gmail search newer_than:1d --max 5', 'calendar list events', 'drive list')"},
 		}, []string{"command"}),
-	toolDef("web_search", "Search the web using DuckDuckGo. Returns instant answers, related topics, and abstract snippets from search results.",
+	toolDef("web_search", "Search the web. Uses SearXNG (if SEARXNG_URL is set) or DuckDuckGo. Returns search results with titles, URLs, and snippets.",
 		map[string]ToolParam{
-			"query": {Type: "string", Description: "Search query (required)"},
-			"count": {Type: "integer", Description: "Number of results to return (default: 5, max: 10)"},
+			"query":  {Type: "string", Description: "Search query (required)"},
+			"count":  {Type: "integer", Description: "Number of results to return (default: 5, max: 10)"},
+			"engine": {Type: "string", Description: "Search engine: 'searxng', 'duckduckgo'/'ddg', or omit for auto (SearXNG if configured, else DDG)"},
 		}, []string{"query"}),
-	toolDef("read_webpage", "Fetch a webpage URL and return its text content. HTML is converted to plain text. Useful for reading documentation, articles, or any web page.",
+	toolDef("read_webpage", "Fetch a webpage URL and extract readable article content. Uses readability-style extraction to remove boilerplate.",
 		map[string]ToolParam{
-			"url": {Type: "string", Description: "URL to fetch (required). Will be prefixed with https:// if no scheme is provided."},
+			"url":  {Type: "string", Description: "URL to fetch (required). Will be prefixed with https:// if no scheme is provided."},
+			"mode": {Type: "string", Description: "Extraction mode: 'auto' (smart article detection, default), 'article' (strict article only), 'full' (all text)"},
+		}, []string{"url"}),
+	toolDef("screenshot", "Capture a screenshot of a web page. Requires Playwright (node) or Chromium.",
+		map[string]ToolParam{
+			"url":       {Type: "string", Description: "URL to screenshot (required)"},
+			"path":      {Type: "string", Description: "Output file path (default: /tmp/screenshot.png)"},
+			"full_page": {Type: "boolean", Description: "Capture full scrollable page (default: false, viewport only)"},
+			"width":     {Type: "integer", Description: "Viewport width in pixels (default: 1280)"},
+			"height":    {Type: "integer", Description: "Viewport height in pixels (default: 720)"},
 		}, []string{"url"}),
 	toolDef("send_email", "Send an email via sendmail from yolo@b-haven.org. Postfix handles DKIM signing automatically.",
 		map[string]ToolParam{
@@ -251,7 +261,7 @@ var validTools = []string{
 	"search_files", "run_command", "spawn_subagent",
 	"list_subagents", "read_subagent_result", "summarize_subagents",
 	"list_models", "switch_model", "think", "restart",
-	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "read_webpage", "send_email", "send_report", "check_inbox", "process_inbox_with_response", "add_todo", "complete_todo", "delete_todo", "list_todos", "check_ollama_status", "playwright_mcp",
+	"make_dir", "remove_dir", "copy_file", "move_file", "reddit", "gog", "web_search", "read_webpage", "screenshot", "send_email", "send_report", "check_inbox", "process_inbox_with_response", "add_todo", "complete_todo", "delete_todo", "list_todos", "check_ollama_status", "playwright_mcp",
 	"memory_read", "memory_write", "memory_log", "memory_promote", "memory_search",
 	"schedule_add", "schedule_remove", "schedule_list", "schedule_toggle",
 	"project_map", "dependency_graph", "symbol_search", "project_summary",
@@ -388,9 +398,11 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 	case "gog":
 		return t.gog(args)
 	case "web_search":
-		return t.webSearch(args)
+		return t.webSearchEnhanced(args)
 	case "read_webpage":
-		return t.readWebpage(args)
+		return t.readWebpageReadable(args)
+	case "screenshot":
+		return t.screenshot(args)
 	case "send_email":
 		return t.sendEmail(args)
 	case "send_report":
