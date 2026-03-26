@@ -1789,7 +1789,7 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		recent := len(a.history.Data.Messages)
 		total := a.history.MessageCount()
 		e := len(a.history.Data.EvolutionLog)
-		cprint(Cyan, fmt.Sprintf("  Recent context: %d  |  Total in database: %d  |  Evolution events: %d", recent, total, e))
+		cprint(Cyan, fmt.Sprintf("  Messages in context: %d | Total in DB: %d | Evolution events: %d", recent, total, e))
 
 	case "/clear":
 		a.history.Data.Messages = []HistoryMessage{}
@@ -2280,9 +2280,9 @@ func (a *YoloAgent) Run() {
 	}()
 
 	// Display session resumption message AFTER terminal is set up
-	if hasModel && hasHistory {
-		a.displaySessionResumption()
-	}
+	// if hasModel && hasHistory {
+	// 	a.displaySessionResumption()
+	// }
 
 	// If the last history message is from the restart tool, the process was
 	// just restarted. Inject a system message so the agent knows the restart
