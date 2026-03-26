@@ -70,7 +70,8 @@ func NewYoloAgent() *YoloAgent {
 	baseDir, _ := os.Getwd()
 	execPath, _ := os.Executable()
 
-	cfg := NewYoloConfig(baseDir)
+	cfg := NewYoloConfig()
+	yoloDir := cfg.GetYoloDir()
 
 	// Clear stale subagent results from any prior run so that
 	// listSubagents/readSubagentResult don't return leftover data and the
@@ -92,25 +93,25 @@ func NewYoloAgent() *YoloAgent {
 		scriptPath:      execPath,
 		binaryModTime:   binaryModTime,
 		ollama:          NewOllamaClient(cfg.GetOllamaURL(), cfg.GetNumCtxOverride()),
-		history:         NewHistoryManager(baseDir),
+		history:         NewHistoryManager(yoloDir),
 		config:          cfg,
 		running:         true,
 		thinkingEnabled: true, // default: thinking is shown
 		tts:             NewTTSManager(),
 		stt:             NewSTTManager(),
-		memory:          NewMemoryManager(filepath.Join(baseDir, ".yolo")),
-		contextMgr:      NewContextManager(filepath.Join(baseDir, ".yolo")),
+		memory:          NewMemoryManager(yoloDir),
+		contextMgr:      NewContextManager(yoloDir),
 	}
 	a.tools = NewToolExecutor(baseDir, a)
 
 	// Initialize MCP server connections (non-fatal if mcp.json missing)
-	a.mcp = NewMCPManager(filepath.Join(baseDir, ".yolo"))
+	a.mcp = NewMCPManager(yoloDir)
 	if err := a.mcp.Start(); err != nil {
 		cprint(Yellow, fmt.Sprintf("  MCP: config error: %v", err))
 	}
 
 	// Initialize scheduler (loads cron.json, starts background ticker)
-	a.cron = NewCronManager(filepath.Join(baseDir, ".yolo"))
+	a.cron = NewCronManager(yoloDir)
 	a.cron.Load()
 	a.cron.Start(func(sched CronSchedule) {
 		cprint(Cyan, fmt.Sprintf("  [cron] firing: %s", sched.Name))
@@ -150,7 +151,7 @@ func (a *YoloAgent) getSystemPrompt() string {
 
 	// Load knowledge base if it exists
 	var kbSection string
-	kbPath := filepath.Join(a.baseDir, ".yolo", "knowledge.md")
+	kbPath := filepath.Join(a.config.GetYoloDir(), "knowledge.md")
 	if content, err := os.ReadFile(kbPath); err == nil {
 		kbSection = "\n## Knowledge Base\n" + string(content)
 	}
@@ -1857,7 +1858,7 @@ func (a *YoloAgent) handleCommand(cmd string) {
 				keys = append(keys, k)
 			}
 			sort.Strings(keys)
-			cprint(Cyan, "Configuration (.yolo/config.json):")
+			cprint(Cyan, fmt.Sprintf("Configuration (%s/config.json):", a.config.GetYoloDir()))
 			for _, k := range keys {
 				v := all[k]
 				if v == "" {
@@ -2001,7 +2002,7 @@ func (a *YoloAgent) showMemoryStatus(arg string) {
 		cprint(Cyan, "Memory Tiers:")
 		cprint(Reset, fmt.Sprintf("  MEMORY.md:    %d/%d lines (curated durable facts)", memLines, MaxMemoryLines))
 		cprint(Reset, fmt.Sprintf("  Daily logs:   %d files", len(dates)))
-		kbPath := filepath.Join(a.baseDir, ".yolo", "knowledge.md")
+		kbPath := filepath.Join(a.config.GetYoloDir(), "knowledge.md")
 		if info, err := os.Stat(kbPath); err == nil {
 			cprint(Reset, fmt.Sprintf("  knowledge.md: %d bytes (legacy)", info.Size()))
 		}
@@ -2024,7 +2025,7 @@ func (a *YoloAgent) showMCPStatus(arg string) {
 	case "reload":
 		cprint(Cyan, "  Reconnecting to MCP servers...")
 		a.mcp.Close()
-		a.mcp = NewMCPManager(filepath.Join(a.baseDir, ".yolo"))
+		a.mcp = NewMCPManager(a.config.GetYoloDir())
 		if err := a.mcp.Start(); err != nil {
 			cprint(Red, fmt.Sprintf("  MCP reload error: %v", err))
 		} else {
@@ -2035,7 +2036,7 @@ func (a *YoloAgent) showMCPStatus(arg string) {
 		status := a.mcp.ServerStatus()
 		if status == "No MCP servers connected" {
 			cprint(Yellow, "  "+status)
-			cprint(Reset, "  Configure servers in .yolo/mcp.json")
+			cprint(Reset, fmt.Sprintf("  Configure servers in %s/mcp.json", a.config.GetYoloDir()))
 			cprint(Reset, "  /mcp reload  Reconnect after config changes")
 		} else {
 			cprint(Cyan, "MCP Servers:")

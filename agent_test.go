@@ -8,6 +8,13 @@ import (
 	"time"
 )
 
+// newTestConfig creates a YoloConfig pointing at a temp directory for tests.
+func newTestConfig(t *testing.T, dir string) *YoloConfig {
+	t.Helper()
+	t.Setenv("YOLO_DIR", dir)
+	return NewYoloConfig()
+}
+
 // TestGetSystemPrompt verifies that the system prompt is non-empty and contains expected sections
 func TestGetSystemPrompt(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -23,11 +30,14 @@ func TestGetSystemPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	
+
+	// Point YOLO_DIR at our temp dir so NewYoloConfig uses it
+	t.Setenv("YOLO_DIR", yoloDir)
+
 	origDir, _ := os.Getwd()
 	defer os.Chdir(origDir)
 	os.Chdir(tmpDir)
-	
+
 	agent := NewYoloAgent()
 	prompt := agent.getSystemPrompt()
 	
@@ -50,7 +60,7 @@ func TestCheckBinaryFreshness(t *testing.T) {
 		baseDir:       tmpDir,
 		scriptPath:    exePath,
 		binaryModTime: time.Now().Add(-1 * time.Hour),
-		config:        NewYoloConfig(tmpDir),
+		config:        newTestConfig(t, tmpDir),
 	}
 
 	result := agent.checkBinaryFreshness()
@@ -65,7 +75,7 @@ func TestCheckEmailInbox(t *testing.T) {
 	tmpDir := t.TempDir()
 	agent := &YoloAgent{
 		baseDir: tmpDir,
-		config:  NewYoloConfig(tmpDir),
+		config:  newTestConfig(t, tmpDir),
 	}
 
 	result := agent.checkEmailInbox()
@@ -81,7 +91,7 @@ func TestDisplaySessionResumption(t *testing.T) {
 	agent := &YoloAgent{
 		baseDir: tmpDir,
 		history: NewHistoryManager(tmpDir),
-		config:  NewYoloConfig(tmpDir),
+		config:  newTestConfig(t, tmpDir),
 	}
 	
 	agent.history.AddMessage("user", "Hello", nil)
@@ -95,7 +105,7 @@ func TestEnableDisableTerminalMode(t *testing.T) {
 	tmpDir := t.TempDir()
 	agent := &YoloAgent{
 		baseDir: tmpDir,
-		config:  NewYoloConfig(tmpDir),
+		config:  newTestConfig(t, tmpDir),
 	}
 	
 	agent.enableTerminalMode()
@@ -122,7 +132,7 @@ func TestIngestHandoffResults(t *testing.T) {
 	agent := &YoloAgent{
 		baseDir:    tmpDir,
 		history:    NewHistoryManager(tmpDir),
-		config:     NewYoloConfig(tmpDir),
+		config:     newTestConfig(t, tmpDir),
 	}
 	
 	beforeCount := len(agent.history.Data.Messages)
@@ -243,7 +253,7 @@ func TestShowCacheStatus(t *testing.T) {
 	tmpDir := t.TempDir()
 	agent := &YoloAgent{
 		baseDir: tmpDir,
-		config:  NewYoloConfig(tmpDir),
+		config:  newTestConfig(t, tmpDir),
 	}
 
 	// Should not panic
@@ -255,7 +265,7 @@ func TestShowUncompletedTodos(t *testing.T) {
 	tmpDir := t.TempDir()
 	agent := &YoloAgent{
 		baseDir: tmpDir,
-		config:  NewYoloConfig(tmpDir),
+		config:  newTestConfig(t, tmpDir),
 	}
 
 	// Should not panic (even if no todos)
@@ -331,10 +341,11 @@ func TestShowPrompt(t *testing.T) {
 // TestSwitchModel tests model switching
 func TestSwitchModel(t *testing.T) {
 	tmpDir := t.TempDir()
+	t.Setenv("YOLO_DIR", tmpDir)
 	agent := &YoloAgent{
 		baseDir: tmpDir,
 		history: NewHistoryManager(tmpDir),
-		config:  NewYoloConfig(tmpDir),
+		config:  NewYoloConfig(),
 		ollama:  NewOllamaClient("http://localhost:11434", ""),
 	}
 
@@ -348,10 +359,11 @@ func TestSwitchModel(t *testing.T) {
 // TestSpawnSubagent tests subagent spawning
 func TestSpawnSubagent(t *testing.T) {
 	tmpDir := t.TempDir()
+	t.Setenv("YOLO_DIR", tmpDir)
 	agent := &YoloAgent{
 		baseDir: tmpDir,
 		history: NewHistoryManager(tmpDir),
-		config:  NewYoloConfig(tmpDir),
+		config:  NewYoloConfig(),
 		ollama:  NewOllamaClient("http://localhost:11434", ""),
 	}
 

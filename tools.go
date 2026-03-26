@@ -149,19 +149,19 @@ var ollamaTools = []ToolDef{
 			"width":     {Type: "integer", Description: "Viewport width in pixels (default: 1280)"},
 			"height":    {Type: "integer", Description: "Viewport height in pixels (default: 720)"},
 		}, []string{"url"}),
-	toolDef("send_email", "Send an email via sendmail. Sender and default recipient are configured in .yolo/config.json.",
+	toolDef("send_email", "Send an email via sendmail. Sender and default recipient are configured in config.json.",
 		map[string]ToolParam{
 			"to":          {Type: "string", Description: "Recipient email address (uses configured default if omitted)"},
 			"subject":     {Type: "string", Description: "Email subject (required)"},
 			"body":        {Type: "string", Description: "Email body (required)"},
 			"attachments": {Type: "array[string]", Description: "List of file paths to attach to the email"},
 		}, []string{"subject", "body"}),
-	toolDef("send_report", "Send a progress report email. Sender and default recipient are configured in .yolo/config.json.",
+	toolDef("send_report", "Send a progress report email. Sender and default recipient are configured in config.json.",
 		map[string]ToolParam{
 			"subject": {Type: "string", Description: "Report subject (default: YOLO Progress Report)"},
 			"body":    {Type: "string", Description: "Report body (required)"},
 		}, []string{"body"}),
-	toolDef("check_inbox", "Read emails from the configured Maildir inbox (set inbox_path in .yolo/config.json).",
+	toolDef("check_inbox", "Read emails from the configured Maildir inbox (set inbox_path in config.json).",
 		map[string]ToolParam{
 			"mark_read": {Type: "boolean", Description: "If true, move processed emails to cur/ directory"},
 		}, nil),
@@ -248,16 +248,16 @@ var ollamaTools = []ToolDef{
 			"kind":    {Type: "string", Description: "Filter by kind: func, type, class, var, const (default: all)"},
 			"pattern": {Type: "string", Description: "File glob pattern (default: all source files)"},
 		}, []string{"query"}),
-	toolDef("project_summary", "Get or refresh a cached summary of the project: file counts, line counts, languages, and per-file metadata stored in .yolo/project-map.json.",
+	toolDef("project_summary", "Get or refresh a cached summary of the project: file counts, line counts, languages, and per-file metadata stored in project-map.json (in YOLO data dir).",
 		map[string]ToolParam{
 			"refresh": {Type: "boolean", Description: "Force rescan of all files (default: false, uses cache)"},
 		}, nil),
-	toolDef("set_config", "Set a YOLO configuration value in .yolo/config.json. Available keys: model, email_from, email_to, inbox_path, user_agent, temp_dir, tts_voice, terminal_mode, debug_mode, auto_mode, think_mode, tts_enabled.",
+	toolDef("set_config", "Set a YOLO configuration value in config.json. Available keys: model, email_from, email_to, inbox_path, user_agent, temp_dir, tts_voice, terminal_mode, debug_mode, auto_mode, think_mode, tts_enabled.",
 		map[string]ToolParam{
 			"key":   {Type: "string", Description: "Configuration key to set"},
 			"value": {Type: "string", Description: "Value to set"},
 		}, []string{"key", "value"}),
-	toolDef("get_config", "Get the current YOLO configuration from .yolo/config.json. Returns all configuration values.",
+	toolDef("get_config", "Get the current YOLO configuration from config.json. Returns all configuration values.",
 		map[string]ToolParam{
 			"key": {Type: "string", Description: "Specific config key to retrieve (optional, omit to show all)"},
 		}, nil),
@@ -593,7 +593,7 @@ func (t *ToolExecutor) getConfig(args map[string]any) string {
 		return errorMessage("unknown config key '%s'", key)
 	}
 	var sb strings.Builder
-	sb.WriteString("Current configuration (.yolo/config.json):\n\n")
+	sb.WriteString("Current configuration (config.json):\n\n")
 	// Sort keys for consistent output
 	keys := make([]string, 0, len(all))
 	for k := range all {

@@ -51,7 +51,7 @@ func (t *ToolExecutor) checkInbox(args map[string]any) string {
 
 	inboxPath := t.getInboxPath()
 	if inboxPath == "" {
-		return errorMessage("no inbox_path configured in .yolo/config.json")
+		return errorMessage("no inbox_path configured (use set_config or /config to set inbox_path)")
 	}
 
 	// Check if inbox directory exists
@@ -473,7 +473,7 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 
 	inboxPath := t.getInboxPath()
 	if inboxPath == "" {
-		return errorMessage("no inbox_path configured in .yolo/config.json")
+		return errorMessage("no inbox_path configured (use set_config or /config to set inbox_path)")
 	}
 
 	// Check if inbox directory exists

@@ -5,10 +5,6 @@ import "regexp"
 // ─── Constants ───────────────────────────────────────────────────────
 
 const (
-	// YoloDir is the directory (relative to the working directory) where
-	// history, sub-agent results, and other state files are stored.
-	YoloDir = ".yolo"
-
 	// Source code is in the current directory (.).
 	// File paths should be relative to the working directory.
 	_SourceCodeLocation = "."

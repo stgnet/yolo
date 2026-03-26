@@ -12,8 +12,9 @@ import (
 // ─── Yolo Config ─────────────────────────────────────────────────────
 //
 // YoloConfig is the single configuration system for YOLO. It manages both
-// persistent settings (stored in .yolo/config.json) and runtime paths
-// derived from environment variables and working directory.
+// persistent settings (stored in config.json) and runtime paths derived
+// from environment variables. All state is stored in a user-level
+// directory determined by resolveYoloDir().
 
 // YoloConfigData is the top-level JSON structure for config.json.
 type YoloConfigData struct {
@@ -34,31 +35,55 @@ type YoloConfigData struct {
 
 // YoloConfig owns the in-memory config and handles reading/writing to disk.
 type YoloConfig struct {
-	yoloDir        string // working directory
-	configFile     string // path to .yolo/config.json
+	yoloDir        string // resolved user-level YOLO directory (e.g. ~/.config/yolo)
+	configFile     string // path to config.json within yoloDir
 	ollamaURL      string // Ollama API base URL (from OLLAMA_URL env, default http://localhost:11434)
 	numCtxOverride string // context window override (from YOLO_NUM_CTX env)
-	subagentDir    string // path to .yolo/subagents/
+	subagentDir    string // path to subagents/ within yoloDir
 	Data           YoloConfigData
 	loaded         bool // true after Load() succeeds or first Save() on new config
 	mu             sync.Mutex
 }
 
-// NewYoloConfig creates a config manager rooted in the given working directory.
-// Runtime paths are derived from the working directory and environment variables.
-func NewYoloConfig(workDir string) *YoloConfig {
+// resolveYoloDir determines the YOLO data directory using, in priority order:
+//  1. YOLO_DIR environment variable (explicit override)
+//  2. os.UserConfigDir()/yolo  (platform-correct: ~/.config/yolo on Linux,
+//     ~/Library/Application Support/yolo on macOS, %AppData%/yolo on Windows)
+//  3. ~/.yolo as a last-resort fallback
+func resolveYoloDir() string {
+	if dir := os.Getenv("YOLO_DIR"); dir != "" {
+		return dir
+	}
+	if configDir, err := os.UserConfigDir(); err == nil {
+		return filepath.Join(configDir, "yolo")
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		return filepath.Join(home, ".yolo")
+	}
+	return ".yolo"
+}
+
+// NewYoloConfig creates a config manager using the resolved user-level directory.
+// Runtime paths are derived from the directory and environment variables.
+func NewYoloConfig() *YoloConfig {
+	yoloDir := resolveYoloDir()
 	ollamaURL := os.Getenv("OLLAMA_URL")
 	if ollamaURL == "" {
 		ollamaURL = "http://localhost:11434"
 	}
 	return &YoloConfig{
-		yoloDir:        workDir,
-		configFile:     filepath.Join(workDir, ".yolo", "config.json"),
+		yoloDir:        yoloDir,
+		configFile:     filepath.Join(yoloDir, "config.json"),
 		ollamaURL:      ollamaURL,
 		numCtxOverride: os.Getenv("YOLO_NUM_CTX"),
-		subagentDir:    filepath.Join(workDir, ".yolo", "subagents"),
+		subagentDir:    filepath.Join(yoloDir, "subagents"),
 		Data:           YoloConfigData{Version: 1},
 	}
+}
+
+// GetYoloDir returns the resolved YOLO data directory path.
+func (c *YoloConfig) GetYoloDir() string {
+	return c.yoloDir
 }
 
 // GetOllamaURL returns the Ollama API base URL.

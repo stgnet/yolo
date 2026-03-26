@@ -858,7 +858,13 @@ func isBinaryFile(path string, size int64) bool {
 func (e *ToolExecutor) projectSummary(args map[string]any) string {
 	refresh := getBoolArg(args, "refresh", false)
 
-	cache := NewProjectMapCache(filepath.Join(e.baseDir, ".yolo"))
+	yoloDir := ""
+	if e.agent != nil && e.agent.config != nil {
+		yoloDir = e.agent.config.GetYoloDir()
+	} else {
+		yoloDir = filepath.Join(e.baseDir, ".yolo")
+	}
+	cache := NewProjectMapCache(yoloDir)
 	cache.Load()
 
 	// Always update if refresh requested or cache is empty
