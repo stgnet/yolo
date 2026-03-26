@@ -273,20 +273,25 @@ func (a *YoloAgent) restart() {
 
 // ── Setup ──
 
-// setupFirstRun runs on first launch (no history file). It connects to Ollama,
-// lets the user pick a model, and records the choice.
+// setupFirstRun runs on first launch (no model configured). It tries to connect
+// to Ollama and let the user pick a model. If Ollama is unreachable, it skips
+// model selection — the user can set a model later via /switch or /config.
 func (a *YoloAgent) setupFirstRun() {
 	cprint(Cyan+Bold, "\n  YOLO - Your Own Living Operator")
 	cprint(Gray, "  A self-evolving AI agent for software development")
 	cprint(Gray, fmt.Sprintf("  Working directory: %s", a.baseDir))
+	cprint(Gray, fmt.Sprintf("  Config directory:  %s", a.config.GetYoloDir()))
 	fmt.Println()
 
 	cprint(Yellow, "  Connecting to Ollama...")
 	models := a.ollama.ListModels()
 	if len(models) == 0 {
-		cprint(Red, "  Error: Cannot reach Ollama or no models installed.")
-		cprint(Red, "  Make sure Ollama is running: ollama serve")
-		os.Exit(1)
+		cprint(Yellow, "  Cannot reach Ollama or no models installed.")
+		cprint(Reset, "  Use /switch <model> once Ollama is running, or:")
+		cprint(Reset, "    /config model <model-name>")
+		cprint(Reset, "")
+		a.showHelpHint()
+		return
 	}
 
 	cprint(Green, fmt.Sprintf("  Found %d model(s):", len(models)))
