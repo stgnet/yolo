@@ -137,16 +137,16 @@ func (a *YoloAgent) allTools() []ToolDef {
 	return all
 }
 
-// getSystemPrompt loads SYSTEM_PROMPT.md and interpolates runtime values
-// (working directory, model name, timestamp, etc.).
+// getSystemPrompt loads SYSTEM_PROMPT.md from the YOLO data directory and
+// interpolates runtime values (working directory, model name, timestamp, etc.).
+// Falls back to a minimal embedded prompt if the file is not found.
 func (a *YoloAgent) getSystemPrompt() string {
-	// Load the system prompt template from file
-	systemPromptPath := filepath.Join(a.baseDir, "SYSTEM_PROMPT.md")
-	templateContent, err := os.ReadFile(systemPromptPath)
+	// Load system prompt from YOLO data directory, fall back to minimal embedded default
+	promptPath := filepath.Join(a.config.GetYoloDir(), "SYSTEM_PROMPT.md")
+	templateContent, err := os.ReadFile(promptPath)
 	if err != nil {
-		cprint(Red, fmt.Sprintf("  Error: Could not read SYSTEM_PROMPT.md: %v\n", err))
-		cprint(Red, "  SYSTEM_PROMPT.md is required. Please ensure it exists in the working directory.\n")
-		os.Exit(1)
+		templateContent = []byte("Ask user for instructions and save to SYSTEM_PROMPT.md")
+		cprint(Gray, fmt.Sprintf("  System prompt: built-in fallback (create %s to customize)", promptPath))
 	}
 
 	// Load knowledge base if it exists
