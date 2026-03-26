@@ -5,12 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,7 +21,7 @@ import (
 
 // YoloAgent is the central orchestrator. It reads user input, sends messages
 // to the LLM via OllamaClient, dispatches tool calls through ToolExecutor,
-// and persists conversation state with HistoryManager. When no user input is
+// and persists conversation state with HistoryDB (SQLite). When no user input is
 // pending it immediately enters autonomous thinking.
 // handoffResult holds the outcome of a background tool execution that was
 // forked from the main agent when a user message arrived mid-tool-loop.
@@ -44,7 +43,7 @@ type YoloAgent struct {
 	scriptPath      string             // path to the running binary (used for self-restart)
 	binaryModTime   time.Time          // modification time of the binary at startup (for freshness check)
 	ollama          *OllamaClient      // LLM communication
-	history         *HistoryManager    // persistent conversation and evolution log
+	history         *HistoryDB         // persistent conversation and evolution log (SQLite)
 	config          *YoloConfig        // persistent configuration (model, etc.)
 	tools           *ToolExecutor      // tool dispatcher
 	inputMgr        *InputManager      // async terminal input
@@ -61,9 +60,7 @@ type YoloAgent struct {
 	pendingHandoffs []*handoffResult   // in-flight background tool executions
 	mu              sync.Mutex         // protects busy, cancelChat, subagentCounter, handoffCounter, pendingHandoffs
 	cancelChat      context.CancelFunc // cancels the in-flight Chat HTTP request
-	thinkingEnabled bool               // true when thinking output is enabled (default: true)
-	sleeping        bool               // true when already in sleep mode (prevents repeated announcements)
-	wakeForEmail    bool               // true when sleep was interrupted by new email
+	thinkingEnabled bool               // true when thinking output is enabled (default: false)
 }
 
 // NewYoloAgent creates an agent rooted in the current working directory
@@ -72,7 +69,11 @@ func NewYoloAgent() *YoloAgent {
 	baseDir, _ := os.Getwd()
 	execPath, _ := os.Executable()
 
-	cfg := NewYoloConfig(baseDir)
+	cfg := NewYoloConfig()
+	yoloDir := cfg.GetYoloDir()
+
+	// Initialize global todo list in the YOLO data directory
+	InitGlobalTodoList(yoloDir)
 
 	// Clear stale subagent results from any prior run so that
 	// listSubagents/readSubagentResult don't return leftover data and the
@@ -94,25 +95,25 @@ func NewYoloAgent() *YoloAgent {
 		scriptPath:      execPath,
 		binaryModTime:   binaryModTime,
 		ollama:          NewOllamaClient(cfg.GetOllamaURL(), cfg.GetNumCtxOverride()),
-		history:         NewHistoryManager(baseDir),
+		history:         NewHistoryDB(yoloDir),
 		config:          cfg,
 		running:         true,
-		thinkingEnabled: true, // default: thinking is shown
+		thinkingEnabled: false, // default: thinking is off
 		tts:             NewTTSManager(),
 		stt:             NewSTTManager(),
-		memory:          NewMemoryManager(filepath.Join(baseDir, ".yolo")),
-		contextMgr:      NewContextManager(filepath.Join(baseDir, ".yolo")),
+		memory:          NewMemoryManager(yoloDir),
+		contextMgr:      NewContextManager(yoloDir),
 	}
 	a.tools = NewToolExecutor(baseDir, a)
 
 	// Initialize MCP server connections (non-fatal if mcp.json missing)
-	a.mcp = NewMCPManager(filepath.Join(baseDir, ".yolo"))
+	a.mcp = NewMCPManager(yoloDir)
 	if err := a.mcp.Start(); err != nil {
 		cprint(Yellow, fmt.Sprintf("  MCP: config error: %v", err))
 	}
 
 	// Initialize scheduler (loads cron.json, starts background ticker)
-	a.cron = NewCronManager(filepath.Join(baseDir, ".yolo"))
+	a.cron = NewCronManager(yoloDir)
 	a.cron.Load()
 	a.cron.Start(func(sched CronSchedule) {
 		cprint(Cyan, fmt.Sprintf("  [cron] firing: %s", sched.Name))
@@ -138,21 +139,21 @@ func (a *YoloAgent) allTools() []ToolDef {
 	return all
 }
 
-// getSystemPrompt loads SYSTEM_PROMPT.md and interpolates runtime values
-// (working directory, model name, timestamp, etc.).
+// getSystemPrompt loads SYSTEM_PROMPT.md from the YOLO data directory and
+// interpolates runtime values (working directory, model name, timestamp, etc.).
+// Falls back to a minimal embedded prompt if the file is not found.
 func (a *YoloAgent) getSystemPrompt() string {
-	// Load the system prompt template from file
-	systemPromptPath := filepath.Join(a.baseDir, "SYSTEM_PROMPT.md")
-	templateContent, err := os.ReadFile(systemPromptPath)
+	// Load system prompt from YOLO data directory, fall back to minimal embedded default
+	promptPath := filepath.Join(a.config.GetYoloDir(), "SYSTEM_PROMPT.md")
+	templateContent, err := os.ReadFile(promptPath)
 	if err != nil {
-		cprint(Red, fmt.Sprintf("  Error: Could not read SYSTEM_PROMPT.md: %v\n", err))
-		cprint(Red, "  SYSTEM_PROMPT.md is required. Please ensure it exists in the working directory.\n")
-		os.Exit(1)
+		templateContent = []byte("Ask user for instructions and save to SYSTEM_PROMPT.md")
+		cprint(Gray, fmt.Sprintf("  System prompt: built-in fallback (create %s to customize)", promptPath))
 	}
 
 	// Load knowledge base if it exists
 	var kbSection string
-	kbPath := filepath.Join(a.baseDir, ".yolo", "knowledge.md")
+	kbPath := filepath.Join(a.config.GetYoloDir(), "knowledge.md")
 	if content, err := os.ReadFile(kbPath); err == nil {
 		kbSection = "\n## Knowledge Base\n" + string(content)
 	}
@@ -234,7 +235,10 @@ func (a *YoloAgent) checkBinaryFreshness() string {
 // checkEmailInbox returns a warning message if there are unread emails in the inbox.
 // It counts files in the Maildir new/ directory and returns an alert if any exist.
 func (a *YoloAgent) checkEmailInbox() string {
-	inboxPath := "/var/mail/b-haven.org/yolo/new/"
+	inboxPath := a.config.GetInboxPath()
+	if inboxPath == "" {
+		return ""
+	}
 
 	// Check if inbox directory exists
 	if _, err := os.Stat(inboxPath); os.IsNotExist(err) {
@@ -271,8 +275,8 @@ func (a *YoloAgent) restart() {
 
 // ── Setup ──
 
-// setupFirstRun runs on first launch (no history file). It connects to Ollama,
-// lets the user pick a model, and records the choice.
+// setupFirstRun runs on first launch (no model configured). Connects to Ollama,
+// lets the user pick a model, and records the choice. Exits if Ollama is unreachable.
 func (a *YoloAgent) setupFirstRun() {
 	cprint(Cyan+Bold, "\n  YOLO - Your Own Living Operator")
 	cprint(Gray, "  A self-evolving AI agent for software development")
@@ -1607,6 +1611,8 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		cprint(Reset, "  /mcp reload      Reconnect to MCP servers")
 		cprint(Reset, "  /compact         Summarize older messages to free context window")
 		cprint(Reset, "  /context         Show context window stats and summary status")
+		cprint(Reset, "  /config          Show all configuration values")
+		cprint(Reset, "  /config <k> <v>  Set a configuration value")
 		cprint(Reset, "  /cron            Show scheduled tasks")
 		cprint(Reset, "  /learn           Run autonomous research for self-improvement")
 		cprint(Reset, "  /restart         Restart YOLO")
@@ -1825,9 +1831,10 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		}
 
 	case "/history":
-		n := len(a.history.Data.Messages)
+		recent := len(a.history.Data.Messages)
+		total := a.history.MessageCount()
 		e := len(a.history.Data.EvolutionLog)
-		cprint(Cyan, fmt.Sprintf("  Messages: %d  |  Evolution events: %d", n, e))
+		cprint(Cyan, fmt.Sprintf("  Recent context: %d  |  Total in database: %d  |  Evolution events: %d", recent, total, e))
 
 	case "/clear":
 		a.history.Data.Messages = []HistoryMessage{}
@@ -1845,6 +1852,46 @@ func (a *YoloAgent) handleCommand(cmd string) {
 	case "/context":
 		a.showContextStatus()
 
+	case "/config":
+		if arg == "" {
+			// Show all config
+			all := a.config.GetAll()
+			keys := make([]string, 0, len(all))
+			for k := range all {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			cprint(Cyan, fmt.Sprintf("Configuration (%s/config.json):", a.config.GetYoloDir()))
+			for _, k := range keys {
+				v := all[k]
+				if v == "" {
+					v = "(not set)"
+				}
+				cprint(Reset, fmt.Sprintf("  %-15s = %s", k, v))
+			}
+		} else {
+			// Set config: /config key value
+			parts := strings.SplitN(arg, " ", 2)
+			if len(parts) < 2 {
+				// Show single key
+				all := a.config.GetAll()
+				if v, ok := all[parts[0]]; ok {
+					if v == "" {
+						v = "(not set)"
+					}
+					cprint(Cyan, fmt.Sprintf("  %s = %s", parts[0], v))
+				} else {
+					cprint(Red, fmt.Sprintf("  Unknown config key: %s", parts[0]))
+				}
+			} else {
+				if err := a.config.SetByName(parts[0], parts[1]); err != nil {
+					cprint(Red, fmt.Sprintf("  %v", err))
+				} else {
+					cprint(Green, fmt.Sprintf("  %s = %s", parts[0], parts[1]))
+				}
+			}
+		}
+
 	case "/cron":
 		a.showCronStatus(arg)
 
@@ -1854,7 +1901,7 @@ func (a *YoloAgent) handleCommand(cmd string) {
 	case "/status":
 		cprint(Cyan, "Status:")
 		cprint(Reset, fmt.Sprintf("  Model:       %s", a.config.GetModel()))
-		cprint(Reset, fmt.Sprintf("  Messages:    %d", len(a.history.Data.Messages)))
+		cprint(Reset, fmt.Sprintf("  Messages:    %d (context) / %d (total)", len(a.history.Data.Messages), a.history.MessageCount()))
 		cprint(Reset, fmt.Sprintf("  Evolutions:  %d", len(a.history.Data.EvolutionLog)))
 		cprint(Reset, fmt.Sprintf("  Working dir: %s", a.baseDir))
 		cprint(Reset, fmt.Sprintf("  Script:      %s", a.scriptPath))
@@ -1958,7 +2005,7 @@ func (a *YoloAgent) showMemoryStatus(arg string) {
 		cprint(Cyan, "Memory Tiers:")
 		cprint(Reset, fmt.Sprintf("  MEMORY.md:    %d/%d lines (curated durable facts)", memLines, MaxMemoryLines))
 		cprint(Reset, fmt.Sprintf("  Daily logs:   %d files", len(dates)))
-		kbPath := filepath.Join(a.baseDir, ".yolo", "knowledge.md")
+		kbPath := filepath.Join(a.config.GetYoloDir(), "knowledge.md")
 		if info, err := os.Stat(kbPath); err == nil {
 			cprint(Reset, fmt.Sprintf("  knowledge.md: %d bytes (legacy)", info.Size()))
 		}
@@ -1981,7 +2028,7 @@ func (a *YoloAgent) showMCPStatus(arg string) {
 	case "reload":
 		cprint(Cyan, "  Reconnecting to MCP servers...")
 		a.mcp.Close()
-		a.mcp = NewMCPManager(filepath.Join(a.baseDir, ".yolo"))
+		a.mcp = NewMCPManager(a.config.GetYoloDir())
 		if err := a.mcp.Start(); err != nil {
 			cprint(Red, fmt.Sprintf("  MCP reload error: %v", err))
 		} else {
@@ -1992,7 +2039,7 @@ func (a *YoloAgent) showMCPStatus(arg string) {
 		status := a.mcp.ServerStatus()
 		if status == "No MCP servers connected" {
 			cprint(Yellow, "  "+status)
-			cprint(Reset, "  Configure servers in .yolo/mcp.json")
+			cprint(Reset, fmt.Sprintf("  Configure servers in %s/mcp.json", a.config.GetYoloDir()))
 			cprint(Reset, "  /mcp reload  Reconnect after config changes")
 		} else {
 			cprint(Cyan, "MCP Servers:")
@@ -2222,113 +2269,24 @@ func (a *YoloAgent) echoUserInput(text string) {
 	}
 }
 
-// sleepUntilInput waits until new input arrives. On the first call it sends a
-// one-time status report email and prints a console announcement. Subsequent
-// calls (while still sleeping) just do a quiet 60-second poll.
-func (a *YoloAgent) sleepUntilInput() {
-	// Only announce and send email the very first time we enter sleep mode.
-	if !a.sleeping {
-		a.sleeping = true
-		cprint(Yellow, "  === YOLO SLEEP MODE ===")
-		cprint(Reset, "  No pending todos found.")
-		cprint(Reset, "  Sending status report to scott@stg.net...")
 
-		reportBody := "YOLO Autonomous Agent Status Report\n\n" +
-			"Status: IDLE (Sleep Mode)\n" +
-			"\nSummary:\n" +
-			"- No pending todos in the task list\n" +
-			"- YOLO has entered sleep mode to conserve resources\n" +
-			"- Waiting for new input via email or user interaction\n" +
-			"\nThe agent will resume autonomous operation when:\n" +
-			"1. A new email arrives and is processed\n" +
-			"2. User provides manual input\n" +
-			"3. New todos are added to the list\n" +
-			"\nTimestamp: " + time.Now().Format("2006-01-02 15:04:05 MST") + "\n" +
-			"\nYOLO - Your Own Living Operator"
-
-		if err := sendEmailDirectly("scott@stg.net", "YOLO Status: Idle - No Pending Tasks", reportBody); err != nil {
-			cprint(Red, "  Failed to send status email: "+err.Error())
-		} else {
-			cprint(Green, "  Report sent successfully.")
-		}
-
-		cprint(Reset, "  Entering sleep mode - waiting for input...")
-		cprint(Yellow, "  ====================================")
-	}
-
-	// Quiet sleep: wait 60 seconds, checking for wake conditions.
-	// We break the 60s into 5s intervals so we can respond within ~5s
-	// while still keeping the outer loop quiet (no console/email spam).
-	for i := 0; i < 12; i++ {
-		time.Sleep(5 * time.Second)
-
-		// Check if there's new user input
-		a.inputMgr.mu.Lock()
-		hasInput := len(a.inputMgr.buf) > 0
-		a.inputMgr.mu.Unlock()
-
-		if hasInput {
-			cprint(Green, "  Input detected - resuming normal operation")
-			return
-		}
-
-		// Check for new emails in the inbox
-		emailFiles := checkInboxFiles()
-		if len(emailFiles) > 0 {
-			cprint(Green, fmt.Sprintf("  %d new email(s) detected - resuming to process", len(emailFiles)))
-			a.wakeForEmail = true
-			return
-		}
-
-		// Check for due scheduled tasks
-		if a.cron != nil && a.cron.HasDueSchedules() {
-			cprint(Green, "  Scheduled task due - resuming to execute")
-			a.cron.checkSchedules()
-			return
-		}
-	}
-	// Still sleeping — return to the main loop which will call us again quietly.
-}
-
-// checkInboxFiles returns list of files in the inbox directory
-func checkInboxFiles() []string {
-	files, _ := os.ReadDir("/var/mail/b-haven.org/yolo/new/")
-	var result []string
-	for _, f := range files {
-		if !f.IsDir() {
-			result = append(result, f.Name())
-		}
-	}
-	return result
-}
-
-// getUnreadEmailCount returns the number of unread emails in the inbox
-func getUnreadEmailCount() int {
-	files, err := os.ReadDir("/var/mail/b-haven.org/yolo/new/")
-	if err != nil {
-		return 0
-	}
-	count := 0
-	for _, f := range files {
-		if !f.IsDir() {
-			count++
-		}
-	}
-	return count
-}
-
-// sendEmailDirectly sends an email using sendmail command
-func sendEmailDirectly(to, subject, body string) error {
-	emailInput := fmt.Sprintf("To: %s\nFrom: yolo@b-haven.org\nSubject: %s\n\n%s\n", to, subject, body)
-	cmd := exec.Command("sendmail", "-t")
-	cmd.Stdin = strings.NewReader(emailInput)
-	return cmd.Run()
-}
 
 // Run is the top-level entry point. It loads (or creates) session history,
 // initialises the terminal UI and input manager, registers signal handlers,
 // and enters the main event loop. It blocks until the user exits.
 func (a *YoloAgent) Run() {
+	// Ensure YOLO data directory exists and display its path
+	yoloDir := a.config.GetYoloDir()
+	if _, err := os.Stat(yoloDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(yoloDir, 0o755); err != nil {
+			cprint(Red, fmt.Sprintf("  Error: could not create data directory %s: %v", yoloDir, err))
+			os.Exit(1)
+		}
+		cprint(Gray, fmt.Sprintf("  Data directory: %s (created)", yoloDir))
+	} else {
+		cprint(Gray, fmt.Sprintf("  Data directory: %s", yoloDir))
+	}
+
 	a.config.Load()
 	hasHistory := a.history.Load()
 
@@ -2338,15 +2296,6 @@ func (a *YoloAgent) Run() {
 	}
 	if enabled := a.config.GetTTSEnabled(); enabled != nil {
 		a.tts.SetEnabled(*enabled)
-	}
-
-	// Check Ollama connectivity early with a short timeout so the user
-	// gets a clear message instead of a cryptic HTTP error on first chat.
-	{
-		check := &http.Client{Timeout: 3 * time.Second}
-		if _, err := check.Get(a.config.GetOllamaURL() + "/api/tags"); err != nil {
-			cprint(Yellow, fmt.Sprintf("  Warning: Cannot reach Ollama at %s — is it running?", a.config.GetOllamaURL()))
-		}
 	}
 
 	hasModel := a.config.GetModel() != ""
@@ -2443,9 +2392,6 @@ func (a *YoloAgent) Run() {
 				a.handleCommand(stripped)
 				a.showPrompt()
 			} else if stripped != "" {
-				// User interaction resets sleep state so next sleep entry announces fresh
-				a.sleeping = false
-
 				a.mu.Lock()
 				a.busy = true
 				a.mu.Unlock()
@@ -2468,19 +2414,6 @@ func (a *YoloAgent) Run() {
 			bufEmpty := len(a.inputMgr.buf) == 0
 			a.inputMgr.mu.Unlock()
 			if bufEmpty && a.config.GetAutoMode() {
-				// Check for pending todos before entering autonomous mode
-				todoList := GetGlobalTodoList()
-				_, pendingCount, _ := todoList.GetStats()
-				// If no pending todos, no unread emails, and not waking for email, enter sleep mode
-				if pendingCount == 0 && getUnreadEmailCount() == 0 && !a.wakeForEmail {
-					a.sleepUntilInput()
-					continue
-				}
-
-				// Waking from sleep due to new todos or email — reset sleep state
-				a.sleeping = false
-				a.wakeForEmail = false
-
 				a.inputMgr.ClearLine()
 
 				a.mu.Lock()

@@ -151,7 +151,7 @@ func (t *ToolExecutor) searchDuckDuckGoWithRetry(query string, count int, maxRet
 			continue
 		}
 
-		req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; YOLO-Search-Bot/1.0)")
+		req.Header.Set("User-Agent", t.getUserAgent())
 
 		resp, err := client.Do(req)
 		if err != nil {
@@ -211,7 +211,7 @@ func (t *ToolExecutor) searchWikipediaWithRetry(query string, count int, maxRetr
 			continue
 		}
 
-		req.Header.Set("User-Agent", "YOLO-Search-Bot/1.0 (yolo@b-haven.org)")
+		req.Header.Set("User-Agent", t.getUserAgent())
 
 		resp, err := client.Do(req)
 		if err != nil {

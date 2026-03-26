@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -42,7 +43,7 @@ func (t *ToolExecutor) searxngSearch(query string, count int) string {
 	if err != nil {
 		return errorMessage("SearXNG request error: %v", err)
 	}
-	req.Header.Set("User-Agent", "YOLO-Search-Bot/1.0")
+	req.Header.Set("User-Agent", t.getUserAgent())
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := client.Do(req)
@@ -171,13 +172,15 @@ func (t *ToolExecutor) screenshot(args map[string]any) string {
 		rawURL = "https://" + rawURL
 	}
 
-	outputPath := getStringArg(args, "path", "/tmp/screenshot.png")
+	defaultScreenshot := filepath.Join(t.getTempDir(), "screenshot.png")
+	outputPath := getStringArg(args, "path", defaultScreenshot)
 	fullPage := getBoolArg(args, "full_page", false)
 	width := getIntArg(args, "width", 1280)
 	height := getIntArg(args, "height", 720)
 
-	// Resolve output path via safePath if it's relative
-	if outputPath != "/tmp/screenshot.png" && !strings.HasPrefix(outputPath, "/tmp/") {
+	// Resolve output path via safePath if it's relative and not in temp dir
+	tempDir := t.getTempDir()
+	if outputPath != defaultScreenshot && !strings.HasPrefix(outputPath, tempDir) {
 		if resolved, err := t.safePath(outputPath); err == nil {
 			outputPath = resolved
 		}
@@ -302,7 +305,7 @@ func (t *ToolExecutor) readWebpageReadable(args map[string]any) string {
 	if err != nil {
 		return errorMessage("invalid URL: %v", err)
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; YOLO-Bot/1.0)")
+	req.Header.Set("User-Agent", t.getUserAgent())
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,text/plain,*/*")
 
 	resp, err := client.Do(req)

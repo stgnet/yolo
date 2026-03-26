@@ -47,8 +47,8 @@ func TestEncodeHeader(t *testing.T) {
 	}
 }
 
-// TestValidateSender tests sender validation and denylist
-func TestValidateSender(t *testing.T) {
+// TestValidateEmailFormat tests email format validation
+func TestValidateEmailFormat(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
@@ -70,17 +70,17 @@ func TestValidateSender(t *testing.T) {
 			expected: false,
 		},
 		{
-			name:     "valid looking but denylisted",
+			name:     "valid email at test.com",
 			input:    "user@test.com",
-			expected: false,
+			expected: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := validateSender(tt.input)
+			result := validateEmailFormat(tt.input)
 			if result != tt.expected {
-				t.Errorf("validateSender(%q) = %v, want %v", tt.input, result, tt.expected)
+				t.Errorf("validateEmailFormat(%q) = %v, want %v", tt.input, result, tt.expected)
 			}
 		})
 	}

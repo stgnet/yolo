@@ -306,7 +306,7 @@ func NewTTSManager() *TTSManager {
 		voice = backend.DefaultVoice()
 	}
 	tts := &TTSManager{
-		enabled: backend != nil,
+		enabled: false, // off by default; enable via /tts on or config
 		voice:   voice,
 		backend: backend,
 		queue:   make(chan string, 100),

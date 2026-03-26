@@ -1,5 +1,5 @@
 // Email Tool Implementation with Security Hardening
-// Allows YOLO to send emails via SMTP from yolo@b-haven.org
+// Allows YOLO to send emails via SMTP using configured sender address
 // Includes protection against prompt injection and header injection
 
 package main
@@ -16,28 +16,13 @@ import (
 // Security constants for validation
 const (
 	AllowedSenderRegex = `^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`
-	DenylistedDomains  = "example.com|test.com|suspicious-domain.org"
 )
 
-// validateSender checks if sender is allowed (not denylisted)
-// Format validation MUST happen before denylist check to avoid false rejections of invalid emails
-func validateSender(emailAddress string) bool {
-	// First, validate email format - must be valid before checking denylist
+// validateEmailFormat checks if an email address has valid format
+func validateEmailFormat(emailAddress string) bool {
 	formatRegex := regexp.MustCompile(AllowedSenderRegex)
-	if !formatRegex.MatchString(emailAddress) {
-		return false // Invalid email format
-	}
-
-	// Only check denylist for properly formatted emails
-	denyRegex := regexp.MustCompile("(?i)(" + DenylistedDomains + ")")
-	if denyRegex.MatchString(emailAddress) {
-		return false // Email domain is denylisted
-	}
-
-	return true
+	return formatRegex.MatchString(emailAddress)
 }
-
-
 
 // encodeHeader safely encodes header values to prevent header injection
 func encodeHeader(value string) string {
@@ -56,17 +41,17 @@ func encodeHeader(value string) string {
 // loadAttachments reads file contents for attachment paths and returns email.Attachments
 func loadAttachments(paths []string) ([]email.Attachment, error) {
 	var attachments []email.Attachment
-	
+
 	for _, path := range paths {
 		if path == "" {
 			continue // Skip empty paths
 		}
-		
+
 		content, err := os.ReadFile(path)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read attachment %s: %v", path, err)
 		}
-		
+
 		// Extract filename from path
 		filename := path
 		for i := len(path) - 1; i >= 0; i-- {
@@ -75,16 +60,16 @@ func loadAttachments(paths []string) ([]email.Attachment, error) {
 				break
 			}
 		}
-		
+
 		// Security: prevent path traversal in filename
 		filename = sanitizeFilename(filename)
-		
+
 		attachments = append(attachments, email.Attachment{
 			Filename: filename,
 			Content:  content,
 		})
 	}
-	
+
 	return attachments, nil
 }
 
@@ -96,6 +81,26 @@ func sanitizeFilename(filename string) string {
 	return filename
 }
 
+// parseAttachmentArg extracts attachment paths from tool arguments.
+func parseAttachmentArg(args map[string]any) []string {
+	attachmentArg, ok := args["attachments"]
+	if !ok || attachmentArg == nil {
+		return nil
+	}
+	var paths []string
+	switch v := attachmentArg.(type) {
+	case []string:
+		paths = v
+	case []interface{}:
+		for _, item := range v {
+			if str, ok := item.(string); ok && str != "" {
+				paths = append(paths, str)
+			}
+		}
+	}
+	return paths
+}
+
 func (t *ToolExecutor) sendEmail(args map[string]any) string {
 	subject := getStringArg(args, "subject", "")
 	body := getStringArg(args, "body", "")
@@ -105,53 +110,38 @@ func (t *ToolExecutor) sendEmail(args map[string]any) string {
 		return errorMessage("subject and body parameters are required")
 	}
 
-	// Validate email format using proper regex
-	emailRegex := regexp.MustCompile(AllowedSenderRegex)
-	if !emailRegex.MatchString(to) {
+	// Use configured default recipient if none provided
+	if to == "" {
+		if t.agent != nil {
+			to = t.agent.config.GetEmailTo()
+		}
+	}
+	if to == "" {
+		return errorMessage("'to' parameter is required (no default recipient configured)")
+	}
+
+	// Validate email format
+	if !validateEmailFormat(to) {
 		return errorMessage("invalid email address '%s'", to)
 	}
 
-	// Get email configuration (uses local SMTP relay by default, no auth needed)
-	cfg := email.DefaultConfig()
-
-	// If no recipient specified, use default (scott@stg.net)
-	if to == "" {
-		to = "scott@stg.net"
+	// Get sender from config
+	var emailFrom string
+	if t.agent != nil {
+		emailFrom = t.agent.config.GetEmailFrom()
 	}
-
-	// Validate sender is not denylisted
-	if !validateSender(to) {
-		return errorMessage("email address '%s' is not allowed", to)
-	}
+	cfg := email.ConfigWithFrom(emailFrom)
 
 	// Encode headers safely to prevent header injection
 	safeSubject := encodeHeader(subject)
 
 	// Load attachments if specified
 	var attachments []email.Attachment
-	
-	// Handle attachments - JSON arrays may be parsed as []interface{} rather than []string
-	if attachmentArg, ok := args["attachments"]; ok && attachmentArg != nil {
-		var attachmentPaths []string
-		
-		// Try to convert to string slice (handles both []string and []interface{})
-		switch v := attachmentArg.(type) {
-		case []string:
-			attachmentPaths = v
-		case []interface{}:
-			for _, item := range v {
-				if str, ok := item.(string); ok && str != "" {
-					attachmentPaths = append(attachmentPaths, str)
-				}
-			}
-		}
-		
-		if len(attachmentPaths) > 0 {
-			var err error
-			attachments, err = loadAttachments(attachmentPaths)
-			if err != nil {
-				return errorMessage("loading attachments: %v", err)
-			}
+	if paths := parseAttachmentArg(args); len(paths) > 0 {
+		var err error
+		attachments, err = loadAttachments(paths)
+		if err != nil {
+			return errorMessage("loading attachments: %v", err)
 		}
 	}
 
@@ -169,9 +159,9 @@ func (t *ToolExecutor) sendEmail(args map[string]any) string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString("✅ Email sent successfully\n")
+	sb.WriteString("Email sent successfully\n")
 	sb.WriteString(fmt.Sprintf("   To: %s\n", to))
-	sb.WriteString(fmt.Sprintf("   From: yolo@b-haven.org\n"))
+	sb.WriteString(fmt.Sprintf("   From: %s\n", cfg.From))
 	sb.WriteString(fmt.Sprintf("   Subject: %s\n", safeSubject))
 	if len(attachments) > 0 {
 		sb.WriteString(fmt.Sprintf("   Attachments: %d file(s)\n", len(attachments)))
@@ -180,48 +170,51 @@ func (t *ToolExecutor) sendEmail(args map[string]any) string {
 }
 
 func (t *ToolExecutor) sendReport(args map[string]any) string {
-	// Convenience function for sending progress reports
-	cfg := email.DefaultConfig()
-
 	subject := getStringArg(args, "subject", "YOLO Progress Report")
 	body := getStringArg(args, "body", "")
-	to := getStringArg(args, "to", "")                  // Get recipient from args
-	attachTodo := getBoolArg(args, "attach_todo", true) // Default: include todo list
+	to := getStringArg(args, "to", "")
+	attachTodo := getBoolArg(args, "attach_todo", true)
 
 	if body == "" {
 		return errorMessage("body parameter is required")
 	}
 
-	// Validate email format for recipient
-	matched, _ := regexp.MatchString(AllowedSenderRegex, to)
-	if !matched {
+	// Use configured default recipient if none provided
+	if to == "" {
+		if t.agent != nil {
+			to = t.agent.config.GetEmailTo()
+		}
+	}
+	if to == "" {
+		return errorMessage("'to' parameter is required (no default recipient configured)")
+	}
+
+	// Validate email format
+	if !validateEmailFormat(to) {
 		return errorMessage("invalid to address: %s", to)
 	}
 
 	// Append todo list to the report if not already included and attach_todo is true
-	if attachTodo && !strings.Contains(body, "📝 TODO LIST") {
+	if attachTodo && !strings.Contains(body, "TODO LIST") {
 		todoOutput := listTodos()
 		body = body + "\n\n" + todoOutput
 	}
 
-	// Use provided recipient or default to scott@stg.net
-	if to == "" {
-		to = "scott@stg.net"
+	// Get sender from config
+	var emailFrom string
+	if t.agent != nil {
+		emailFrom = t.agent.config.GetEmailFrom()
 	}
-
-	// Validate sender is not denylisted
-	if !validateSender(to) {
-		return errorMessage("email address '%s' is not allowed", to)
-	}
+	cfg := email.ConfigWithFrom(emailFrom)
 
 	// Encode headers safely to prevent header injection
 	safeSubject := encodeHeader(subject)
 
 	// Load attachments if specified
 	var attachments []email.Attachment
-	if attachmentPaths, ok := args["attachments"].([]string); ok && len(attachmentPaths) > 0 {
+	if paths := parseAttachmentArg(args); len(paths) > 0 {
 		var err error
-		attachments, err = loadAttachments(attachmentPaths)
+		attachments, err = loadAttachments(paths)
 		if err != nil {
 			return errorMessage("loading attachments: %v", err)
 		}
@@ -241,9 +234,9 @@ func (t *ToolExecutor) sendReport(args map[string]any) string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString("✅ Progress report sent successfully\n")
+	sb.WriteString("Progress report sent successfully\n")
 	sb.WriteString(fmt.Sprintf("   To: %s\n", to))
-	sb.WriteString(fmt.Sprintf("   From: yolo@b-haven.org\n"))
+	sb.WriteString(fmt.Sprintf("   From: %s\n", cfg.From))
 	sb.WriteString(fmt.Sprintf("   Subject: %s\n", safeSubject))
 	if len(attachments) > 0 {
 		sb.WriteString(fmt.Sprintf("   Attachments: %d file(s)\n", len(attachments)))

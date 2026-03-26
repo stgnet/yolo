@@ -226,7 +226,7 @@ func compactionPrompt(existingSummary string, messages []HistoryMessage) string 
 // It uses the LLM to generate the summary, then keeps only recent messages.
 // Returns the number of messages compacted and any error.
 func CompactHistory(ctx context.Context, ollama *OllamaClient, model string,
-	history *HistoryManager, ctxMgr *ContextManager, keepRecent int) (int, error) {
+	history *HistoryDB, ctxMgr *ContextManager, keepRecent int) (int, error) {
 
 	history.mu.Lock()
 	msgCount := len(history.Data.Messages)

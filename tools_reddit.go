@@ -107,7 +107,7 @@ func (t *ToolExecutor) reddit(args map[string]any) string {
 		return errorMessage("could not create request: %v", err)
 	}
 
-	req.Header.Set("User-Agent", "YOLO-Agent/1.0 (by /u/yolo)")
+	req.Header.Set("User-Agent", t.getUserAgent())
 
 	resp, err := client.Do(req)
 	if err != nil {

@@ -46,7 +46,7 @@ func (t *ToolExecutor) readWebpage(args map[string]any) string {
 	if err != nil {
 		return errorMessage("invalid URL '%s': %v", rawURL, err)
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; YOLO-Bot/1.0)")
+	req.Header.Set("User-Agent", t.getUserAgent())
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,text/plain,*/*")
 
 	resp, err := client.Do(req)

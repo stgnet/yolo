@@ -5,13 +5,8 @@ import "regexp"
 // ─── Constants ───────────────────────────────────────────────────────
 
 const (
-	// YoloDir is the directory (relative to the working directory) where
-	// history, sub-agent results, and other state files are stored.
-	YoloDir = ".yolo"
-
-	// IMPORTANT: Source code is in current directory (.), NOT in yolo/
-	// File paths should be relative to: /Users/sgriepentrog/src/yolo
-	// Example: Use "tools_inbox.go", NOT "yolo/"tools_inbox.go"
+	// Source code is in the current directory (.).
+	// File paths should be relative to the working directory.
 	_SourceCodeLocation = "."
 
 	// CRITICAL: Use the restart tool to rebuild, NEVER call os.Exit()

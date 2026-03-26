@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -12,7 +13,7 @@ import (
 
 // ─── Todo Data Types ────────────────────────────────────────────────
 
-const defaultTodoFile = ".todo.json"
+const defaultTodoFile = "todo.json"
 
 // Todo represents a single todo item.
 type Todo struct {
@@ -33,11 +34,21 @@ type TodoList struct {
 var globalTodoList *TodoList
 var globalTodoOnce sync.Once
 
-// GetGlobalTodoList returns a singleton TodoList instance.
-func GetGlobalTodoList() *TodoList {
+// InitGlobalTodoList initializes the global todo list with a path inside
+// the given YOLO data directory. Must be called before GetGlobalTodoList.
+func InitGlobalTodoList(yoloDir string) {
 	globalTodoOnce.Do(func() {
-		globalTodoList = NewTodoList(defaultTodoFile)
+		filePath := filepath.Join(yoloDir, defaultTodoFile)
+		globalTodoList = NewTodoList(filePath)
 	})
+}
+
+// GetGlobalTodoList returns the singleton TodoList instance.
+func GetGlobalTodoList() *TodoList {
+	if globalTodoList == nil {
+		// Fallback: initialize with default (should not happen in normal use)
+		globalTodoList = NewTodoList(defaultTodoFile)
+	}
 	return globalTodoList
 }
 

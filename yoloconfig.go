@@ -5,14 +5,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
 // ─── Yolo Config ─────────────────────────────────────────────────────
 //
 // YoloConfig is the single configuration system for YOLO. It manages both
-// persistent settings (stored in .yolo/config.json) and runtime paths
-// derived from environment variables and working directory.
+// persistent settings (stored in config.json) and runtime paths derived
+// from environment variables. All state is stored in a user-level
+// directory determined by resolveYoloDir().
 
 // YoloConfigData is the top-level JSON structure for config.json.
 type YoloConfigData struct {
@@ -21,38 +23,67 @@ type YoloConfigData struct {
 	TerminalMode bool   `json:"terminal_mode,omitempty"` // true = classic split-screen UI; false (default) = buffer mode
 	DebugMode    *bool  `json:"debug_mode,omitempty"`    // false (default) = cleaner output; true = show full tool args/results verbatim
 	AutoMode     *bool  `json:"auto_mode,omitempty"`     // false (default) = wait for user input; true = enable autonomous mode
-	ThinkMode    *bool  `json:"think_mode,omitempty"`    // true (default) = show thinking output; false = hide thinking blocks
+	ThinkMode    *bool  `json:"think_mode,omitempty"`    // false (default) = hide thinking blocks; true = show thinking output
 	TTSVoice     string `json:"tts_voice,omitempty"`     // TTS voice name (default: platform-specific)
-	TTSEnabled   *bool  `json:"tts_enabled,omitempty"`   // nil = default (enabled if backend found); true/false = explicit
+	TTSEnabled   *bool  `json:"tts_enabled,omitempty"`   // false (default) = disabled; true = enabled
+	EmailFrom    string `json:"email_from,omitempty"`    // sender email address (default: yolo@localhost)
+	EmailTo      string `json:"email_to,omitempty"`      // default recipient email address
+	InboxPath    string `json:"inbox_path,omitempty"`    // Maildir inbox path (default: empty = no inbox)
+	UserAgent    string `json:"user_agent,omitempty"`    // HTTP User-Agent string (default: YOLO-Agent/1.0)
+	TempDir      string `json:"temp_dir,omitempty"`      // temporary file directory (default: os.TempDir())
 }
 
 // YoloConfig owns the in-memory config and handles reading/writing to disk.
 type YoloConfig struct {
-	yoloDir        string // working directory
-	configFile     string // path to .yolo/config.json
+	yoloDir        string // resolved user-level YOLO directory (e.g. ~/.config/yolo)
+	configFile     string // path to config.json within yoloDir
 	ollamaURL      string // Ollama API base URL (from OLLAMA_URL env, default http://localhost:11434)
 	numCtxOverride string // context window override (from YOLO_NUM_CTX env)
-	subagentDir    string // path to .yolo/subagents/
+	subagentDir    string // path to subagents/ within yoloDir
 	Data           YoloConfigData
 	loaded         bool // true after Load() succeeds or first Save() on new config
 	mu             sync.Mutex
 }
 
-// NewYoloConfig creates a config manager rooted in the given working directory.
-// Runtime paths are derived from the working directory and environment variables.
-func NewYoloConfig(workDir string) *YoloConfig {
+// resolveYoloDir determines the YOLO data directory using, in priority order:
+//  1. YOLO_DIR environment variable (explicit override)
+//  2. os.UserConfigDir()/yolo  (platform-correct: ~/.config/yolo on Linux,
+//     ~/Library/Application Support/yolo on macOS, %AppData%/yolo on Windows)
+//  3. ~/.yolo as a last-resort fallback
+func resolveYoloDir() string {
+	if dir := os.Getenv("YOLO_DIR"); dir != "" {
+		return dir
+	}
+	if configDir, err := os.UserConfigDir(); err == nil {
+		return filepath.Join(configDir, "yolo")
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		return filepath.Join(home, ".yolo")
+	}
+	return ".yolo"
+}
+
+// NewYoloConfig creates a config manager using the resolved user-level directory.
+// Runtime paths are derived from the directory and environment variables.
+func NewYoloConfig() *YoloConfig {
+	yoloDir := resolveYoloDir()
 	ollamaURL := os.Getenv("OLLAMA_URL")
 	if ollamaURL == "" {
 		ollamaURL = "http://localhost:11434"
 	}
 	return &YoloConfig{
-		yoloDir:        workDir,
-		configFile:     filepath.Join(workDir, ".yolo", "config.json"),
+		yoloDir:        yoloDir,
+		configFile:     filepath.Join(yoloDir, "config.json"),
 		ollamaURL:      ollamaURL,
 		numCtxOverride: os.Getenv("YOLO_NUM_CTX"),
-		subagentDir:    filepath.Join(workDir, ".yolo", "subagents"),
+		subagentDir:    filepath.Join(yoloDir, "subagents"),
 		Data:           YoloConfigData{Version: 1},
 	}
+}
+
+// GetYoloDir returns the resolved YOLO data directory path.
+func (c *YoloConfig) GetYoloDir() string {
+	return c.yoloDir
 }
 
 // GetOllamaURL returns the Ollama API base URL.
@@ -158,6 +189,21 @@ func (c *YoloConfig) mergeOnto(disk *YoloConfigData) {
 	if c.Data.TTSEnabled != nil {
 		disk.TTSEnabled = c.Data.TTSEnabled
 	}
+	if c.Data.EmailFrom != "" {
+		disk.EmailFrom = c.Data.EmailFrom
+	}
+	if c.Data.EmailTo != "" {
+		disk.EmailTo = c.Data.EmailTo
+	}
+	if c.Data.InboxPath != "" {
+		disk.InboxPath = c.Data.InboxPath
+	}
+	if c.Data.UserAgent != "" {
+		disk.UserAgent = c.Data.UserAgent
+	}
+	if c.Data.TempDir != "" {
+		disk.TempDir = c.Data.TempDir
+	}
 }
 
 // GetModel returns the configured model name.
@@ -228,13 +274,12 @@ func (c *YoloConfig) SetAutoMode(enabled bool) {
 	c.saveLocked()
 }
 
-// GetThinkMode returns whether thinking output is shown. Defaults to true
-// when not explicitly set, showing thinking blocks by default.
+// GetThinkMode returns whether thinking output is shown. Defaults to false.
 func (c *YoloConfig) GetThinkMode() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.Data.ThinkMode == nil {
-		return true // default on
+		return false
 	}
 	return *c.Data.ThinkMode
 }
@@ -276,4 +321,169 @@ func (c *YoloConfig) SetTTSEnabled(enabled bool) {
 	defer c.mu.Unlock()
 	c.Data.TTSEnabled = &enabled
 	c.saveLocked()
+}
+
+// GetEmailFrom returns the configured sender email address.
+func (c *YoloConfig) GetEmailFrom() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.Data.EmailFrom != "" {
+		return c.Data.EmailFrom
+	}
+	return "yolo@localhost"
+}
+
+// SetEmailFrom updates the sender email and persists to disk.
+func (c *YoloConfig) SetEmailFrom(from string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Data.EmailFrom = from
+	c.saveLocked()
+}
+
+// GetEmailTo returns the configured default recipient email address.
+func (c *YoloConfig) GetEmailTo() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Data.EmailTo
+}
+
+// SetEmailTo updates the default recipient email and persists to disk.
+func (c *YoloConfig) SetEmailTo(to string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Data.EmailTo = to
+	c.saveLocked()
+}
+
+// GetInboxPath returns the configured Maildir inbox path, or "" if not set.
+func (c *YoloConfig) GetInboxPath() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Data.InboxPath
+}
+
+// SetInboxPath updates the inbox path and persists to disk.
+func (c *YoloConfig) SetInboxPath(path string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Data.InboxPath = path
+	c.saveLocked()
+}
+
+// GetUserAgent returns the configured HTTP User-Agent string.
+func (c *YoloConfig) GetUserAgent() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.Data.UserAgent != "" {
+		return c.Data.UserAgent
+	}
+	return "YOLO-Agent/1.0"
+}
+
+// SetUserAgent updates the User-Agent string and persists to disk.
+func (c *YoloConfig) SetUserAgent(ua string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Data.UserAgent = ua
+	c.saveLocked()
+}
+
+// GetTempDir returns the configured temporary directory.
+func (c *YoloConfig) GetTempDir() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.Data.TempDir != "" {
+		return c.Data.TempDir
+	}
+	return os.TempDir()
+}
+
+// SetTempDir updates the temp directory and persists to disk.
+func (c *YoloConfig) SetTempDir(dir string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Data.TempDir = dir
+	c.saveLocked()
+}
+
+// SetByName sets a config field by its JSON key name. Returns an error
+// for unknown keys. Boolean fields accept "true"/"false"/"on"/"off".
+func (c *YoloConfig) SetByName(key, value string) error {
+	switch key {
+	case "model":
+		c.SetModel(value)
+	case "email_from":
+		c.SetEmailFrom(value)
+	case "email_to":
+		c.SetEmailTo(value)
+	case "inbox_path":
+		c.SetInboxPath(value)
+	case "user_agent":
+		c.SetUserAgent(value)
+	case "temp_dir":
+		c.SetTempDir(value)
+	case "tts_voice":
+		c.SetTTSVoice(value)
+	case "terminal_mode":
+		c.SetTerminalMode(parseBool(value))
+	case "debug_mode":
+		c.SetDebugMode(parseBool(value))
+	case "auto_mode":
+		c.SetAutoMode(parseBool(value))
+	case "think_mode":
+		c.SetThinkMode(parseBool(value))
+	case "tts_enabled":
+		c.SetTTSEnabled(parseBool(value))
+	default:
+		return fmt.Errorf("unknown config key '%s'", key)
+	}
+	return nil
+}
+
+// GetAll returns all config fields as a map for display.
+func (c *YoloConfig) GetAll() map[string]string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	m := map[string]string{
+		"model":         c.Data.Model,
+		"email_from":    c.Data.EmailFrom,
+		"email_to":      c.Data.EmailTo,
+		"inbox_path":    c.Data.InboxPath,
+		"user_agent":    c.Data.UserAgent,
+		"temp_dir":      c.Data.TempDir,
+		"tts_voice":     c.Data.TTSVoice,
+		"terminal_mode": fmt.Sprintf("%v", c.Data.TerminalMode),
+	}
+	if c.Data.DebugMode != nil {
+		m["debug_mode"] = fmt.Sprintf("%v", *c.Data.DebugMode)
+	} else {
+		m["debug_mode"] = "false"
+	}
+	if c.Data.AutoMode != nil {
+		m["auto_mode"] = fmt.Sprintf("%v", *c.Data.AutoMode)
+	} else {
+		m["auto_mode"] = "false"
+	}
+	if c.Data.ThinkMode != nil {
+		m["think_mode"] = fmt.Sprintf("%v", *c.Data.ThinkMode)
+	} else {
+		m["think_mode"] = "false"
+	}
+	if c.Data.TTSEnabled != nil {
+		m["tts_enabled"] = fmt.Sprintf("%v", *c.Data.TTSEnabled)
+	} else {
+		m["tts_enabled"] = "false"
+	}
+	return m
+}
+
+// parseBool converts common boolean string representations to bool.
+func parseBool(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "true", "on", "yes", "1":
+		return true
+	default:
+		return false
+	}
 }
