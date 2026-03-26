@@ -21,7 +21,7 @@ import (
 
 // YoloAgent is the central orchestrator. It reads user input, sends messages
 // to the LLM via OllamaClient, dispatches tool calls through ToolExecutor,
-// and persists conversation state with HistoryManager. When no user input is
+// and persists conversation state with HistoryDB (SQLite). When no user input is
 // pending it immediately enters autonomous thinking.
 // handoffResult holds the outcome of a background tool execution that was
 // forked from the main agent when a user message arrived mid-tool-loop.
@@ -43,7 +43,7 @@ type YoloAgent struct {
 	scriptPath      string             // path to the running binary (used for self-restart)
 	binaryModTime   time.Time          // modification time of the binary at startup (for freshness check)
 	ollama          *OllamaClient      // LLM communication
-	history         *HistoryManager    // persistent conversation and evolution log
+	history         *HistoryDB         // persistent conversation and evolution log (SQLite)
 	config          *YoloConfig        // persistent configuration (model, etc.)
 	tools           *ToolExecutor      // tool dispatcher
 	inputMgr        *InputManager      // async terminal input
@@ -92,7 +92,7 @@ func NewYoloAgent() *YoloAgent {
 		scriptPath:      execPath,
 		binaryModTime:   binaryModTime,
 		ollama:          NewOllamaClient(cfg.GetOllamaURL(), cfg.GetNumCtxOverride()),
-		history:         NewHistoryManager(yoloDir),
+		history:         NewHistoryDB(yoloDir),
 		config:          cfg,
 		running:         true,
 		thinkingEnabled: false, // default: thinking is off
@@ -1828,9 +1828,10 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		}
 
 	case "/history":
-		n := len(a.history.Data.Messages)
+		recent := len(a.history.Data.Messages)
+		total := a.history.MessageCount()
 		e := len(a.history.Data.EvolutionLog)
-		cprint(Cyan, fmt.Sprintf("  Messages: %d  |  Evolution events: %d", n, e))
+		cprint(Cyan, fmt.Sprintf("  Recent context: %d  |  Total in database: %d  |  Evolution events: %d", recent, total, e))
 
 	case "/clear":
 		a.history.Data.Messages = []HistoryMessage{}
@@ -1897,7 +1898,7 @@ func (a *YoloAgent) handleCommand(cmd string) {
 	case "/status":
 		cprint(Cyan, "Status:")
 		cprint(Reset, fmt.Sprintf("  Model:       %s", a.config.GetModel()))
-		cprint(Reset, fmt.Sprintf("  Messages:    %d", len(a.history.Data.Messages)))
+		cprint(Reset, fmt.Sprintf("  Messages:    %d (context) / %d (total)", len(a.history.Data.Messages), a.history.MessageCount()))
 		cprint(Reset, fmt.Sprintf("  Evolutions:  %d", len(a.history.Data.EvolutionLog)))
 		cprint(Reset, fmt.Sprintf("  Working dir: %s", a.baseDir))
 		cprint(Reset, fmt.Sprintf("  Script:      %s", a.scriptPath))

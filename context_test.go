@@ -167,7 +167,7 @@ func TestCompactionPrompt_TruncatesLongMessages(t *testing.T) {
 
 func TestCompactHistory_TooFewMessages(t *testing.T) {
 	dir := t.TempDir()
-	hm := NewHistoryManager(dir)
+	hm := NewHistoryDB(dir)
 	cm := NewContextManager(dir)
 
 	// Add fewer messages than keepRecent

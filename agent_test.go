@@ -90,7 +90,7 @@ func TestDisplaySessionResumption(t *testing.T) {
 	tmpDir := t.TempDir()
 	agent := &YoloAgent{
 		baseDir: tmpDir,
-		history: NewHistoryManager(tmpDir),
+		history: NewHistoryDB(tmpDir),
 		config:  newTestConfig(t, tmpDir),
 	}
 	
@@ -131,7 +131,7 @@ func TestIngestHandoffResults(t *testing.T) {
 	tmpDir := t.TempDir()
 	agent := &YoloAgent{
 		baseDir:    tmpDir,
-		history:    NewHistoryManager(tmpDir),
+		history:    NewHistoryDB(tmpDir),
 		config:     newTestConfig(t, tmpDir),
 	}
 	
@@ -277,7 +277,7 @@ func TestEchoUserInput(t *testing.T) {
 	tmpDir := t.TempDir()
 	agent := &YoloAgent{
 		baseDir: tmpDir,
-		history: NewHistoryManager(tmpDir),
+		history: NewHistoryDB(tmpDir),
 	}
 	
 	input := "test user input"
@@ -344,7 +344,7 @@ func TestSwitchModel(t *testing.T) {
 	t.Setenv("YOLO_DIR", tmpDir)
 	agent := &YoloAgent{
 		baseDir: tmpDir,
-		history: NewHistoryManager(tmpDir),
+		history: NewHistoryDB(tmpDir),
 		config:  NewYoloConfig(),
 		ollama:  NewOllamaClient("http://localhost:11434", ""),
 	}
@@ -362,7 +362,7 @@ func TestSpawnSubagent(t *testing.T) {
 	t.Setenv("YOLO_DIR", tmpDir)
 	agent := &YoloAgent{
 		baseDir: tmpDir,
-		history: NewHistoryManager(tmpDir),
+		history: NewHistoryDB(tmpDir),
 		config:  NewYoloConfig(),
 		ollama:  NewOllamaClient("http://localhost:11434", ""),
 	}

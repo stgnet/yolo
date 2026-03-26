@@ -252,6 +252,11 @@ var ollamaTools = []ToolDef{
 		map[string]ToolParam{
 			"refresh": {Type: "boolean", Description: "Force rescan of all files (default: false, uses cache)"},
 		}, nil),
+	toolDef("history_search", "Search all past conversation history by keyword. Returns matching messages from the full history database, not just the recent context window. Use this to recall past discussions, decisions, lists, or any prior conversation content.",
+		map[string]ToolParam{
+			"query": {Type: "string", Description: "Search terms (words are ANDed; use OR for alternatives, quotes for exact phrases)"},
+			"limit": {Type: "integer", Description: "Maximum results to return (default: 20)"},
+		}, []string{"query"}),
 	toolDef("set_config", "Set a YOLO configuration value in config.json. Available keys: model, email_from, email_to, inbox_path, user_agent, temp_dir, tts_voice, terminal_mode, debug_mode, auto_mode, think_mode, tts_enabled.",
 		map[string]ToolParam{
 			"key":   {Type: "string", Description: "Configuration key to set"},
@@ -276,7 +281,7 @@ var validTools = []string{
 	"memory_read", "memory_write", "memory_log", "memory_promote", "memory_search",
 	"schedule_add", "schedule_remove", "schedule_list", "schedule_toggle",
 	"project_map", "dependency_graph", "symbol_search", "project_summary",
-	"set_config", "get_config",
+	"history_search", "set_config", "get_config",
 }
 
 // fileNameRegex extracts the agent ID from filenames like "agent_1.json"
@@ -461,6 +466,8 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 		return t.symbolSearch(args)
 	case "project_summary":
 		return t.projectSummary(args)
+	case "history_search":
+		return t.historySearch(args)
 	case "set_config":
 		return t.setConfig(args)
 	case "get_config":
@@ -561,6 +568,45 @@ func (t *ToolExecutor) getUserAgent() string {
 		return t.agent.config.GetUserAgent()
 	}
 	return "YOLO-Agent/1.0"
+}
+
+// ─── History Search Tool ────────────────────────────────────────────
+
+func (t *ToolExecutor) historySearch(args map[string]any) string {
+	query := getStringArg(args, "query", "")
+	if query == "" {
+		return errorMessage("'query' parameter is required")
+	}
+	limit := getIntArg(args, "limit", 20)
+
+	if t.agent == nil || t.agent.history == nil {
+		return errorMessage("no history database available")
+	}
+
+	results := t.agent.history.Search(query, limit)
+	if len(results) == 0 {
+		total := t.agent.history.MessageCount()
+		return fmt.Sprintf("No results found for '%s' (searched %d messages in history)", query, total)
+	}
+
+	var sb strings.Builder
+	total := t.agent.history.MessageCount()
+	sb.WriteString(fmt.Sprintf("Found %d result(s) for '%s' (searched %d messages):\n\n", len(results), query, total))
+
+	for i, r := range results {
+		sb.WriteString(fmt.Sprintf("--- Result %d [%s @ %s] ---\n", i+1, r.Message.Role, r.Message.TS))
+		if r.Snippet != "" {
+			sb.WriteString(fmt.Sprintf("Snippet: %s\n", r.Snippet))
+		}
+		content := r.Message.Content
+		if len(content) > 2000 {
+			content = content[:2000] + "\n...(truncated)"
+		}
+		sb.WriteString(content)
+		sb.WriteString("\n\n")
+	}
+
+	return sb.String()
 }
 
 // ─── Config Tools ───────────────────────────────────────────────────
