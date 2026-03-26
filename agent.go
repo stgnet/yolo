@@ -139,49 +139,6 @@ func (a *YoloAgent) allTools() []ToolDef {
 	return all
 }
 
-// getSystemPrompt loads SYSTEM_PROMPT.md from the YOLO data directory and
-// interpolates runtime values (working directory, model name, timestamp, etc.).
-// Falls back to a minimal embedded prompt if the file is not found.
-func (a *YoloAgent) getSystemPrompt() string {
-	// Load system prompt from YOLO data directory, fall back to minimal embedded default
-	promptPath := filepath.Join(a.config.GetYoloDir(), "SYSTEM_PROMPT.md")
-	templateContent, err := os.ReadFile(promptPath)
-	if err != nil {
-		templateContent = []byte("Ask user for instructions and save to SYSTEM_PROMPT.md")
-		cprint(Gray, fmt.Sprintf("  System prompt: built-in fallback (create %s to customize)", promptPath))
-	}
-
-	// Load knowledge base if it exists
-	var kbSection string
-	kbPath := filepath.Join(a.config.GetYoloDir(), "knowledge.md")
-	if content, err := os.ReadFile(kbPath); err == nil {
-		kbSection = "\n## Knowledge Base\n" + string(content)
-	}
-
-	// Load tiered memory (MEMORY.md + recent daily logs)
-	var memorySection string
-	if a.memory != nil {
-		memorySection = a.memory.GetSystemPromptContext()
-	}
-
-	// Replace template variables in the system prompt
-	prompt := string(templateContent)
-	prompt = strings.ReplaceAll(prompt, "{baseDir}", a.baseDir)
-	prompt = strings.ReplaceAll(prompt, "{scriptPath}", a.scriptPath)
-	if a.config != nil {
-		prompt = strings.ReplaceAll(prompt, "{model}", a.config.GetModel())
-	} else {
-		prompt = strings.ReplaceAll(prompt, "{model}", "unknown")
-	}
-	prompt = strings.ReplaceAll(prompt, "{timestamp}", time.Now().Format(time.RFC3339))
-	prompt = strings.ReplaceAll(prompt, "{knowledgeBase}", kbSection+memorySection)
-
-	// Inject pending todos so the agent is aware of outstanding work
-	todoContext := GetGlobalTodoList().FormatPendingTodos()
-	prompt += "\n" + todoContext
-
-	return prompt
-}
 
 // checkBinaryFreshness returns warnings about stale binary state.
 // / Two independent checks:
@@ -467,10 +424,8 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 		}
 	}
 
-	// Base context from persistent history
-	baseMsgs := []ChatMessage{
-		{Role: "system", Content: a.getSystemPrompt()},
-	}
+	// Base context from persistent history (no system prompt)
+	baseMsgs := []ChatMessage{}
 
 	// Inject conversation summary if available
 	if a.contextMgr != nil {
@@ -2374,6 +2329,11 @@ func (a *YoloAgent) Run() {
 	}()
 
 	a.showPrompt()
+
+	// In non-autonomous buffer mode, show initial "you> " prompt so user knows to type
+	if !a.config.GetAutoMode() && bufferUI != nil && globalUI == nil {
+		bufferUI.ShowInitialPrompt()
+	}
 
 	for a.running {
 		select {

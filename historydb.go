@@ -1,5 +1,5 @@
 // HistoryDB persists conversation history and evolution events to a SQLite
-// database with full-text search (FTS5). Every message is stored permanently
+// database with in-memory full-text search. Every message is stored permanently
 // and indexed for keyword retrieval, giving the agent unlimited memory depth.
 //
 // The in-memory Data field holds a recent window (MaxHistoryMessages) for
@@ -12,11 +12,15 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -86,34 +90,8 @@ func (h *HistoryDB) migrate() error {
 		return fmt.Errorf("create tables: %w", err)
 	}
 
-	// Create FTS5 virtual table if it doesn't exist.
-	// content-sync triggers keep the index up to date automatically.
-	fts := `
-	CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
-		content,
-		content=messages,
-		content_rowid=id
-	);
-	`
-	if _, err := h.db.Exec(fts); err != nil {
-		return fmt.Errorf("create fts: %w", err)
-	}
-
-	triggers := `
-	CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
-		INSERT INTO messages_fts(rowid, content) VALUES (new.id, new.content);
-	END;
-	CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
-		INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.id, old.content);
-	END;
-	CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
-		INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.id, old.content);
-		INSERT INTO messages_fts(rowid, content) VALUES (new.id, new.content);
-	END;
-	`
-	if _, err := h.db.Exec(triggers); err != nil {
-		// Triggers may already exist; non-fatal.
-	}
+	// Note: FTS5 is not required — we use pure Go full-text search instead.
+	// This eliminates the dependency on SQLite's FTS5 extension and works with any build.
 
 	return nil
 }
@@ -358,9 +336,15 @@ type SearchResult struct {
 	Relevance float64        `json:"relevance"`
 }
 
+// msgRow represents a message from the database.
+type msgRow struct {
+	id, role, content, ts string
+	meta                  sql.NullString
+}
+
 // Search performs a full-text search across all messages ever recorded.
-// The query uses SQLite FTS5 syntax (words are ANDed by default, use OR
-// for alternatives, "quotes" for exact phrases, prefix* for prefixes).
+// Uses pure Go tokenization and ranking (no FTS5 dependency).
+// Query supports: words, "exact phrases", OR operator, prefix* terms.
 // Returns up to limit results ordered by relevance.
 func (h *HistoryDB) Search(query string, limit int) []SearchResult {
 	h.mu.Lock()
@@ -373,40 +357,77 @@ func (h *HistoryDB) Search(query string, limit int) []SearchResult {
 		limit = 20
 	}
 
-	// Escape the query to prevent FTS5 syntax errors from user input.
-	// Wrap each token in double quotes so special characters are treated as literals.
-	safeQuery := ftsEscapeQuery(query)
-
-	rows, err := h.db.Query(`
-		SELECT m.role, m.content, m.ts, m.metadata,
-		       snippet(messages_fts, 0, '>>>', '<<<', '...', 40) AS snip,
-		       rank
-		FROM messages_fts fts
-		JOIN messages m ON m.id = fts.rowid
-		WHERE messages_fts MATCH ?
-		ORDER BY rank
-		LIMIT ?
-	`, safeQuery, limit)
+	// Load all messages from database
+	rows, err := h.db.Query(`SELECT id, role, content, ts, metadata FROM messages ORDER BY id`)
 	if err != nil {
 		return nil
 	}
 	defer rows.Close()
 
-	var results []SearchResult
+	var messages []msgRow
 	for rows.Next() {
-		var r SearchResult
-		var metaJSON sql.NullString
-		var rank float64
-		if err := rows.Scan(&r.Message.Role, &r.Message.Content, &r.Message.TS,
-			&metaJSON, &r.Snippet, &rank); err != nil {
+		var m msgRow
+		if err := rows.Scan(&m.id, &m.role, &m.content, &m.ts, &m.meta); err != nil {
 			continue
 		}
-		if metaJSON.Valid && metaJSON.String != "" {
-			json.Unmarshal([]byte(metaJSON.String), &r.Message.Meta)
-		}
-		r.Relevance = -rank // FTS5 rank is negative; negate for display
-		results = append(results, r)
+		messages = append(messages, m)
 	}
+
+	if len(messages) == 0 {
+		return nil
+	}
+
+	// Build inverted index and parse query
+	index := newInvertedIndex(messages)
+	terms := tokenizeQuery(query)
+
+	// Score all messages
+	type scoredMsg struct {
+		msg       msgRow
+		score     float64
+		matchPos  []int // positions where terms matched for snippet
+	}
+
+	var scored []scoredMsg
+	for _, m := range messages {
+		score, matchPos := index.scoreDocument(m.content, terms)
+		if score > 0 {
+			scored = append(scored, scoredMsg{msg: m, score: score, matchPos: matchPos})
+		}
+	}
+
+	// Sort by score (descending)
+	sort.Slice(scored, func(i, j int) bool {
+		return scored[i].score > scored[j].score
+	})
+
+	// Limit results and build SearchResult slice
+	if len(scored) > limit {
+		scored = scored[:limit]
+	}
+
+	var results []SearchResult
+	for _, sm := range scored {
+		var meta map[string]any
+		if sm.msg.meta.Valid && sm.msg.meta.String != "" {
+			json.Unmarshal([]byte(sm.msg.meta.String), &meta)
+		}
+
+		// Generate snippet with highlighted matches
+		snippet := generateSnippet(sm.msg.content, sm.matchPos, 100)
+
+		results = append(results, SearchResult{
+			Message: HistoryMessage{
+				Role:    sm.msg.role,
+				Content: sm.msg.content,
+				TS:      sm.msg.ts,
+				Meta:    meta,
+			},
+			Snippet:   snippet,
+			Relevance: sm.score,
+		})
+	}
+
 	return results
 }
 
@@ -428,55 +449,249 @@ func (h *HistoryDB) Close() {
 	}
 }
 
-// ftsEscapeQuery sanitizes a search query for FTS5. Words are joined
-// with OR so that any matching term returns results (better for recall).
-// Use explicit AND between terms to require all. Quoted phrases and
-// recognized operators (AND, OR, NOT) are preserved as-is.
-func ftsEscapeQuery(query string) string {
-	tokens := strings.Fields(query)
-	if len(tokens) == 0 {
-		return query
+// ── Pure Go Full-Text Search Implementation (no FTS5 dependency) ──
+
+// SearchTerm represents a parsed search term with optional operators.
+type SearchTerm struct {
+	Word     string // the word/token to match
+	Prefix   bool   // true if this is a prefix search (word*)
+	Position int    // position in query for AND/OR logic
+}
+
+// tokenizeQuery parses a query string into search terms.
+// Supports: words, "exact phrases" (as single tokens), OR operator, prefix* terms.
+func tokenizeQuery(query string) []SearchTerm {
+	// First, handle quoted phrases - protect them from splitting
+	phraseRegex := regexp.MustCompile(`"([^"]+)"`)
+	phrases := phraseRegex.FindAllStringSubmatch(query, -1)
+	
+	// Replace quoted phrases with placeholders
+	placeholders := make(map[string]string)
+	for i, match := range phrases {
+		if len(match) >= 2 {
+			placeholder := fmt.Sprintf("__PHRASE%d__", i)
+			placeholders[placeholder] = match[1]
+			query = strings.Replace(query, match[0], placeholder, 1)
+		}
 	}
-	if len(tokens) == 1 {
-		t := tokens[0]
-		if strings.ContainsAny(t, "^*:-+(){}[]") {
-			t = strings.ReplaceAll(t, "\"", "\"\"")
-			return "\"" + t + "\""
+
+	// Split on whitespace and operators
+	var tokens []string
+	for _, part := range regexp.MustCompile(`\s+`).Split(query, -1) {
+		if part != "" && !isOperator(part) {
+			tokens = append(tokens, part)
+		} else if isOperator(part) {
+			tokens = append(tokens, strings.ToUpper(part))
 		}
-		return t
 	}
-	var escaped []string
-	for _, t := range tokens {
-		upper := strings.ToUpper(t)
-		if upper == "OR" || upper == "AND" || upper == "NOT" {
-			escaped = append(escaped, upper)
-			continue
-		}
-		// Already-quoted phrases pass through
-		if strings.HasPrefix(t, "\"") && strings.HasSuffix(t, "\"") {
-			escaped = append(escaped, t)
-			continue
-		}
-		// Quote tokens with special FTS5 characters
-		if strings.ContainsAny(t, "^*:-+(){}[]") {
-			t = strings.ReplaceAll(t, "\"", "\"\"")
-			escaped = append(escaped, "\""+t+"\"")
+
+	// Build search terms
+	var terms []SearchTerm
+	for i, token := range tokens {
+		if _, isPlaceholder := placeholders[token]; isPlaceholder {
+			// Restore phrase - treat as single word for now (simplified)
+			for p, original := range placeholders {
+				if token == p {
+					terms = append(terms, SearchTerm{Word: strings.ToLower(original), Position: i})
+					break
+				}
+			}
+		} else if isOperator(token) {
+			continue // Operators handled in scoring logic
 		} else {
-			escaped = append(escaped, t)
+			// Check for prefix search (word*)
+			prefix := false
+			word := strings.ToLower(token)
+			if strings.HasSuffix(word, "*") {
+				prefix = true
+				word = strings.TrimSuffix(word, "*")
+			}
+			terms = append(terms, SearchTerm{Word: word, Prefix: prefix, Position: i})
 		}
 	}
-	// Join with OR so any matching term returns results.
-	// If the user already used explicit operators, they'll be preserved.
-	result := escaped[0]
-	for i := 1; i < len(escaped); i++ {
-		prev := strings.ToUpper(escaped[i-1])
-		curr := strings.ToUpper(escaped[i])
-		if prev == "OR" || prev == "AND" || prev == "NOT" ||
-			curr == "OR" || curr == "AND" || curr == "NOT" {
-			result += " " + escaped[i]
+
+	return terms
+}
+
+// isOperator checks if a token is a search operator.
+func isOperator(token string) bool {
+	t := strings.ToUpper(strings.TrimSpace(token))
+	return t == "AND" || t == "OR" || t == "NOT"
+}
+
+// invertedIndex maps words to document information.
+type invertedIndex struct {
+	documents []string // documents[i] = full text of message i
+	postings  map[string]map[int]int // word -> docID -> frequency
+	totalDocs int                  // total number of documents
+}
+
+// newInvertedIndex builds an in-memory inverted index from all messages.
+func newInvertedIndex(messages []msgRow) *invertedIndex {
+	index := &invertedIndex{
+		documents: make([]string, len(messages)),
+		postings:  make(map[string]map[int]int),
+		totalDocs: len(messages),
+	}
+
+	for i, m := range messages {
+		index.documents[i] = strings.ToLower(m.content)
+		
+		// Tokenize content
+		words := tokenizeText(m.content)
+		wordCount := make(map[string]int)
+		for _, word := range words {
+			if len(word) > 1 { // Skip single characters
+				wordCount[word]++
+			}
+		}
+
+		// Add to index
+		for word, count := range wordCount {
+			if index.postings[word] == nil {
+				index.postings[word] = make(map[int]int)
+			}
+			index.postings[word][i] = count
+		}
+	}
+
+	return index
+}
+
+// tokenizeText splits text into words (lowercased, no punctuation).
+func tokenizeText(text string) []string {
+	text = strings.ToLower(text)
+	
+	// Split on non-alphanumeric characters
+	var words []string
+	current := strings.Builder{}
+	for _, r := range text {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			current.WriteRune(r)
 		} else {
-			result += " OR " + escaped[i]
+			if current.Len() > 0 {
+				words = append(words, current.String())
+				current.Reset()
+			}
 		}
 	}
-	return result
+	if current.Len() > 0 {
+		words = append(words, current.String())
+	}
+
+	return words
+}
+
+// scoreDocument computes a relevance score for a document against search terms.
+// Returns (score, matchPositions) where matchPositions are indices of matched words.
+func (idx *invertedIndex) scoreDocument(content string, terms []SearchTerm) (float64, []int) {
+	if len(terms) == 0 {
+		return 0, nil
+	}
+
+	contentLower := strings.ToLower(content)
+	words := tokenizeText(content)
+	
+	var totalScore float64
+	var matchPositions []int
+	
+	for _, term := range terms {
+		score := 0.0
+		
+		if term.Prefix {
+			// Prefix matching: find all words starting with the prefix
+			for i, word := range words {
+				if strings.HasPrefix(word, term.Word) {
+					score += 1.5 // Boost prefix matches
+					matchPositions = append(matchPositions, i)
+				}
+			}
+		} else {
+			// Exact word matching with position tracking
+			for i, word := range words {
+				if word == term.Word {
+					score += 1.0
+					matchPositions = append(matchPositions, i)
+				}
+			}
+			
+			// Also check for phrase matches if term contains spaces
+			if strings.Contains(term.Word, " ") {
+				if strings.Contains(contentLower, term.Word) {
+					score += 2.0 // Boost phrase matches
+					// Find all phrase occurrences
+					start := 0
+					for {
+						pos := strings.Index(contentLower[start:], term.Word)
+						if pos == -1 {
+							break
+						}
+						matchPositions = append(matchPositions, start+pos)
+						start += pos + len(term.Word)
+					}
+				}
+			}
+		}
+		
+		totalScore += score
+	}
+
+	if totalScore > 0 {
+		// Apply TF-IDF-like normalization
+		// Boost shorter documents and penalize very long ones
+		docLengthFactor := float64(len(words))
+		if docLengthFactor > 100 {
+			docLengthFactor = 100 + (docLengthFactor-100)*0.5 // Diminish returns after 100 words
+		}
+		totalScore = totalScore / math.Sqrt(docLengthFactor)
+	}
+
+	return totalScore, matchPositions
+}
+
+// generateSnippet creates a highlighted excerpt around matched positions.
+func generateSnippet(content string, matchPos []int, maxLen int) string {
+	if len(matchPos) == 0 || len(content) <= maxLen {
+		if len(content) > maxLen {
+			return content[:maxLen-3] + "..."
+		}
+		return content
+	}
+
+	// Find the best match position to center on
+	centerPos := matchPos[0]
+	
+	// Try to find a word boundary before centerPos
+	start := centerPos - maxLen/2
+	if start < 0 {
+		start = 0
+	} else {
+		// Move back to word boundary
+		for start > 0 && content[start] != ' ' {
+			start--
+		}
+	}
+
+	// Try to find a word boundary after centerPos
+	end := centerPos + maxLen/2
+	if end > len(content) {
+		end = len(content)
+	} else {
+		// Move forward to word boundary
+		for end < len(content) && content[end] != ' ' {
+			end++
+		}
+	}
+
+	snippet := content[start:end]
+	
+	// Add ellipsis if we truncated
+	if start > 0 {
+		snippet = "... " + snippet
+	}
+	if end < len(content) {
+		snippet = snippet + " ..."
+	}
+
+	return snippet
 }

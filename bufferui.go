@@ -246,3 +246,32 @@ func (b *BufferUI) FlushBuffer() {
 func (b *BufferUI) CancelInput() {
 	b.FlushBuffer()
 }
+
+// ShowInitialPrompt displays the "you> " prompt at startup in non-autonomous mode.
+// This gives the user a visual cue that they need to type input.
+func (b *BufferUI) ShowInitialPrompt() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	// Only show if not already shown
+	if b.promptShown {
+		return
+	}
+
+	// If there's mid-line output, finish it first
+	if b.midLine {
+		rawWrite("\r\n")
+		b.midLine = false
+	}
+
+	// Show the initial prompt
+	fmt.Fprintf(os.Stdout, "\r\033[K%syou> %s", Green, Reset)
+	os.Stdout.Sync() // Ensure immediate flush
+	b.promptShown = true
+	b.userWantsInput = true
+	// promptReady may already be closed (e.g. from constructor or showPromptLocked).
+	// Replace with a fresh closed channel to signal readiness without double-close panic.
+	ch := make(chan struct{})
+	close(ch)
+	b.promptReady = ch
+}

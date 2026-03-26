@@ -48,8 +48,8 @@ const (
 	MaxDynamicContextMessages = 100
 
 	// ContextBudgetFraction is the fraction of the model's context window
-	// reserved for conversation history (remainder is for system prompt + response).
-	ContextBudgetFraction = 0.5
+	// reserved for conversation history (remainder is for response).
+	ContextBudgetFraction = 0.7
 )
 
 // ContextSummaryData is persisted to .yolo/context_summary.json.

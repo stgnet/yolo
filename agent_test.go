@@ -15,36 +15,6 @@ func newTestConfig(t *testing.T, dir string) *YoloConfig {
 	return NewYoloConfig()
 }
 
-// TestGetSystemPrompt verifies that the system prompt is non-empty and contains expected sections
-func TestGetSystemPrompt(t *testing.T) {
-	tmpDir := t.TempDir()
-	
-	systemPromptPath := filepath.Join(tmpDir, "SYSTEM_PROMPT.md")
-	err := os.WriteFile(systemPromptPath, []byte("Test System Prompt with Rules section"), 0644)
-	if err != nil {
-		t.Fatal(err)
-	}
-	
-	yoloDir := filepath.Join(tmpDir, ".yolo")
-	err = os.MkdirAll(yoloDir, 0755)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Point YOLO_DIR at our temp dir so NewYoloConfig uses it
-	t.Setenv("YOLO_DIR", yoloDir)
-
-	origDir, _ := os.Getwd()
-	defer os.Chdir(origDir)
-	os.Chdir(tmpDir)
-
-	agent := NewYoloAgent()
-	prompt := agent.getSystemPrompt()
-	
-	if prompt == "" {
-		t.Error("getSystemPrompt returned empty string")
-	}
-}
 
 // TestCheckBinaryFreshness verifies binary freshness checking
 func TestCheckBinaryFreshness(t *testing.T) {

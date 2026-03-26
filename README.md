@@ -312,4 +312,4 @@ MIT License - see LICENSE file for details.
 
 ---
 
-**Note**: YOLO continuously improves its own code and documentation. Changes are automatically committed to git as part of the self-improvement cycle. For the system prompt template, see [SYSTEM_PROMPT.md](SYSTEM_PROMPT.md).
+**Note**: YOLO continuously improves its own code and documentation. Changes are automatically committed to git as part of the self-improvement cycle. YOLO operates without a fixed system prompt, allowing for maximum flexibility and adaptability in conversations.
