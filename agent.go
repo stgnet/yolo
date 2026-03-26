@@ -2200,14 +2200,16 @@ func (a *YoloAgent) showUncompletedTodos() {
 func (a *YoloAgent) showPrompt() {
 	if bufferUI != nil && globalUI == nil {
 		// Buffer mode: show "you> " prompt when not in auto mode
-		if !a.config.GetAutoMode() {
+		if a.config != nil && !a.config.GetAutoMode() {
 			bufferUI.ShowInitialPrompt()
 		}
 		return
 	}
 	// Terminal mode: the divider label "──you──" serves as the indicator.
 	// Just trigger a redraw of the input area.
-	a.inputMgr.ShowPrompt("")
+	if a.inputMgr != nil {
+		a.inputMgr.ShowPrompt("")
+	}
 }
 
 // echoUserInput prints the user's (possibly multiline) message to the
