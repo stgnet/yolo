@@ -52,7 +52,9 @@ const playwright = require('@playwright/test');
   const url = page.url();
   
   // Optionally take screenshot
-  const screenshotPath = '/tmp/screenshot.png';
+  const os = require('os');
+  const path = require('path');
+  const screenshotPath = path.join(os.tmpdir(), 'screenshot.png');
   try {
     await page.screenshot({ path: screenshotPath });
   } catch (e) {
@@ -309,7 +311,8 @@ func (t *ToolExecutor) playwrightMCP(args map[string]any) string {
 		return executor.getHTML(selector)
 
 	case "screenshot":
-		path := getStringArg(args, "path", "/tmp/screenshot.png")
+		defaultPath := filepath.Join(t.getTempDir(), "screenshot.png")
+		path := getStringArg(args, "path", defaultPath)
 		return executor.screenshot(path)
 
 	default:

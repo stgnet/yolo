@@ -23,7 +23,6 @@ import (
 )
 
 const (
-	InboxPath  = "/var/mail/b-haven.org/yolo/new/"
 	CurDir     = "cur"
 	ArchiveDir = "archive"
 )
@@ -38,17 +37,30 @@ func init() {
 	emailArchived = make(map[string]bool)
 }
 
+// getInboxPath returns the configured inbox path from the agent config, or "".
+func (t *ToolExecutor) getInboxPath() string {
+	if t.agent != nil && t.agent.config != nil {
+		return t.agent.config.GetInboxPath()
+	}
+	return ""
+}
+
 // checkInbox reads emails from the Maildir inbox
 func (t *ToolExecutor) checkInbox(args map[string]any) string {
 	markRead := getBoolArg(args, "mark_read", false)
 
+	inboxPath := t.getInboxPath()
+	if inboxPath == "" {
+		return errorMessage("no inbox_path configured in .yolo/config.json")
+	}
+
 	// Check if inbox directory exists
-	if _, err := os.Stat(InboxPath); os.IsNotExist(err) {
-		return fmt.Sprintf("No emails in inbox. Inbox path: %s", InboxPath)
+	if _, err := os.Stat(inboxPath); os.IsNotExist(err) {
+		return fmt.Sprintf("No emails in inbox. Inbox path: %s", inboxPath)
 	}
 
 	// Read all files in the inbox directory
-	files, err := os.ReadDir(InboxPath)
+	files, err := os.ReadDir(inboxPath)
 	if err != nil {
 		return errorMessage("reading inbox: %v", err)
 	}
@@ -63,7 +75,7 @@ func (t *ToolExecutor) checkInbox(args map[string]any) string {
 			continue
 		}
 
-		filePath := filepath.Join(InboxPath, file.Name())
+		filePath := filepath.Join(inboxPath, file.Name())
 		content, err := os.ReadFile(filePath)
 		if err != nil {
 			log.Printf("Error reading email %s: %v", file.Name(), err)
@@ -75,7 +87,7 @@ func (t *ToolExecutor) checkInbox(args map[string]any) string {
 
 		// Move to cur directory if mark_read is true
 		if markRead {
-			curDir := filepath.Join(CurDir)
+			curDir := filepath.Join(filepath.Dir(inboxPath), CurDir)
 			if err := os.MkdirAll(curDir, 0755); err == nil {
 				destPath := filepath.Join(curDir, file.Name())
 				os.Rename(filePath, destPath)
@@ -84,7 +96,7 @@ func (t *ToolExecutor) checkInbox(args map[string]any) string {
 	}
 
 	result, _ := json.MarshalIndent(emailList, "", "  ")
-	return fmt.Sprintf("📧 Found %d email(s):\n\n%s", len(emailList), string(result))
+	return fmt.Sprintf("Found %d email(s):\n\n%s", len(emailList), string(result))
 }
 
 // parseEmail extracts relevant fields from email content using proper MIME parsing
@@ -459,13 +471,18 @@ func isBounceMessage(email *EmailMessage) bool {
 // handled by the LLM using the send_email or send_report tools through normal conversation flow.
 func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 
+	inboxPath := t.getInboxPath()
+	if inboxPath == "" {
+		return errorMessage("no inbox_path configured in .yolo/config.json")
+	}
+
 	// Check if inbox directory exists
-	if _, err := os.Stat(InboxPath); os.IsNotExist(err) {
-		return fmt.Sprintf("No emails in inbox. Inbox path: %s", InboxPath)
+	if _, err := os.Stat(inboxPath); os.IsNotExist(err) {
+		return fmt.Sprintf("No emails in inbox. Inbox path: %s", inboxPath)
 	}
 
 	// Read all files in the inbox directory
-	files, err := os.ReadDir(InboxPath)
+	files, err := os.ReadDir(inboxPath)
 	if err != nil {
 		return errorMessage("reading inbox: %v", err)
 	}
@@ -481,7 +498,7 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 	var emailContents []string // Store parsed emails for LLM context
 
 	// Create archive directory if it doesn't exist
-	archiveDir := filepath.Join(ArchiveDir)
+	archiveDir := filepath.Join(filepath.Dir(inboxPath), ArchiveDir)
 	if err := os.MkdirAll(archiveDir, 0755); err != nil {
 		log.Printf("Failed to create archive directory: %v", err)
 	}
@@ -491,7 +508,7 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 			continue
 		}
 
-		filePath := filepath.Join(InboxPath, file.Name())
+		filePath := filepath.Join(inboxPath, file.Name())
 		content, err := os.ReadFile(filePath)
 		if err != nil {
 			log.Printf("Error reading email %s: %v", file.Name(), err)

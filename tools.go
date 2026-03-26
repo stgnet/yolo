@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -142,24 +144,24 @@ var ollamaTools = []ToolDef{
 	toolDef("screenshot", "Capture a screenshot of a web page. Requires Playwright (node) or Chromium.",
 		map[string]ToolParam{
 			"url":       {Type: "string", Description: "URL to screenshot (required)"},
-			"path":      {Type: "string", Description: "Output file path (default: /tmp/screenshot.png)"},
+			"path":      {Type: "string", Description: "Output file path (default: temp dir screenshot.png)"},
 			"full_page": {Type: "boolean", Description: "Capture full scrollable page (default: false, viewport only)"},
 			"width":     {Type: "integer", Description: "Viewport width in pixels (default: 1280)"},
 			"height":    {Type: "integer", Description: "Viewport height in pixels (default: 720)"},
 		}, []string{"url"}),
-	toolDef("send_email", "Send an email via sendmail from yolo@b-haven.org. Postfix handles DKIM signing automatically.",
+	toolDef("send_email", "Send an email via sendmail. Sender and default recipient are configured in .yolo/config.json.",
 		map[string]ToolParam{
-			"to":          {Type: "string", Description: "Recipient email address (default: scott@stg.net)"},
+			"to":          {Type: "string", Description: "Recipient email address (uses configured default if omitted)"},
 			"subject":     {Type: "string", Description: "Email subject (required)"},
 			"body":        {Type: "string", Description: "Email body (required)"},
 			"attachments": {Type: "array[string]", Description: "List of file paths to attach to the email"},
 		}, []string{"subject", "body"}),
-	toolDef("send_report", "Send a progress report email to scott@stg.net from yolo@b-haven.org. Postfix handles DKIM signing automatically.",
+	toolDef("send_report", "Send a progress report email. Sender and default recipient are configured in .yolo/config.json.",
 		map[string]ToolParam{
 			"subject": {Type: "string", Description: "Report subject (default: YOLO Progress Report)"},
 			"body":    {Type: "string", Description: "Report body (required)"},
 		}, []string{"body"}),
-	toolDef("check_inbox", "Read emails from Maildir inbox at /var/mail/b-haven.org/yolo/new/",
+	toolDef("check_inbox", "Read emails from the configured Maildir inbox (set inbox_path in .yolo/config.json).",
 		map[string]ToolParam{
 			"mark_read": {Type: "boolean", Description: "If true, move processed emails to cur/ directory"},
 		}, nil),
@@ -193,7 +195,7 @@ var ollamaTools = []ToolDef{
 			"selector":  {Type: "string", Description: "CSS selector for element interaction (required for click, fill, getHTML actions)"},
 			"value":     {Type: "string", Description: "Text value to fill into input field (required for fill action)"},
 			"timeout":   {Type: "integer", Description: "Timeout in milliseconds for operations (default: 5000)"},
-			"path":      {Type: "string", Description: "File path for screenshot output (default: /tmp/screenshot.png)"},
+			"path":      {Type: "string", Description: "File path for screenshot output (default: temp dir screenshot.png)"},
 		}, []string{"action"}),
 	toolDef("memory_read", "Read the agent's curated MEMORY.md file containing durable facts, user preferences, and key decisions.",
 		map[string]ToolParam{}, nil),
@@ -250,6 +252,15 @@ var ollamaTools = []ToolDef{
 		map[string]ToolParam{
 			"refresh": {Type: "boolean", Description: "Force rescan of all files (default: false, uses cache)"},
 		}, nil),
+	toolDef("set_config", "Set a YOLO configuration value in .yolo/config.json. Available keys: model, email_from, email_to, inbox_path, user_agent, temp_dir, tts_voice, terminal_mode, debug_mode, auto_mode, think_mode, tts_enabled.",
+		map[string]ToolParam{
+			"key":   {Type: "string", Description: "Configuration key to set"},
+			"value": {Type: "string", Description: "Value to set"},
+		}, []string{"key", "value"}),
+	toolDef("get_config", "Get the current YOLO configuration from .yolo/config.json. Returns all configuration values.",
+		map[string]ToolParam{
+			"key": {Type: "string", Description: "Specific config key to retrieve (optional, omit to show all)"},
+		}, nil),
 }
 
 // ─── Tool Executor ───────────────────────────────────────────────────
@@ -265,6 +276,7 @@ var validTools = []string{
 	"memory_read", "memory_write", "memory_log", "memory_promote", "memory_search",
 	"schedule_add", "schedule_remove", "schedule_list", "schedule_toggle",
 	"project_map", "dependency_graph", "symbol_search", "project_summary",
+	"set_config", "get_config",
 }
 
 // fileNameRegex extracts the agent ID from filenames like "agent_1.json"
@@ -449,6 +461,10 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 		return t.symbolSearch(args)
 	case "project_summary":
 		return t.projectSummary(args)
+	case "set_config":
+		return t.setConfig(args)
+	case "get_config":
+		return t.getConfig(args)
 	default:
 		// Check if this is an MCP tool
 		if t.agent != nil && t.agent.mcp != nil && t.agent.mcp.IsMCPTool(name) {
@@ -529,6 +545,69 @@ func getBoolArg(args map[string]any, key string, fallback bool) bool {
 		}
 	}
 	return fallback
+}
+
+// getTempDir returns the configured temporary directory from agent config.
+func (t *ToolExecutor) getTempDir() string {
+	if t.agent != nil && t.agent.config != nil {
+		return t.agent.config.GetTempDir()
+	}
+	return os.TempDir()
+}
+
+// getUserAgent returns the configured User-Agent string from agent config.
+func (t *ToolExecutor) getUserAgent() string {
+	if t.agent != nil && t.agent.config != nil {
+		return t.agent.config.GetUserAgent()
+	}
+	return "YOLO-Agent/1.0"
+}
+
+// ─── Config Tools ───────────────────────────────────────────────────
+
+func (t *ToolExecutor) setConfig(args map[string]any) string {
+	key := getStringArg(args, "key", "")
+	value := getStringArg(args, "value", "")
+	if key == "" {
+		return errorMessage("'key' parameter is required")
+	}
+	if t.agent == nil {
+		return errorMessage("no agent context")
+	}
+	if err := t.agent.config.SetByName(key, value); err != nil {
+		return errorMessage("%v", err)
+	}
+	return fmt.Sprintf("Config '%s' set to '%s'", key, value)
+}
+
+func (t *ToolExecutor) getConfig(args map[string]any) string {
+	if t.agent == nil {
+		return errorMessage("no agent context")
+	}
+	key := getStringArg(args, "key", "")
+	all := t.agent.config.GetAll()
+	if key != "" {
+		if v, ok := all[key]; ok {
+			return fmt.Sprintf("%s = %s", key, v)
+		}
+		return errorMessage("unknown config key '%s'", key)
+	}
+	var sb strings.Builder
+	sb.WriteString("Current configuration (.yolo/config.json):\n\n")
+	// Sort keys for consistent output
+	keys := make([]string, 0, len(all))
+	for k := range all {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		v := all[k]
+		if v == "" {
+			v = "(not set)"
+		}
+		sb.WriteString(fmt.Sprintf("  %-15s = %s\n", k, v))
+	}
+	return sb.String()
 }
 
 // isBinaryData checks if the given data appears to be binary (not text).

@@ -62,7 +62,7 @@ func RetryWithBackoff(ctx context.Context, url string, config RetryConfig) (*htt
 			return nil, fmt.Errorf("failed to create request on attempt %d: %w", attempt+1, err)
 		}
 
-		req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; YOLO-Agent/1.0)")
+		req.Header.Set("User-Agent", "YOLO-Agent/1.0")
 
 		resp, err := client.Do(req)
 

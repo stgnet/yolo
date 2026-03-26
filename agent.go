@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -234,7 +235,10 @@ func (a *YoloAgent) checkBinaryFreshness() string {
 // checkEmailInbox returns a warning message if there are unread emails in the inbox.
 // It counts files in the Maildir new/ directory and returns an alert if any exist.
 func (a *YoloAgent) checkEmailInbox() string {
-	inboxPath := "/var/mail/b-haven.org/yolo/new/"
+	inboxPath := a.config.GetInboxPath()
+	if inboxPath == "" {
+		return ""
+	}
 
 	// Check if inbox directory exists
 	if _, err := os.Stat(inboxPath); os.IsNotExist(err) {
@@ -1607,6 +1611,8 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		cprint(Reset, "  /mcp reload      Reconnect to MCP servers")
 		cprint(Reset, "  /compact         Summarize older messages to free context window")
 		cprint(Reset, "  /context         Show context window stats and summary status")
+		cprint(Reset, "  /config          Show all configuration values")
+		cprint(Reset, "  /config <k> <v>  Set a configuration value")
 		cprint(Reset, "  /cron            Show scheduled tasks")
 		cprint(Reset, "  /learn           Run autonomous research for self-improvement")
 		cprint(Reset, "  /restart         Restart YOLO")
@@ -1844,6 +1850,46 @@ func (a *YoloAgent) handleCommand(cmd string) {
 
 	case "/context":
 		a.showContextStatus()
+
+	case "/config":
+		if arg == "" {
+			// Show all config
+			all := a.config.GetAll()
+			keys := make([]string, 0, len(all))
+			for k := range all {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			cprint(Cyan, "Configuration (.yolo/config.json):")
+			for _, k := range keys {
+				v := all[k]
+				if v == "" {
+					v = "(not set)"
+				}
+				cprint(Reset, fmt.Sprintf("  %-15s = %s", k, v))
+			}
+		} else {
+			// Set config: /config key value
+			parts := strings.SplitN(arg, " ", 2)
+			if len(parts) < 2 {
+				// Show single key
+				all := a.config.GetAll()
+				if v, ok := all[parts[0]]; ok {
+					if v == "" {
+						v = "(not set)"
+					}
+					cprint(Cyan, fmt.Sprintf("  %s = %s", parts[0], v))
+				} else {
+					cprint(Red, fmt.Sprintf("  Unknown config key: %s", parts[0]))
+				}
+			} else {
+				if err := a.config.SetByName(parts[0], parts[1]); err != nil {
+					cprint(Red, fmt.Sprintf("  %v", err))
+				} else {
+					cprint(Green, fmt.Sprintf("  %s = %s", parts[0], parts[1]))
+				}
+			}
+		}
 
 	case "/cron":
 		a.showCronStatus(arg)
@@ -2231,25 +2277,29 @@ func (a *YoloAgent) sleepUntilInput() {
 		a.sleeping = true
 		cprint(Yellow, "  === YOLO SLEEP MODE ===")
 		cprint(Reset, "  No pending todos found.")
-		cprint(Reset, "  Sending status report to scott@stg.net...")
 
-		reportBody := "YOLO Autonomous Agent Status Report\n\n" +
-			"Status: IDLE (Sleep Mode)\n" +
-			"\nSummary:\n" +
-			"- No pending todos in the task list\n" +
-			"- YOLO has entered sleep mode to conserve resources\n" +
-			"- Waiting for new input via email or user interaction\n" +
-			"\nThe agent will resume autonomous operation when:\n" +
-			"1. A new email arrives and is processed\n" +
-			"2. User provides manual input\n" +
-			"3. New todos are added to the list\n" +
-			"\nTimestamp: " + time.Now().Format("2006-01-02 15:04:05 MST") + "\n" +
-			"\nYOLO - Your Own Living Operator"
+		reportTo := a.config.GetEmailTo()
+		if reportTo != "" {
+			cprint(Reset, fmt.Sprintf("  Sending status report to %s...", reportTo))
 
-		if err := sendEmailDirectly("scott@stg.net", "YOLO Status: Idle - No Pending Tasks", reportBody); err != nil {
-			cprint(Red, "  Failed to send status email: "+err.Error())
-		} else {
-			cprint(Green, "  Report sent successfully.")
+			reportBody := "YOLO Autonomous Agent Status Report\n\n" +
+				"Status: IDLE (Sleep Mode)\n" +
+				"\nSummary:\n" +
+				"- No pending todos in the task list\n" +
+				"- YOLO has entered sleep mode to conserve resources\n" +
+				"- Waiting for new input via email or user interaction\n" +
+				"\nThe agent will resume autonomous operation when:\n" +
+				"1. A new email arrives and is processed\n" +
+				"2. User provides manual input\n" +
+				"3. New todos are added to the list\n" +
+				"\nTimestamp: " + time.Now().Format("2006-01-02 15:04:05 MST") + "\n" +
+				"\nYOLO - Your Own Living Operator"
+
+			if err := a.sendEmailDirectly(reportTo, "YOLO Status: Idle - No Pending Tasks", reportBody); err != nil {
+				cprint(Red, "  Failed to send status email: "+err.Error())
+			} else {
+				cprint(Green, "  Report sent successfully.")
+			}
 		}
 
 		cprint(Reset, "  Entering sleep mode - waiting for input...")
@@ -2273,7 +2323,7 @@ func (a *YoloAgent) sleepUntilInput() {
 		}
 
 		// Check for new emails in the inbox
-		emailFiles := checkInboxFiles()
+		emailFiles := a.checkInboxFiles()
 		if len(emailFiles) > 0 {
 			cprint(Green, fmt.Sprintf("  %d new email(s) detected - resuming to process", len(emailFiles)))
 			a.wakeForEmail = true
@@ -2291,8 +2341,12 @@ func (a *YoloAgent) sleepUntilInput() {
 }
 
 // checkInboxFiles returns list of files in the inbox directory
-func checkInboxFiles() []string {
-	files, _ := os.ReadDir("/var/mail/b-haven.org/yolo/new/")
+func (a *YoloAgent) checkInboxFiles() []string {
+	inboxPath := a.config.GetInboxPath()
+	if inboxPath == "" {
+		return nil
+	}
+	files, _ := os.ReadDir(inboxPath)
 	var result []string
 	for _, f := range files {
 		if !f.IsDir() {
@@ -2302,24 +2356,10 @@ func checkInboxFiles() []string {
 	return result
 }
 
-// getUnreadEmailCount returns the number of unread emails in the inbox
-func getUnreadEmailCount() int {
-	files, err := os.ReadDir("/var/mail/b-haven.org/yolo/new/")
-	if err != nil {
-		return 0
-	}
-	count := 0
-	for _, f := range files {
-		if !f.IsDir() {
-			count++
-		}
-	}
-	return count
-}
-
 // sendEmailDirectly sends an email using sendmail command
-func sendEmailDirectly(to, subject, body string) error {
-	emailInput := fmt.Sprintf("To: %s\nFrom: yolo@b-haven.org\nSubject: %s\n\n%s\n", to, subject, body)
+func (a *YoloAgent) sendEmailDirectly(to, subject, body string) error {
+	from := a.config.GetEmailFrom()
+	emailInput := fmt.Sprintf("To: %s\nFrom: %s\nSubject: %s\n\n%s\n", to, from, subject, body)
 	cmd := exec.Command("sendmail", "-t")
 	cmd.Stdin = strings.NewReader(emailInput)
 	return cmd.Run()
@@ -2472,7 +2512,7 @@ func (a *YoloAgent) Run() {
 				todoList := GetGlobalTodoList()
 				_, pendingCount, _ := todoList.GetStats()
 				// If no pending todos, no unread emails, and not waking for email, enter sleep mode
-				if pendingCount == 0 && getUnreadEmailCount() == 0 && !a.wakeForEmail {
+				if pendingCount == 0 && len(a.checkInboxFiles()) == 0 && !a.wakeForEmail {
 					a.sleepUntilInput()
 					continue
 				}

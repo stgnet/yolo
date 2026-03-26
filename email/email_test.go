@@ -173,7 +173,7 @@ func TestMessageStructure(t *testing.T) {
 		content     string
 		expectFound bool
 	}{
-		{"From header", "From: yolo@b-haven.org\r\n", emailContent.String(), true},
+		{"From header", "From: yolo@localhost\r\n", emailContent.String(), true},
 		{"To header", "To: user1@example.com, user2@example.com\r\n", emailContent.String(), true},
 		{"Subject header", "Subject: Test Subject Line\r\n", emailContent.String(), true},
 		{"MIME-Version header", "MIME-Version: 1.0\r\n", emailContent.String(), true},

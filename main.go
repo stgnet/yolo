@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"golang.org/x/term"
 )
@@ -44,14 +45,14 @@ func setupOllamaLogging() {
 	if ollamaRunning {
 		fmt.Println("Stopping existing ollama server to enable logging...")
 		exec.Command("pkill", "-9", "-f", "ollama serve").Run()
-		exec.Command("sleep", "2").Run() // Wait for it to fully stop
+		time.Sleep(2 * time.Second) // Wait for it to fully stop
 
 		// Double-check all ollama processes are stopped
 		cmd2 := exec.Command("pgrep", "-f", "ollama")
 		if cmd2.Run() == nil {
 			fmt.Println("Warning: Some ollama processes may still be running. Trying to kill them all...")
 			exec.Command("pkill", "-9", "-f", "ollama").Run()
-			exec.Command("sleep", "1").Run()
+			time.Sleep(1 * time.Second)
 		}
 	}
 
@@ -99,7 +100,7 @@ func setupOllamaLogging() {
 	fmt.Println("YOLO can now read these logs to diagnose Ollama issues.")
 
 	// Give ollama time to start
-	exec.Command("sleep", "3").Run()
+	time.Sleep(3 * time.Second)
 }
 
 // ─── Entry Point ────────────────

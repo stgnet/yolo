@@ -119,9 +119,8 @@ func (t *ToolExecutor) checkOllamaStatus(args map[string]any) string {
 		result.WriteString("No log files found at ./logs/\n")
 		result.WriteString("Enable logging by setting OLLAMA_DEBUG=1 or YOLO_OLLAMA_LOG=1\n\n")
 
-		if ollamaRunning {
-			client := NewOllamaClient("http://localhost:11434", "")
-			models := client.ListModels()
+		if ollamaRunning && t.agent != nil {
+			models := t.agent.ollama.ListModels()
 			if len(models) > 0 {
 				result.WriteString("API Status: Ollama API is reachable.\n")
 				result.WriteString("Available models:\n")
