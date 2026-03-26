@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -61,7 +60,7 @@ type YoloAgent struct {
 	pendingHandoffs []*handoffResult   // in-flight background tool executions
 	mu              sync.Mutex         // protects busy, cancelChat, subagentCounter, handoffCounter, pendingHandoffs
 	cancelChat      context.CancelFunc // cancels the in-flight Chat HTTP request
-	thinkingEnabled bool               // true when thinking output is enabled (default: true)
+	thinkingEnabled bool               // true when thinking output is enabled (default: false)
 }
 
 // NewYoloAgent creates an agent rooted in the current working directory
@@ -96,7 +95,7 @@ func NewYoloAgent() *YoloAgent {
 		history:         NewHistoryManager(yoloDir),
 		config:          cfg,
 		running:         true,
-		thinkingEnabled: true, // default: thinking is shown
+		thinkingEnabled: false, // default: thinking is off
 		tts:             NewTTSManager(),
 		stt:             NewSTTManager(),
 		memory:          NewMemoryManager(yoloDir),
@@ -273,25 +272,20 @@ func (a *YoloAgent) restart() {
 
 // ── Setup ──
 
-// setupFirstRun runs on first launch (no model configured). It tries to connect
-// to Ollama and let the user pick a model. If Ollama is unreachable, it skips
-// model selection — the user can set a model later via /switch or /config.
+// setupFirstRun runs on first launch (no model configured). Connects to Ollama,
+// lets the user pick a model, and records the choice. Exits if Ollama is unreachable.
 func (a *YoloAgent) setupFirstRun() {
 	cprint(Cyan+Bold, "\n  YOLO - Your Own Living Operator")
 	cprint(Gray, "  A self-evolving AI agent for software development")
 	cprint(Gray, fmt.Sprintf("  Working directory: %s", a.baseDir))
-	cprint(Gray, fmt.Sprintf("  Config directory:  %s", a.config.GetYoloDir()))
 	fmt.Println()
 
 	cprint(Yellow, "  Connecting to Ollama...")
 	models := a.ollama.ListModels()
 	if len(models) == 0 {
-		cprint(Yellow, "  Cannot reach Ollama or no models installed.")
-		cprint(Reset, "  Use /switch <model> once Ollama is running, or:")
-		cprint(Reset, "    /config model <model-name>")
-		cprint(Reset, "")
-		a.showHelpHint()
-		return
+		cprint(Red, "  Error: Cannot reach Ollama or no models installed.")
+		cprint(Red, "  Make sure Ollama is running: ollama serve")
+		os.Exit(1)
 	}
 
 	cprint(Green, fmt.Sprintf("  Found %d model(s):", len(models)))
@@ -2277,6 +2271,18 @@ func (a *YoloAgent) echoUserInput(text string) {
 // initialises the terminal UI and input manager, registers signal handlers,
 // and enters the main event loop. It blocks until the user exits.
 func (a *YoloAgent) Run() {
+	// Ensure YOLO data directory exists and display its path
+	yoloDir := a.config.GetYoloDir()
+	if _, err := os.Stat(yoloDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(yoloDir, 0o755); err != nil {
+			cprint(Red, fmt.Sprintf("  Error: could not create data directory %s: %v", yoloDir, err))
+			os.Exit(1)
+		}
+		cprint(Gray, fmt.Sprintf("  Data directory: %s (created)", yoloDir))
+	} else {
+		cprint(Gray, fmt.Sprintf("  Data directory: %s", yoloDir))
+	}
+
 	a.config.Load()
 	hasHistory := a.history.Load()
 
@@ -2286,15 +2292,6 @@ func (a *YoloAgent) Run() {
 	}
 	if enabled := a.config.GetTTSEnabled(); enabled != nil {
 		a.tts.SetEnabled(*enabled)
-	}
-
-	// Check Ollama connectivity early with a short timeout so the user
-	// gets a clear message instead of a cryptic HTTP error on first chat.
-	{
-		check := &http.Client{Timeout: 3 * time.Second}
-		if _, err := check.Get(a.config.GetOllamaURL() + "/api/tags"); err != nil {
-			cprint(Yellow, fmt.Sprintf("  Warning: Cannot reach Ollama at %s — is it running?", a.config.GetOllamaURL()))
-		}
 	}
 
 	hasModel := a.config.GetModel() != ""

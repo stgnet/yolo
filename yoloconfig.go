@@ -23,9 +23,9 @@ type YoloConfigData struct {
 	TerminalMode bool   `json:"terminal_mode,omitempty"` // true = classic split-screen UI; false (default) = buffer mode
 	DebugMode    *bool  `json:"debug_mode,omitempty"`    // false (default) = cleaner output; true = show full tool args/results verbatim
 	AutoMode     *bool  `json:"auto_mode,omitempty"`     // false (default) = wait for user input; true = enable autonomous mode
-	ThinkMode    *bool  `json:"think_mode,omitempty"`    // true (default) = show thinking output; false = hide thinking blocks
+	ThinkMode    *bool  `json:"think_mode,omitempty"`    // false (default) = hide thinking blocks; true = show thinking output
 	TTSVoice     string `json:"tts_voice,omitempty"`     // TTS voice name (default: platform-specific)
-	TTSEnabled   *bool  `json:"tts_enabled,omitempty"`   // nil = default (enabled if backend found); true/false = explicit
+	TTSEnabled   *bool  `json:"tts_enabled,omitempty"`   // false (default) = disabled; true = enabled
 	EmailFrom    string `json:"email_from,omitempty"`    // sender email address (default: yolo@localhost)
 	EmailTo      string `json:"email_to,omitempty"`      // default recipient email address
 	InboxPath    string `json:"inbox_path,omitempty"`    // Maildir inbox path (default: empty = no inbox)
@@ -274,13 +274,12 @@ func (c *YoloConfig) SetAutoMode(enabled bool) {
 	c.saveLocked()
 }
 
-// GetThinkMode returns whether thinking output is shown. Defaults to true
-// when not explicitly set, showing thinking blocks by default.
+// GetThinkMode returns whether thinking output is shown. Defaults to false.
 func (c *YoloConfig) GetThinkMode() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.Data.ThinkMode == nil {
-		return true // default on
+		return false
 	}
 	return *c.Data.ThinkMode
 }
@@ -469,12 +468,12 @@ func (c *YoloConfig) GetAll() map[string]string {
 	if c.Data.ThinkMode != nil {
 		m["think_mode"] = fmt.Sprintf("%v", *c.Data.ThinkMode)
 	} else {
-		m["think_mode"] = "true"
+		m["think_mode"] = "false"
 	}
 	if c.Data.TTSEnabled != nil {
 		m["tts_enabled"] = fmt.Sprintf("%v", *c.Data.TTSEnabled)
 	} else {
-		m["tts_enabled"] = "(auto)"
+		m["tts_enabled"] = "false"
 	}
 	return m
 }
