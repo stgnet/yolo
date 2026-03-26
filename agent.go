@@ -72,6 +72,9 @@ func NewYoloAgent() *YoloAgent {
 	cfg := NewYoloConfig()
 	yoloDir := cfg.GetYoloDir()
 
+	// Initialize global todo list in the YOLO data directory
+	InitGlobalTodoList(yoloDir)
+
 	// Clear stale subagent results from any prior run so that
 	// listSubagents/readSubagentResult don't return leftover data and the
 	// monotonic ID counter (starting at 0) doesn't collide with old files.

@@ -180,7 +180,7 @@ var ollamaTools = []ToolDef{
 		map[string]ToolParam{
 			"title": {Type: "string", Description: "Title of the todo item to delete (required)"},
 		}, []string{"title"}),
-	toolDef("list_todos", "List all todos (pending and completed) from .todo.json file",
+	toolDef("list_todos", "List all todos (pending and completed)",
 		map[string]ToolParam{},
 		nil),
 	toolDef("check_ollama_status", "Check Ollama server status and read debug logs. Returns whether Ollama is running, recent log lines, and any errors found.",
