@@ -53,6 +53,7 @@ type YoloAgent struct {
 	mcp             *MCPManager        // MCP server connections and tools
 	contextMgr      *ContextManager    // context window compaction and summary
 	cron            *CronManager       // scheduled tasks (cron.json)
+	devMode         bool               // true when running from source directory (enables compile/restart checks)
 	running         bool               // false signals the main loop to exit
 	busy            bool               // true while the agent is processing a chat round
 	subagentCounter int                // monotonic ID for spawned sub-agents
@@ -90,10 +91,22 @@ func NewYoloAgent() *YoloAgent {
 		binaryModTime = info.ModTime()
 	}
 
+	// Detect dev mode: executable is in the current directory and source files exist
+	devMode := false
+	if execAbs, err := filepath.Abs(execPath); err == nil {
+		execInCwd := filepath.Dir(execAbs) == baseDir
+		_, mainErr := os.Stat(filepath.Join(baseDir, "main.go"))
+		_, modErr := os.Stat(filepath.Join(baseDir, "go.mod"))
+		if execInCwd && mainErr == nil && modErr == nil {
+			devMode = true
+		}
+	}
+
 	a := &YoloAgent{
 		baseDir:         baseDir,
 		scriptPath:      execPath,
 		binaryModTime:   binaryModTime,
+		devMode:         devMode,
 		ollama:          NewOllamaClient(cfg.GetOllamaURL(), cfg.GetNumCtxOverride()),
 		history:         NewHistoryDB(yoloDir),
 		config:          cfg,
@@ -145,6 +158,9 @@ func (a *YoloAgent) allTools() []ToolDef {
 //  1. Source newer than executable on disk → needs compile ("go build").
 //  2. Executable on disk newer than at startup → needs restart.
 func (a *YoloAgent) checkBinaryFreshness() string {
+	if !a.devMode {
+		return ""
+	}
 	var warnings []string
 
 	// Get the current on-disk mod time of the executable
@@ -238,7 +254,7 @@ func (a *YoloAgent) setupFirstRun() {
 	cprint(Cyan+Bold, "\n  YOLO - Your Own Living Operator")
 	cprint(Gray, "  A self-evolving AI agent for software development")
 	cprint(Gray, fmt.Sprintf("  Working directory: %s", a.baseDir))
-	fmt.Println()
+	cprint(Reset, "")
 
 	cprint(Yellow, "  Connecting to Ollama...")
 	models := a.ollama.ListModels()
@@ -250,18 +266,18 @@ func (a *YoloAgent) setupFirstRun() {
 
 	cprint(Green, fmt.Sprintf("  Found %d model(s):", len(models)))
 	for i, m := range models {
-		fmt.Printf("    %s%2d%s. %s\n", Bold, i+1, Reset, m)
+		cprint(Reset, fmt.Sprintf("    %s%2d%s. %s", Bold, i+1, Reset, m))
 	}
-	fmt.Println()
+	cprint(Reset, "")
 
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		fmt.Printf("  %sSelect model (1-%d): %s", Green, len(models), Reset)
+		cprintNoNL(Green, fmt.Sprintf("  %sSelect model (1-%d): %s", Green, len(models), Reset))
 		choice, _ := reader.ReadString('\n')
 		choice = strings.TrimSpace(choice)
 		var idx int
 		if _, err := fmt.Sscanf(choice, "%d", &idx); err != nil || idx < 1 || idx > len(models) {
-			fmt.Println("  Invalid selection, try again.")
+			cprint(Reset, "  Invalid selection, try again.")
 			continue
 		}
 		a.config.SetModel(models[idx-1])
@@ -307,10 +323,10 @@ func (a *YoloAgent) displaySessionResumption() {
 			toolName := fmt.Sprintf("%v", lastAssistantMsg.Meta["tool_name"])
 			cprint(Yellow, fmt.Sprintf("    Tool: %s%s%s", Bold, toolName, Reset))
 		}
-		fmt.Println()
+		cprint(Reset, "")
 	} else {
 		cprint(Yellow, "  ⚠️ No recent activity found in history")
-		fmt.Println()
+		cprint(Reset, "")
 	}
 
 	// Also show last few messages for context
@@ -332,7 +348,7 @@ func (a *YoloAgent) displaySessionResumption() {
 			content := truncateString(stripOrphanedCloseTags(m.Content), 50)
 			cprint(Gray, fmt.Sprintf("    [%s] %s", prefix, content))
 		}
-		fmt.Println()
+		cprint(Reset, "")
 	}
 	a.showHelpHint()
 }
@@ -410,17 +426,6 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 	if a.ollama != nil {
 		if modelCtx := a.ollama.GetModelContextLength(a.config.GetModel()); modelCtx > 0 {
 			contextLimit = DynamicContextLimit(modelCtx)
-		}
-	}
-
-	// Auto-compact if approaching context limit
-	if a.contextMgr != nil && a.contextMgr.NeedsCompaction(len(a.history.Data.Messages), contextLimit) {
-		cprint(Gray, "  [auto-compacting conversation history...]")
-		ctx := context.Background()
-		if compacted, err := CompactHistory(ctx, a.ollama, a.config.GetModel(), a.history, a.contextMgr, CompactionKeepRecent); err != nil {
-			cprint(Yellow, fmt.Sprintf("  [compaction failed: %v]", err))
-		} else if compacted > 0 {
-			cprint(Gray, fmt.Sprintf("  [compacted %d messages into summary]", compacted))
 		}
 	}
 
@@ -688,14 +693,6 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 				fileMutationFailed = true
 			}
 
-			// Check if go.mod has disappeared — stop auto mode so
-			// the operator can review what caused the deletion.
-			if _, err := os.Stat("go.mod"); os.IsNotExist(err) {
-				cprint(Red, "  *** CRITICAL: go.mod has disappeared! Disabling autonomous mode. ***")
-				cprint(Yellow, "  Review the chat output above to determine what deleted go.mod.")
-				a.config.SetAutoMode(false)
-				break
-			}
 		}
 
 		// After the tool batch completes, check if the user typed something
@@ -1862,6 +1859,10 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		cprint(Reset, fmt.Sprintf("  Script:      %s", a.scriptPath))
 
 	case "/restart":
+		if !a.devMode {
+			cprint(Red, "  Restart not available: not running from source directory")
+			return
+		}
 		cprint(Yellow, "  Restarting YOLO...")
 		// a.running = false
 		go func() {
@@ -2020,10 +2021,7 @@ func (a *YoloAgent) runCompaction() {
 
 	cprint(Cyan, fmt.Sprintf("  Compacting %d messages (keeping %d recent)...", msgCount-CompactionKeepRecent, CompactionKeepRecent))
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
-	compacted, err := CompactHistory(ctx, a.ollama, a.config.GetModel(), a.history, a.contextMgr, CompactionKeepRecent)
+	compacted, err := CompactHistory(a.history, a.contextMgr, CompactionKeepRecent)
 	if err != nil {
 		cprint(Red, fmt.Sprintf("  Compaction failed: %v", err))
 		return
@@ -2234,6 +2232,22 @@ func (a *YoloAgent) echoUserInput(text string) {
 // Run is the top-level entry point. It loads (or creates) session history,
 // initialises the terminal UI and input manager, registers signal handlers,
 // and enters the main event loop. It blocks until the user exits.
+// compactIfNeeded runs history compaction if the message count exceeds the limit.
+func (a *YoloAgent) compactIfNeeded() {
+	if a.contextMgr == nil {
+		return
+	}
+	contextLimit := MaxContextMessages
+	if a.ollama != nil {
+		if modelCtx := a.ollama.GetModelContextLength(a.config.GetModel()); modelCtx > 0 {
+			contextLimit = DynamicContextLimit(modelCtx)
+		}
+	}
+	if a.contextMgr.NeedsCompaction(len(a.history.Data.Messages), contextLimit) {
+		CompactHistory(a.history, a.contextMgr, CompactionKeepRecent)
+	}
+}
+
 func (a *YoloAgent) Run() {
 	// Ensure YOLO data directory exists and display its path
 	yoloDir := a.config.GetYoloDir()
@@ -2285,6 +2299,11 @@ func (a *YoloAgent) Run() {
 	// if hasModel && hasHistory {
 	// 	a.displaySessionResumption()
 	// }
+
+	// Run compaction at startup if needed (fast, no LLM call)
+	if hasHistory {
+		a.compactIfNeeded()
+	}
 
 	// If the last history message is from the restart tool, the process was
 	// just restarted. Inject a system message so the agent knows the restart
@@ -2365,6 +2384,7 @@ func (a *YoloAgent) Run() {
 				a.echoUserInput(stripped)
 
 				a.chatWithAgent(stripped, false)
+				a.compactIfNeeded()
 
 				a.mu.Lock()
 				a.busy = false
@@ -2386,6 +2406,7 @@ func (a *YoloAgent) Run() {
 				a.mu.Unlock()
 
 				a.chatWithAgent("", true)
+				a.compactIfNeeded()
 
 				a.mu.Lock()
 				a.busy = false
@@ -2404,6 +2425,6 @@ func (a *YoloAgent) Run() {
 	if err := a.history.Save(); err != nil {
 		cprint(Red, fmt.Sprintf("  Warning: could not save history: %v\n", err))
 	}
-	fmt.Print("\r\n")
+	cprint(Reset, "")
 	cprint(Cyan, "  Session saved. Goodbye!\n")
 }

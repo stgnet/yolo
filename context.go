@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -191,42 +190,77 @@ func DynamicContextLimit(modelContextTokens int) int {
 
 // ─── Compaction Logic ────────────────────────────────────────────────
 
-// compactionPrompt builds the system prompt for the summarization LLM call.
-func compactionPrompt(existingSummary string, messages []HistoryMessage) string {
+// extractSummary builds a concise programmatic summary from messages
+// without calling the LLM. It extracts user questions, tool operations,
+// and key outcomes into a structured summary.
+func extractSummary(existingSummary string, messages []HistoryMessage) string {
 	var sb strings.Builder
-	sb.WriteString("You are a conversation summarizer. Your task is to create a concise summary of the conversation below.\n\n")
-	sb.WriteString("Rules:\n")
-	sb.WriteString("- Focus on key decisions, discoveries, and outcomes\n")
-	sb.WriteString("- Preserve important technical details (file names, error messages, solutions)\n")
-	sb.WriteString("- Note any pending work or unresolved issues\n")
-	sb.WriteString("- Keep the summary under 2000 characters\n")
-	sb.WriteString("- Write in past tense, third person (\"The user asked...\", \"The agent implemented...\")\n")
-	sb.WriteString("- Output ONLY the summary text, no preamble or labels\n\n")
 
+	// Carry forward existing summary (condensed)
 	if existingSummary != "" {
-		sb.WriteString("Previous conversation summary (incorporate and update this):\n")
-		sb.WriteString(existingSummary)
-		sb.WriteString("\n\n---\n\n")
-	}
-
-	sb.WriteString("New conversation messages to summarize:\n\n")
-	for _, m := range messages {
-		// Truncate very long messages
-		content := m.Content
-		if len(content) > 500 {
-			content = content[:500] + "...(truncated)"
+		// Keep only the most recent portion if existing summary is long
+		existing := existingSummary
+		if len(existing) > SummaryMaxLength/2 {
+			existing = existing[len(existing)-SummaryMaxLength/2:]
+			// Find first newline to avoid cutting mid-sentence
+			if idx := strings.Index(existing, "\n"); idx > 0 {
+				existing = existing[idx+1:]
+			}
 		}
-		sb.WriteString(fmt.Sprintf("[%s] %s\n", m.Role, content))
+		sb.WriteString(existing)
+		sb.WriteString("\n")
 	}
 
-	return sb.String()
+	for _, m := range messages {
+		content := strings.TrimSpace(m.Content)
+		if content == "" {
+			continue
+		}
+		switch m.Role {
+		case "user":
+			// Capture user requests (first line, truncated)
+			line := firstLine(content, 120)
+			sb.WriteString(fmt.Sprintf("User: %s\n", line))
+		case "assistant":
+			// Capture assistant decisions/responses (first line, truncated)
+			line := firstLine(content, 120)
+			sb.WriteString(fmt.Sprintf("Agent: %s\n", line))
+		case "tool":
+			// Capture tool results briefly
+			line := firstLine(content, 80)
+			sb.WriteString(fmt.Sprintf("Tool result: %s\n", line))
+		case "system":
+			// Skip system messages in summary (they're ephemeral)
+		}
+	}
+
+	result := sb.String()
+	if len(result) > SummaryMaxLength {
+		result = result[:SummaryMaxLength]
+		// Trim to last complete line
+		if idx := strings.LastIndex(result, "\n"); idx > 0 {
+			result = result[:idx]
+		}
+	}
+	return result
+}
+
+// firstLine returns the first line of s, truncated to maxLen characters.
+func firstLine(s string, maxLen int) string {
+	if idx := strings.IndexByte(s, '\n'); idx >= 0 {
+		s = s[:idx]
+	}
+	if len(s) > maxLen {
+		s = s[:maxLen] + "..."
+	}
+	return s
 }
 
 // CompactHistory summarizes older messages and removes them from history.
-// It uses the LLM to generate the summary, then keeps only recent messages.
+// It uses fast programmatic extraction (no LLM call) to build the summary,
+// then keeps only recent messages.
 // Returns the number of messages compacted and any error.
-func CompactHistory(ctx context.Context, ollama *OllamaClient, model string,
-	history *HistoryDB, ctxMgr *ContextManager, keepRecent int) (int, error) {
+func CompactHistory(history *HistoryDB, ctxMgr *ContextManager, keepRecent int) (int, error) {
 
 	history.mu.Lock()
 	msgCount := len(history.Data.Messages)
@@ -243,22 +277,10 @@ func CompactHistory(ctx context.Context, ollama *OllamaClient, model string,
 	history.mu.Unlock()
 
 	existingSummary := ctxMgr.GetSummary()
-	prompt := compactionPrompt(existingSummary, toSummarize)
+	summary := extractSummary(existingSummary, toSummarize)
 
-	// Call LLM to generate summary (no tools, simple completion)
-	msgs := []ChatMessage{
-		{Role: "system", Content: prompt},
-		{Role: "user", Content: "Please summarize the conversation above."},
-	}
-
-	result, err := ollama.Chat(ctx, model, msgs, nil, nil, false, nil)
-	if err != nil {
-		return 0, fmt.Errorf("summarization failed: %w", err)
-	}
-
-	summary := strings.TrimSpace(result.ContentText)
 	if summary == "" {
-		return 0, fmt.Errorf("LLM returned empty summary")
+		return 0, nil
 	}
 
 	// Update the summary
@@ -266,7 +288,6 @@ func CompactHistory(ctx context.Context, ollama *OllamaClient, model string,
 
 	// Remove summarized messages from history, keeping recent ones
 	history.mu.Lock()
-	// Re-check in case messages were added during summarization
 	currentCount := len(history.Data.Messages)
 	removeCount := currentCount - keepRecent
 	if removeCount > 0 {

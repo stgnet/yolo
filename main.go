@@ -24,8 +24,8 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Error: yolo requires an interactive terminal (stderr is not a TTY)")
 		os.Exit(1)
 	}
-	fmt.Println("YOLO - Your Own Living Operator")
-	fmt.Println("Starting agent...")
+	cprint(Reset, "YOLO - Your Own Living Operator")
+	cprint(Reset, "Starting agent...")
 	agent := NewYoloAgent()
 	agent.Run()
 }

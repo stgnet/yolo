@@ -133,36 +133,38 @@ func TestDynamicContextLimit_Scaling(t *testing.T) {
 	assert.LessOrEqual(t, medium, large)
 }
 
-func TestCompactionPrompt(t *testing.T) {
+func TestExtractSummary(t *testing.T) {
 	messages := []HistoryMessage{
 		{Role: "user", Content: "Fix the login bug"},
 		{Role: "assistant", Content: "I found the issue in auth.go line 42"},
 	}
 
 	// Without existing summary
-	prompt := compactionPrompt("", messages)
-	assert.Contains(t, prompt, "conversation summarizer")
-	assert.Contains(t, prompt, "Fix the login bug")
-	assert.Contains(t, prompt, "auth.go line 42")
-	assert.NotContains(t, prompt, "Previous conversation summary")
+	summary := extractSummary("", messages)
+	assert.Contains(t, summary, "Fix the login bug")
+	assert.Contains(t, summary, "auth.go line 42")
 
 	// With existing summary
-	prompt = compactionPrompt("Earlier, the user set up the project.", messages)
-	assert.Contains(t, prompt, "Previous conversation summary")
-	assert.Contains(t, prompt, "Earlier, the user set up the project.")
+	summary = extractSummary("Earlier, the user set up the project.", messages)
+	assert.Contains(t, summary, "Earlier, the user set up the project.")
+	assert.Contains(t, summary, "Fix the login bug")
 }
 
-func TestCompactionPrompt_TruncatesLongMessages(t *testing.T) {
-	longContent := make([]byte, 1000)
-	for i := range longContent {
-		longContent[i] = 'x'
-	}
+func TestExtractSummary_SkipsSystemMessages(t *testing.T) {
 	messages := []HistoryMessage{
-		{Role: "user", Content: string(longContent)},
+		{Role: "system", Content: "You are an AI assistant"},
+		{Role: "user", Content: "Hello"},
 	}
 
-	prompt := compactionPrompt("", messages)
-	assert.Contains(t, prompt, "...(truncated)")
+	summary := extractSummary("", messages)
+	assert.NotContains(t, summary, "AI assistant")
+	assert.Contains(t, summary, "Hello")
+}
+
+func TestFirstLine(t *testing.T) {
+	assert.Equal(t, "hello", firstLine("hello\nworld", 100))
+	assert.Equal(t, "hel...", firstLine("hello", 3))
+	assert.Equal(t, "short", firstLine("short", 100))
 }
 
 func TestCompactHistory_TooFewMessages(t *testing.T) {
@@ -175,7 +177,24 @@ func TestCompactHistory_TooFewMessages(t *testing.T) {
 		hm.AddMessage("user", "msg", nil)
 	}
 
-	compacted, err := CompactHistory(nil, nil, "", hm, cm, CompactionKeepRecent)
+	compacted, err := CompactHistory(hm, cm, CompactionKeepRecent)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, compacted)
+}
+
+func TestCompactHistory_CompactsOldMessages(t *testing.T) {
+	dir := t.TempDir()
+	hm := NewHistoryDB(dir)
+	cm := NewContextManager(dir)
+
+	// Add more messages than keepRecent
+	for i := 0; i < 25; i++ {
+		hm.AddMessage("user", "test message", nil)
+	}
+
+	compacted, err := CompactHistory(hm, cm, 15)
+	assert.NoError(t, err)
+	assert.Equal(t, 10, compacted)
+	assert.Equal(t, 15, len(hm.Data.Messages))
+	assert.NotEmpty(t, cm.GetSummary())
 }

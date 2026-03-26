@@ -90,6 +90,9 @@ func (t *ToolExecutor) runCommand(args map[string]any) string {
 }
 
 func (t *ToolExecutor) restart(args map[string]any) string {
+	if t.agent != nil && !t.agent.devMode {
+		return errorMessage("restart is not available: not running from source directory")
+	}
 	exePath, err := os.Executable()
 	if err != nil {
 		return errorMessage("could not get executable path: %v", err)
