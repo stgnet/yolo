@@ -2199,7 +2199,10 @@ func (a *YoloAgent) showUncompletedTodos() {
 
 func (a *YoloAgent) showPrompt() {
 	if bufferUI != nil && globalUI == nil {
-		// Buffer mode: prompt appears when user starts typing.
+		// Buffer mode: show "you> " prompt when not in auto mode
+		if !a.config.GetAutoMode() {
+			bufferUI.ShowInitialPrompt()
+		}
 		return
 	}
 	// Terminal mode: the divider label "──you──" serves as the indicator.

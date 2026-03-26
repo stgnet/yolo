@@ -138,6 +138,54 @@ func (b *BufferUI) showPromptLocked() {
 		b.midLine = false
 	}
 	close(b.promptReady)
+	// Show initial prompt with empty input
+	b.showInitialPromptLocked()
+}
+
+// showInitialPromptLocked displays the "you> " prompt before any user input.
+// Must be called while holding b.mu lock. Only shows if prompt not yet shown.
+func (b *BufferUI) showInitialPromptLocked() {
+	if !b.promptShown {
+		return
+	}
+	
+	// Determine available terminal width
+	cols := 80
+	if c, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && c > 0 {
+		cols = c
+	}
+
+	prefix := "you> "
+	
+	if len(prefix) < cols {
+		fmt.Fprintf(os.Stdout, "\r\033[K%s%s%s", Green, prefix, Reset)
+		b.prevInputLines = 1
+	}
+}
+
+// ShowInitialPrompt displays the initial "you> " prompt in non-autonomous mode.
+// Called at startup to indicate user should type input. Thread-safe.
+func (b *BufferUI) ShowInitialPrompt() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	
+	// Reset previous state to show fresh prompt (only if not currently waiting for input)
+	if !b.userWantsInput {
+		b.promptShown = true  // Mark as shown so we can display it
+		if b.midLine {
+			rawWrite("\r\n")
+			b.midLine = false
+		}
+		b.showInitialPromptLocked()
+	}
+}
+
+// ResetPrompt clears the prompt state so it can be shown again on next interaction.
+// Called after completing a turn in non-autonomous mode. Thread-safe.
+func (b *BufferUI) ResetPrompt() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.promptShown = false
 }
 
 // RedrawPrompt redraws the "you> " prompt with the current input line.
@@ -245,33 +293,4 @@ func (b *BufferUI) FlushBuffer() {
 // CancelInput resets buffer state and flushes pending output (e.g., on Ctrl-C).
 func (b *BufferUI) CancelInput() {
 	b.FlushBuffer()
-}
-
-// ShowInitialPrompt displays the "you> " prompt at startup in non-autonomous mode.
-// This gives the user a visual cue that they need to type input.
-func (b *BufferUI) ShowInitialPrompt() {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	// Only show if not already shown
-	if b.promptShown {
-		return
-	}
-
-	// If there's mid-line output, finish it first
-	if b.midLine {
-		rawWrite("\r\n")
-		b.midLine = false
-	}
-
-	// Show the initial prompt
-	fmt.Fprintf(os.Stdout, "\r\033[K%syou> %s", Green, Reset)
-	os.Stdout.Sync() // Ensure immediate flush
-	b.promptShown = true
-	b.userWantsInput = true
-	// promptReady may already be closed (e.g. from constructor or showPromptLocked).
-	// Replace with a fresh closed channel to signal readiness without double-close panic.
-	ch := make(chan struct{})
-	close(ch)
-	b.promptReady = ch
 }
