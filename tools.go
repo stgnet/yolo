@@ -507,6 +507,25 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 		return t.setConfig(args)
 	case "get_config":
 		return t.getConfig(args)
+	// Git tools
+	case "git_status":
+		return t.gitStatus(args)
+	case "git_diff":
+		return t.gitDiff(args)
+	case "git_log":
+		return t.gitLog(args)
+	case "git_branch":
+		return t.gitBranch(args)
+	case "git_checkout":
+		return t.gitCheckout(args)
+	case "git_commit":
+		return t.gitCommit(args)
+	case "git_add":
+		return t.gitAdd(args)
+	case "git_show":
+		return t.gitShow(args)
+	case "git_remote":
+		return t.gitRemote(args)
 	default:
 		// Check if this is an MCP tool
 		if t.agent != nil && t.agent.mcp != nil && t.agent.mcp.IsMCPTool(name) {

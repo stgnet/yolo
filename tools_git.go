@@ -211,7 +211,7 @@ func (t *ToolExecutor) gitCommit(args map[string]any) string {
 	}
 	cmdArgs = append(cmdArgs, message)
 
-	cmd := exec.Command("git", cmdArgs...)
+	cmd := exec.Command("git", append([]string{"commit"}, cmdArgs...)...)
 	cmd.Dir = t.baseDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -247,7 +247,7 @@ func (t *ToolExecutor) gitAdd(args map[string]any) string {
 		cmdArgs = append(cmdArgs, ".")
 	}
 
-	cmd := exec.Command("git", cmdArgs...)
+	cmd := exec.Command("git", append([]string{"add"}, cmdArgs...)...)
 	cmd.Dir = t.baseDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
