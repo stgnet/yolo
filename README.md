@@ -15,7 +15,7 @@ YOLO is a **self-evolving AI agent** for autonomous software development. It ope
 - 📧 **Email-enabled**: Full email processing with auto-responses at `yolo@example.com`
 - 🌐 **Web-connected**: DuckDuckGo search, Reddit API, Google Workspace integration
 - ⚡ **Autonomous mode**: Works independently without human intervention
-- 🔧 **Developer tools**: 32 built-in tools for file operations, command execution, and browser automation
+- 🔧 **Developer tools**: 40 built-in tools for file operations, version control, command execution, and browser automation
 
 ## Quick Start
 
@@ -72,8 +72,8 @@ YOLO consists of several key components that work together:
       ┌─────────────────────────────────────┐
       │           YoloAgent                 │
       │  ┌────────────┬────────────────────┤
-      │  │ History    │ ToolExecutor       │
-       │  │ Manager    │  (32 tools)        │
+        │  │ History    │ ToolExecutor       │
+        │  │ Manager    │  (40 tools)        │
       │  └────────────┴────────────────────┘
       └───────────┬──────────────┬──────────┘
                   │              │
@@ -89,14 +89,14 @@ YOLO consists of several key components that work together:
 
 - **YoloAgent** (`agent.go`): Central orchestrator handling chat loops and commands
 - **OllamaClient** (`ollama.go`): HTTP client for Ollama REST API with streaming support
-- **ToolExecutor** (`tools.go`): Dispatches tool calls to 32 concrete implementations
+- **ToolExecutor** (`tools.go`): Dispatches tool calls to 40 concrete implementations
 - **HistoryManager** (`history.go`): Thread-safe persistence in `.yolo/history.json`
 - **InputManager** (`input.go`): Raw terminal input handling in separate goroutine
 - **TerminalUI** (`terminal.go`): Split-screen layout with scrollable output
 
 ## Tools Reference
 
-YOLO has 32 built-in tools that the LLM can call:
+YOLO has 40 built-in tools that the LLM can call:
 
 ### File Operations
 | Tool | Description |
@@ -149,12 +149,26 @@ YOLO has 32 built-in tools that the LLM can call:
 |------|-------------|
 | `run_command` | Execute shell command (30s timeout, stdin=/dev/null) |
 
+### Version Control (Git)
+| Tool | Description |
+|------|-------------|
+| `git_status` | Show current repository status |
+| `git_diff` | Show changes (staged/unstaged), optional file filter |
+| `git_log` | Recent commit history with oneline format |
+| `git_branch` | List all branches with current marked |
+| `git_checkout` | Checkout branch or restore file from HEAD |
+| `git_commit` | Commit staged changes with message |
+| `git_add` | Stage files for commit (all or specific) |
+| `git_show` | Show details of a specific commit |
+| `git_remote` | Show configured git remotes with URLs |
+
 ### Browser Automation
 | Tool | Description |
 |------|-------------|
 | `playwright_mcp` | Navigate URLs, interact with DOM, fill forms, screenshots |
 
-Total: 32 tools across file operations, agent management, external services, task management, system commands, and browser automation.
+Total: 40 tools across file operations, agent management, version control, external services, task management, system commands, and browser automation.
+
 
 ## Email Processing
 
