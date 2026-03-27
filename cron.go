@@ -28,21 +28,21 @@ import (
 
 // CronSchedule is a single scheduled task.
 type CronSchedule struct {
-	ID          string `json:"id"`                    // unique identifier
-	Name        string `json:"name"`                  // human-readable name
-	CronExpr    string `json:"cron_expr"`             // cron expression (5 fields: min hour dom month dow)
-	Prompt      string `json:"prompt"`                // task prompt injected when schedule fires
-	Enabled     bool   `json:"enabled"`               // whether the schedule is active
-	CreatedAt   string `json:"created_at"`            // RFC 3339
-	LastRun     string `json:"last_run,omitempty"`     // RFC 3339 of last execution
-	NextRun     string `json:"next_run,omitempty"`     // RFC 3339 of next planned execution
-	RunCount    int    `json:"run_count"`              // total times fired
+	ID        string `json:"id"`                 // unique identifier
+	Name      string `json:"name"`               // human-readable name
+	CronExpr  string `json:"cron_expr"`          // cron expression (5 fields: min hour dom month dow)
+	Prompt    string `json:"prompt"`             // task prompt injected when schedule fires
+	Enabled   bool   `json:"enabled"`            // whether the schedule is active
+	CreatedAt string `json:"created_at"`         // RFC 3339
+	LastRun   string `json:"last_run,omitempty"` // RFC 3339 of last execution
+	NextRun   string `json:"next_run,omitempty"` // RFC 3339 of next planned execution
+	RunCount  int    `json:"run_count"`          // total times fired
 }
 
 // CronData is the top-level structure for .yolo/cron.json.
 type CronData struct {
-	Version   int             `json:"version"`
-	Schedules []CronSchedule  `json:"schedules"`
+	Version   int            `json:"version"`
+	Schedules []CronSchedule `json:"schedules"`
 }
 
 // CronManager owns the schedule list and the background ticker.

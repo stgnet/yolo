@@ -9,7 +9,7 @@ package main
 type HistoryMessage struct {
 	Role    string         `json:"role"` // "user", "assistant", "tool", or "system"
 	Content string         `json:"content"`
-	TS      string         `json:"ts"`            // RFC 3339 timestamp
+	TS      string         `json:"ts"`             // RFC 3339 timestamp
 	Meta    map[string]any `json:"meta,omitempty"` // optional key-value metadata
 }
 

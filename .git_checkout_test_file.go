@@ -1,2 +1,0 @@
-// Original content
-package main

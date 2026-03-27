@@ -383,9 +383,9 @@ func (h *HistoryDB) Search(query string, limit int) []SearchResult {
 
 	// Score all messages
 	type scoredMsg struct {
-		msg       msgRow
-		score     float64
-		matchPos  []int // positions where terms matched for snippet
+		msg      msgRow
+		score    float64
+		matchPos []int // positions where terms matched for snippet
 	}
 
 	var scored []scoredMsg
@@ -464,7 +464,7 @@ func tokenizeQuery(query string) []SearchTerm {
 	// First, handle quoted phrases - protect them from splitting
 	phraseRegex := regexp.MustCompile(`"([^"]+)"`)
 	phrases := phraseRegex.FindAllStringSubmatch(query, -1)
-	
+
 	// Replace quoted phrases with placeholders
 	placeholders := make(map[string]string)
 	for i, match := range phrases {
@@ -521,9 +521,9 @@ func isOperator(token string) bool {
 
 // invertedIndex maps words to document information.
 type invertedIndex struct {
-	documents []string // documents[i] = full text of message i
+	documents []string               // documents[i] = full text of message i
 	postings  map[string]map[int]int // word -> docID -> frequency
-	totalDocs int                  // total number of documents
+	totalDocs int                    // total number of documents
 }
 
 // newInvertedIndex builds an in-memory inverted index from all messages.
@@ -536,7 +536,7 @@ func newInvertedIndex(messages []msgRow) *invertedIndex {
 
 	for i, m := range messages {
 		index.documents[i] = strings.ToLower(m.content)
-		
+
 		// Tokenize content
 		words := tokenizeText(m.content)
 		wordCount := make(map[string]int)
@@ -561,7 +561,7 @@ func newInvertedIndex(messages []msgRow) *invertedIndex {
 // tokenizeText splits text into words (lowercased, no punctuation).
 func tokenizeText(text string) []string {
 	text = strings.ToLower(text)
-	
+
 	// Split on non-alphanumeric characters
 	var words []string
 	current := strings.Builder{}
@@ -591,13 +591,13 @@ func (idx *invertedIndex) scoreDocument(content string, terms []SearchTerm) (flo
 
 	contentLower := strings.ToLower(content)
 	words := tokenizeText(content)
-	
+
 	var totalScore float64
 	var matchPositions []int
-	
+
 	for _, term := range terms {
 		score := 0.0
-		
+
 		if term.Prefix {
 			// Prefix matching: find all words starting with the prefix
 			for i, word := range words {
@@ -614,7 +614,7 @@ func (idx *invertedIndex) scoreDocument(content string, terms []SearchTerm) (flo
 					matchPositions = append(matchPositions, i)
 				}
 			}
-			
+
 			// Also check for phrase matches if term contains spaces
 			if strings.Contains(term.Word, " ") {
 				if strings.Contains(contentLower, term.Word) {
@@ -632,7 +632,7 @@ func (idx *invertedIndex) scoreDocument(content string, terms []SearchTerm) (flo
 				}
 			}
 		}
-		
+
 		totalScore += score
 	}
 
@@ -660,7 +660,7 @@ func generateSnippet(content string, matchPos []int, maxLen int) string {
 
 	// Find the best match position to center on
 	centerPos := matchPos[0]
-	
+
 	// Try to find a word boundary before centerPos
 	start := centerPos - maxLen/2
 	if start < 0 {
@@ -684,7 +684,7 @@ func generateSnippet(content string, matchPos []int, maxLen int) string {
 	}
 
 	snippet := content[start:end]
-	
+
 	// Add ellipsis if we truncated
 	if start > 0 {
 		snippet = "... " + snippet

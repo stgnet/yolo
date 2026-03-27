@@ -127,14 +127,14 @@ func (b *whisperBackend) Transcribe(ctx context.Context, audioPath string) (stri
 
 // STTManager manages speech-to-text input.
 type STTManager struct {
-	backend    sttBackend
-	recorder   *audioRecorder
-	wakeWord   string        // optional wake word to listen for
-	listening  bool          // true when in continuous listening mode
-	duration   time.Duration // recording duration per utterance
-	mu         sync.Mutex
-	stopCh     chan struct{}
-	onInput    func(string)  // callback when speech is transcribed
+	backend   sttBackend
+	recorder  *audioRecorder
+	wakeWord  string        // optional wake word to listen for
+	listening bool          // true when in continuous listening mode
+	duration  time.Duration // recording duration per utterance
+	mu        sync.Mutex
+	stopCh    chan struct{}
+	onInput   func(string) // callback when speech is transcribed
 }
 
 // NewSTTManager creates an STT manager, auto-detecting available backends.

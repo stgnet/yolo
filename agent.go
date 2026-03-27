@@ -152,7 +152,6 @@ func (a *YoloAgent) allTools() []ToolDef {
 	return all
 }
 
-
 // checkBinaryFreshness returns warnings about stale binary state.
 // / Two independent checks:
 //  1. Source newer than executable on disk → needs compile ("go build").
@@ -2231,8 +2230,6 @@ func (a *YoloAgent) echoUserInput(text string) {
 		}
 	}
 }
-
-
 
 // Run is the top-level entry point. It loads (or creates) session history,
 // initialises the terminal UI and input manager, registers signal handlers,

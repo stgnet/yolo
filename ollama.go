@@ -57,10 +57,10 @@ func toolDef(name, desc string, props map[string]ToolParam, required []string) T
 // context-length detection, and streaming chat completions.
 type OllamaClient struct {
 	baseURL        string
-	numCtxOverride string           // from YOLO_NUM_CTX env; "" means auto-detect
+	numCtxOverride string // from YOLO_NUM_CTX env; "" means auto-detect
 	client         *http.Client
-	ctxCache       map[string]int   // cached context lengths per model
-	cacheMu        sync.RWMutex     // protects ctxCache from concurrent access
+	ctxCache       map[string]int // cached context lengths per model
+	cacheMu        sync.RWMutex   // protects ctxCache from concurrent access
 }
 
 // NewOllamaClient creates a client pointing at the given Ollama API base URL.

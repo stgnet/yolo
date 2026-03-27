@@ -54,9 +54,9 @@ const (
 // ContextSummaryData is persisted to .yolo/context_summary.json.
 type ContextSummaryData struct {
 	Summary       string `json:"summary"`        // running conversation summary
-	MessageCount  int    `json:"message_count"`   // messages summarized so far
-	LastCompacted string `json:"last_compacted"`  // RFC 3339 timestamp
-	Compactions   int    `json:"compactions"`     // total compaction count
+	MessageCount  int    `json:"message_count"`  // messages summarized so far
+	LastCompacted string `json:"last_compacted"` // RFC 3339 timestamp
+	Compactions   int    `json:"compactions"`    // total compaction count
 }
 
 // ContextManager owns the conversation summary and compaction logic.

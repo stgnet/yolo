@@ -22,7 +22,7 @@ func (t *ToolExecutor) gitStatus(args map[string]any) string {
 
 	var sb strings.Builder
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	
+
 	// Parse branch name from first line
 	if len(lines) > 0 && strings.HasPrefix(lines[0], "## ") {
 		branch := strings.TrimPrefix(lines[0], "## ")
@@ -32,15 +32,15 @@ func (t *ToolExecutor) gitStatus(args map[string]any) string {
 
 	// Track changes summary
 	var modified, added, deleted, untracked []string
-	
+
 	for _, line := range lines {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		
+
 		status := line[:2]
 		filePath := strings.TrimPrefix(line[3:], "\t")
-		
+
 		switch status {
 		case " M", "MM":
 			modified = append(modified, filePath)
@@ -90,7 +90,7 @@ func (t *ToolExecutor) gitStatus(args map[string]any) string {
 // gitDiff shows the diff of changes.
 func (t *ToolExecutor) gitDiff(args map[string]any) string {
 	file := getStringArg(args, "file", "")
-	
+
 	var cmd *exec.Cmd
 	if file != "" {
 		fullPath := filepath.Join(t.baseDir, file)
@@ -101,7 +101,7 @@ func (t *ToolExecutor) gitDiff(args map[string]any) string {
 	} else {
 		cmd = exec.Command("git", "diff", "--no-color")
 	}
-	
+
 	cmd.Dir = t.baseDir
 	output, err := cmd.Output()
 	if err != nil {
@@ -122,7 +122,7 @@ func (t *ToolExecutor) gitDiff(args map[string]any) string {
 // gitLog shows recent commit history.
 func (t *ToolExecutor) gitLog(args map[string]any) string {
 	limit := getIntArg(args, "limit", 10)
-	
+
 	cmd := exec.Command("git", "log", fmt.Sprintf("-%d", limit), "--oneline", "--decorate")
 	cmd.Dir = t.baseDir
 	output, err := cmd.Output()
@@ -311,15 +311,15 @@ func (t *ToolExecutor) gitStatusJSON(args map[string]any) string {
 	}
 
 	var files []GitFileStatus
-	
+
 	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		
+
 		status := line[:2]
 		filePath := strings.TrimPrefix(line[3:], "\t")
-		
+
 		files = append(files, GitFileStatus{
 			Status: status,
 			File:   filePath,

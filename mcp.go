@@ -266,7 +266,7 @@ func (t *httpTransport) Close() error {
 
 // MCPServer represents an active connection to a single MCP server.
 type MCPServer struct {
-	Name      string        // config key name
+	Name      string // config key name
 	Config    MCPServerConfig
 	Transport mcpTransport
 	Tools     []MCPToolInfo // tools discovered from this server

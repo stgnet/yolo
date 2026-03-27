@@ -528,7 +528,7 @@ func (t *ToolExecutor) processInboxWithResponse(args map[string]any) string {
 		}
 
 		// Build email content string for LLM context
-		emailInfo := fmt.Sprintf("EMAIL #%d:\n  From: %s\n  Subject: %s\n  Date: %s\n  Content:\n%s", 
+		emailInfo := fmt.Sprintf("EMAIL #%d:\n  From: %s\n  Subject: %s\n  Date: %s\n  Content:\n%s",
 			totalProcessed+1, email.From, email.Subject, email.Date, email.Content)
 		emailContents = append(emailContents, emailInfo)
 

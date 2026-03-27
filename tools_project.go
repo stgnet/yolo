@@ -472,39 +472,39 @@ func (e *ToolExecutor) symbolSearch(args map[string]any) string {
 	symbolPatterns := map[string][]*regexp.Regexp{
 		// Functions / methods
 		"func": {
-			regexp.MustCompile(`^func\s+(?:\([^)]*\)\s+)?(\w+)`),                          // Go
-			regexp.MustCompile(`^\s*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)`),                   // Rust
-			regexp.MustCompile(`^\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)`),           // JS/TS
-			regexp.MustCompile(`^\s*(?:def|async\s+def)\s+(\w+)`),                           // Python
-			regexp.MustCompile(`^\s*(?:public|private|protected|static|\s)*\s+\w+\s+(\w+)\s*\(`), // Java/C#
+			regexp.MustCompile(`^func\s+(?:\([^)]*\)\s+)?(\w+)`),                                                // Go
+			regexp.MustCompile(`^\s*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)`),                                        // Rust
+			regexp.MustCompile(`^\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)`),                               // JS/TS
+			regexp.MustCompile(`^\s*(?:def|async\s+def)\s+(\w+)`),                                               // Python
+			regexp.MustCompile(`^\s*(?:public|private|protected|static|\s)*\s+\w+\s+(\w+)\s*\(`),                // Java/C#
 			regexp.MustCompile(`^\s*(?:pub\s+)?(?:const\s+)?(\w+)\s*[:=]\s*(?:async\s+)?(?:\([^)]*\)|[^=])*=>`), // JS arrow
 		},
 		// Types / structs / interfaces
 		"type": {
-			regexp.MustCompile(`^type\s+(\w+)\s+`),                              // Go
-			regexp.MustCompile(`^\s*(?:pub\s+)?struct\s+(\w+)`),                  // Rust
-			regexp.MustCompile(`^\s*(?:pub\s+)?enum\s+(\w+)`),                    // Rust
-			regexp.MustCompile(`^\s*(?:pub\s+)?trait\s+(\w+)`),                   // Rust
-			regexp.MustCompile(`^\s*(?:export\s+)?(?:type|interface)\s+(\w+)`),    // TS
-			regexp.MustCompile(`^\s*typedef\s+.*\s+(\w+)\s*;`),                   // C/C++
-			regexp.MustCompile(`^\s*(?:pub\s+)?(?:struct|union)\s+(\w+)`),         // C
+			regexp.MustCompile(`^type\s+(\w+)\s+`),                             // Go
+			regexp.MustCompile(`^\s*(?:pub\s+)?struct\s+(\w+)`),                // Rust
+			regexp.MustCompile(`^\s*(?:pub\s+)?enum\s+(\w+)`),                  // Rust
+			regexp.MustCompile(`^\s*(?:pub\s+)?trait\s+(\w+)`),                 // Rust
+			regexp.MustCompile(`^\s*(?:export\s+)?(?:type|interface)\s+(\w+)`), // TS
+			regexp.MustCompile(`^\s*typedef\s+.*\s+(\w+)\s*;`),                 // C/C++
+			regexp.MustCompile(`^\s*(?:pub\s+)?(?:struct|union)\s+(\w+)`),      // C
 		},
 		// Classes
 		"class": {
-			regexp.MustCompile(`^\s*(?:export\s+)?(?:abstract\s+)?class\s+(\w+)`),                // JS/TS/Java
-			regexp.MustCompile(`^\s*class\s+(\w+)`),                               // Python/Ruby
+			regexp.MustCompile(`^\s*(?:export\s+)?(?:abstract\s+)?class\s+(\w+)`),                                // JS/TS/Java
+			regexp.MustCompile(`^\s*class\s+(\w+)`),                                                              // Python/Ruby
 			regexp.MustCompile(`^\s*(?:public|internal|private)?\s*(?:abstract|sealed|static)?\s*class\s+(\w+)`), // C#
 		},
 		// Variables / constants
 		"var": {
-			regexp.MustCompile(`^var\s+(\w+)`),                                    // Go
-			regexp.MustCompile(`^\s*(?:let|const|var)\s+(\w+)`),                   // JS/TS
+			regexp.MustCompile(`^var\s+(\w+)`),                                       // Go
+			regexp.MustCompile(`^\s*(?:let|const|var)\s+(\w+)`),                      // JS/TS
 			regexp.MustCompile(`^\s*(?:pub\s+)?(?:static\s+)?(?:let|const)\s+(\w+)`), // Rust
-			regexp.MustCompile(`^(\w+)\s*=\s*`),                                   // Python top-level
+			regexp.MustCompile(`^(\w+)\s*=\s*`),                                      // Python top-level
 		},
 		"const": {
-			regexp.MustCompile(`^const\s+(\w+)`),                                  // Go
-			regexp.MustCompile(`^\s*#define\s+(\w+)`),                             // C/C++
+			regexp.MustCompile(`^const\s+(\w+)`),      // Go
+			regexp.MustCompile(`^\s*#define\s+(\w+)`), // C/C++
 		},
 	}
 
@@ -608,10 +608,10 @@ type FileSummary struct {
 
 // ProjectMapData is persisted to .yolo/project-map.json.
 type ProjectMapData struct {
-	Version   int                    `json:"version"`
-	Updated   string                 `json:"updated"`
-	RootDir   string                 `json:"root_dir"`
-	Files     map[string]FileSummary `json:"files"`
+	Version int                    `json:"version"`
+	Updated string                 `json:"updated"`
+	RootDir string                 `json:"root_dir"`
+	Files   map[string]FileSummary `json:"files"`
 }
 
 // ProjectMapCache manages the per-file summary cache.

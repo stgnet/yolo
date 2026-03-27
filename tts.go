@@ -28,7 +28,7 @@ var (
 	multiSpaceRe   = regexp.MustCompile(`\s{2,}`)
 	// Matches a dot between word characters (e.g., "main.go", "config.json")
 	// so TTS says "dot" instead of treating it as a sentence-ending period.
-	midWordDotRe   = regexp.MustCompile(`(\w)\.(\w)`)
+	midWordDotRe = regexp.MustCompile(`(\w)\.(\w)`)
 )
 
 // ─── TTS Backend Interface ─────────────────────────

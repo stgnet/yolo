@@ -15,7 +15,6 @@ func newTestConfig(t *testing.T, dir string) *YoloConfig {
 	return NewYoloConfig()
 }
 
-
 // TestCheckBinaryFreshness verifies binary freshness checking
 func TestCheckBinaryFreshness(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -63,10 +62,10 @@ func TestDisplaySessionResumption(t *testing.T) {
 		history: NewHistoryDB(tmpDir),
 		config:  newTestConfig(t, tmpDir),
 	}
-	
+
 	agent.history.AddMessage("user", "Hello", nil)
 	agent.history.AddMessage("assistant", "Hi there!", nil)
-	
+
 	agent.displaySessionResumption()
 }
 
@@ -77,12 +76,12 @@ func TestEnableDisableTerminalMode(t *testing.T) {
 		baseDir: tmpDir,
 		config:  newTestConfig(t, tmpDir),
 	}
-	
+
 	agent.enableTerminalMode()
 	if !agent.config.GetTerminalMode() {
 		t.Error("Expected terminal mode to be enabled")
 	}
-	
+
 	agent.disableTerminalMode()
 	if agent.config.GetTerminalMode() {
 		t.Error("Expected terminal mode to be disabled")
@@ -100,15 +99,15 @@ func TestShowHelpHint(t *testing.T) {
 func TestIngestHandoffResults(t *testing.T) {
 	tmpDir := t.TempDir()
 	agent := &YoloAgent{
-		baseDir:    tmpDir,
-		history:    NewHistoryDB(tmpDir),
-		config:     newTestConfig(t, tmpDir),
+		baseDir: tmpDir,
+		history: NewHistoryDB(tmpDir),
+		config:  newTestConfig(t, tmpDir),
 	}
-	
+
 	beforeCount := len(agent.history.Data.Messages)
 	agent.ingestHandoffResults()
 	afterCount := len(agent.history.Data.Messages)
-	
+
 	if beforeCount != afterCount {
 		t.Error("Expected no messages added when there are no pending handoffs")
 	}
@@ -123,7 +122,7 @@ func TestStripOrphanedCloseTags(t *testing.T) {
 	}{
 		{"no orphaned tags", "<b>hello</b>", "<b>hello</b>"},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := stripOrphanedCloseTags(tt.input)
@@ -156,7 +155,7 @@ func TestParseFuncCallArgs(t *testing.T) {
 			},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := parseFuncCallArgs(tt.input)
@@ -179,7 +178,7 @@ func TestIsFileMutationTool(t *testing.T) {
 		{"edit_file", "edit_file", true},
 		{"unknown_tool", "unknown_tool", false},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := isFileMutationTool(tt.toolName)
@@ -193,24 +192,22 @@ func TestIsFileMutationTool(t *testing.T) {
 // TestHandleCommand tests command handler
 func TestHandleCommand(t *testing.T) {
 	tmpDir := t.TempDir()
-	
+
 	origDir, _ := os.Getwd()
 	defer os.Chdir(origDir)
 	os.Chdir(tmpDir)
-	
+
 	agent := NewYoloAgent()
-	
+
 	// Test help command - verify it doesn't crash
 	agent.handleCommand("help")
 }
-
-
 
 // TestParseTextToolCalls tests text tool call parsing
 func TestParseTextToolCalls(t *testing.T) {
 	tmpDir := t.TempDir()
 	agent := &YoloAgent{baseDir: tmpDir}
-	
+
 	// Should not panic with empty input
 	results := agent.parseTextToolCalls("")
 	if len(results) != 0 {
@@ -249,10 +246,10 @@ func TestEchoUserInput(t *testing.T) {
 		baseDir: tmpDir,
 		history: NewHistoryDB(tmpDir),
 	}
-	
+
 	input := "test user input"
 	agent.echoUserInput(input)
-	
+
 	// Should not panic - just testing the method exists and runs
 }
 
@@ -268,7 +265,7 @@ func TestConvertParamValue(t *testing.T) {
 		{"bool_true", "true"},
 		{"bool_false", "false"},
 	}
-	
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			result := convertParamValue(tc.value)
@@ -288,7 +285,7 @@ func TestStripTextToolCalls(t *testing.T) {
 		{"no tool calls", "hello world"},
 		{"empty", ""},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := stripTextToolCalls(tt.input)
@@ -303,7 +300,7 @@ func TestStripTextToolCalls(t *testing.T) {
 func TestShowPrompt(t *testing.T) {
 	tmpDir := t.TempDir()
 	agent := &YoloAgent{baseDir: tmpDir}
-	
+
 	// Should not panic
 	agent.showPrompt()
 }
@@ -353,7 +350,7 @@ func TestParseParamString(t *testing.T) {
 		{"empty", ""},
 		{"single_param", "path=\"test.txt\""},
 	}
-	
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			result := parseParamString(tc.input)

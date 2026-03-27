@@ -148,7 +148,7 @@ func (b *BufferUI) showInitialPromptLocked() {
 	if !b.promptShown {
 		return
 	}
-	
+
 	// Determine available terminal width
 	cols := 80
 	if c, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && c > 0 {
@@ -156,7 +156,7 @@ func (b *BufferUI) showInitialPromptLocked() {
 	}
 
 	prefix := "you> "
-	
+
 	if len(prefix) < cols {
 		fmt.Fprintf(os.Stdout, "\r\033[K%s%s%s", Green, prefix, Reset)
 		b.prevInputLines = 1
@@ -168,10 +168,10 @@ func (b *BufferUI) showInitialPromptLocked() {
 func (b *BufferUI) ShowInitialPrompt() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	
+
 	// Reset previous state to show fresh prompt (only if not currently waiting for input)
 	if !b.userWantsInput {
-		b.promptShown = true  // Mark as shown so we can display it
+		b.promptShown = true // Mark as shown so we can display it
 		if b.midLine {
 			rawWrite("\r\n")
 			b.midLine = false

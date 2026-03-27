@@ -23,7 +23,7 @@ import (
 
 const (
 	MaxMemoryLines = 100 // soft cap for MEMORY.md
-	DailyLogDays   = 2  // how many days of daily logs to auto-load (today + yesterday)
+	DailyLogDays   = 2   // how many days of daily logs to auto-load (today + yesterday)
 )
 
 // MemoryManager owns the .yolo/MEMORY.md and .yolo/memory/ directory.
