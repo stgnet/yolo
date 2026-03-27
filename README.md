@@ -12,7 +12,7 @@ YOLO is a **self-evolving AI agent** for autonomous software development. It ope
 ### What Makes YOLO Special?
 
 - 🤖 **Self-improving**: Continuously analyzes and enhances its own codebase
-- 📧 **Email-enabled**: Full email processing with auto-responses at `yolo@b-haven.org`
+- 📧 **Email-enabled**: Full email processing with auto-responses at `yolo@example.com`
 - 🌐 **Web-connected**: DuckDuckGo search, Reddit API, Google Workspace integration
 - ⚡ **Autonomous mode**: Works independently without human intervention
 - 🔧 **Developer tools**: 32 built-in tools for file operations, command execution, and browser automation
@@ -29,8 +29,8 @@ go version
 brew install ollama  # macOS
 curl -fsSL https://ollama.ai/install.sh | sh  # Linux
 
-# Pull a model (qwen3.5:27b recommended)
-ollama pull qwen3.5:27b
+# Pull a model (qwen3.5:27b-q4_K_M recommended)
+ollama pull qwen3.5:27b-q4_K_M
 ```
 
 ### Installation
@@ -129,9 +129,9 @@ YOLO has 32 built-in tools that the LLM can call:
 | `read_webpage` | Fetch webpage content, convert HTML to text |
 | `reddit` | Reddit API: search, subreddit posts, thread details |
 | `gog` | Google Workspace: Gmail, Calendar, Drive, Docs, Sheets |
-| `send_email` | Send email via postfix from yolo@b-haven.org |
+| `send_email` | Send email via postfix from yolo@example.com |
 | `send_report` | Send progress report to scott@stg.net |
-| `check_inbox` | Read Maildir inbox at /var/mail/b-haven.org/yolo/new/ |
+| `check_inbox` | Read Maildir inbox at /var/mail/example.com/yolo/new/ |
 | `process_inbox_with_response` | Auto-respond to emails then delete |
 | `list_models` | List available Ollama models |
 | `switch_model` | Change the active model |
@@ -158,7 +158,7 @@ Total: 32 tools across file operations, agent management, external services, tas
 
 ## Email Processing
 
-YOLO provides intelligent email processing for `yolo@b-haven.org`:
+YOLO provides intelligent email processing for `yolo@example.com`:
 
 - **Read inbox**: Check new emails from Maildir
 - **Auto-responses**: LLM-generated natural responses to questions/requests
@@ -173,7 +173,7 @@ See [DOCS/EMAIL_PROCESSING.md](DOCS/EMAIL_PROCESSING.md) for detailed email syst
 
 ```bash
 export OLLAMA_HOST=http://localhost:11434  # Ollama server URL
-export YOLO_MODEL=qwen3.5:27b              # Default model to use
+export YOLO_MODEL=qwen3.5:27b-q4_K_M              # Default model to use
 export YOLO_NUM_CTX=8192                   # Override context window size
 ```
 
@@ -237,7 +237,7 @@ See [DOCS/tools.md](DOCS/tools.md) for detailed tool examples and the [README.md
 **Ollama connection failed:**
 ```bash
 ollama serve
-curl http://localhost:11434/api/generate -d '{"model":"qwen3.5:27b","prompt":"test"}'
+curl http://localhost:11434/api/generate -d '{"model":"qwen3.5:27b-q4_K_M","prompt":"test"}'
 ```
 
 **Verbose [OLLAMA DEBUG] messages appearing in terminal:**

@@ -15,6 +15,9 @@ Complete catalog of all available tools in YOLO with usage examples and paramete
 | `read_file` | Read file contents | `path`, `offset` (line, 1-based), `limit` (max lines) |
 | `write_file` | Create or overwrite file | `path`, `content` |
 | `edit_file` | Replace text in file | `path`, `old_text`, `new_text` |
+| `edit_file_lines` | Replace line range in file | `path`, `start_line`, `end_line`, `content` |
+| `patch_file` | Apply unified diff to file | `path`, `diff` |
+| `undo_edit` | Revert last edit to a file | `path` |
 | `list_files` | List files matching glob | `pattern` (default: `*`) |
 | `search_files` | Search file contents with regex | `query` (required), `pattern` |
 | `make_dir` | Create directory recursively | `path` |
@@ -51,6 +54,34 @@ Complete catalog of all available tools in YOLO with usage examples and paramete
     "path": "config.go",
     "old_text": "const Timeout = 30",
     "new_text": "const Timeout = 60"
+  }
+}
+
+// Undo last edit to a file (only one level of undo)
+{
+  "name": "undo_edit",
+  "arguments": {
+    "path": "config.go"
+  }
+}
+
+// Replace lines 50-60 in a file (1-based, inclusive)
+{
+  "name": "edit_file_lines",
+  "arguments": {
+    "path": "main.go",
+    "start_line": 50,
+    "end_line": 60,
+    "content": "// New implementation\nfunc Improved() {}\n"
+  }
+}
+
+// Apply a unified diff patch (git-format)
+{
+  "name": "patch_file",
+  "arguments": {
+    "path": "agent.go",
+    "diff": "@@ -10,7 +10,7 @@\n-const Timeout = 30\n+const Timeout = 60"
   }
 }
 
@@ -113,8 +144,7 @@ Complete catalog of all available tools in YOLO with usage examples and paramete
 |------|---|--------|
 | `list_models` | List available Ollama models | (none) |
 | `switch_model` | Change active model | `model` |
-| `learn` | Research improvements online | (optional params) |
-| `implement` | Auto-implement learned improvements | `count` (default: 2) |
+| `check_ollama_status` | Check Ollama server health and logs | `lines` (default: 50) |
 
 ### Examples
 
@@ -125,16 +155,13 @@ Complete catalog of all available tools in YOLO with usage examples and paramete
 // Switch model
 {
   "name": "switch_model", 
-  "arguments": {"model": "llama3.2"}
+  "arguments": {"model": "qwen3.5:27b-q4_K_M"}
 }
 
-// Learn about new features
-{"name": "learn", "arguments": {}}
-
-// Implement top improvements
+// Check Ollama status (diagnose connection issues)
 {
-  "name": "implement",
-  "arguments": {"count": 3}
+  "name": "check_ollama_status",
+  "arguments": {"lines": 100}
 }
 ```
 
@@ -173,6 +200,137 @@ Complete catalog of all available tools in YOLO with usage examples and paramete
 
 // Summary stats
 {"name": "summarize_subagents", "arguments": {}}
+```
+
+---
+
+## 🧠 Memory & Context Management
+
+YOLO maintains durable facts in MEMORY.md and daily logs for session context.
+
+| Tool | Description | Parameters |
+|------|---|--------|
+| `memory_read` | Read the curated MEMORY.md file | (none) |
+| `memory_write` | Replace entire MEMORY.md contents | `content` (max 100 lines) |
+| `memory_log` | Append observation to today's log | `entry` |
+| `memory_promote` | Review daily logs for distillation | `days` (default: 7) |
+| `memory_search` | Search across all memory files | `query` |
+
+### Examples
+
+```json
+// Read persistent memory
+{"name": "memory_read", "arguments": {}}
+
+// Update memory with key facts
+{
+  "name": "memory_write",
+  "arguments": {
+    "content": "User prefers Go 1.26+, model qwen3.5:27b-q4_K_M"
+  }
+}
+
+// Log an observation for today
+{
+  "name": "memory_log", 
+  "arguments": {
+    "entry": "Discovered race condition in session manager fixed on 2026-03-18"
+  }
+}
+
+// Search memory history
+{
+  "name": "memory_search",
+  "arguments": {"query": "race condition"}
+}
+```
+
+---
+
+## 📅 Scheduling & Cron
+
+Schedule recurring tasks that fire on cron expressions.
+
+| Tool | Description | Parameters |
+|------|---|--------|
+| `schedule_add` | Add a scheduled task | `name`, `cron`, `prompt` |
+| `schedule_list` | List all scheduled tasks | (none) |
+| `schedule_remove` | Remove a scheduled task | `id` |
+| `schedule_toggle` | Enable/disable a schedule | `id`, `enabled` |
+
+### Cron Format: `minute hour day month weekday`
+
+```json
+// Run daily at 9 AM
+{
+  "name": "schedule_add",
+  "arguments": {
+    "name": "daily-check-inbox",
+    "cron": "0 9 * * *",
+    "prompt": "Check and process any new emails, then send a report."
+  }
+}
+
+// Run every 10 minutes
+{
+  "name": "schedule_add",
+  "arguments": {
+    "name": "periodic-health-check",
+    "cron": "*/10 * * * *",
+    "prompt": "Verify Ollama is running and check system health."
+  }
+}
+
+// List all schedules
+{"name": "schedule_list", "arguments": {}}
+
+// Disable a schedule
+{
+  "name": "schedule_toggle",
+  "arguments": {"id": "daily-check-inbox", "enabled": false}
+}
+```
+
+---
+
+## 🔍 Project Analysis Tools
+
+Codebase introspection and dependency visualization.
+
+| Tool | Description | Parameters |
+|------|---|--------|
+| `project_map` | Generate file tree with sizes | `pattern`, `max_depth`, `show_sizes` |
+| `project_summary` | Get cached project stats | `refresh` (rescan files) |
+| `dependency_graph` | Show package/module dependencies | `package` (filter directory) |
+| `symbol_search` | Find function/type definitions | `query`, `kind`, `pattern` |
+
+### Examples
+
+```json
+// Generate file tree
+{
+  "name": "project_map",
+  "arguments": {
+    "pattern": "*.go",
+    "max_depth": 3,
+    "show_sizes": true
+  }
+}
+
+// Find all functions containing 'edit'
+{
+  "name": "symbol_search",
+  "arguments": {
+    "query": "edit",
+    "kind": "func"
+  }
+}
+
+// Get dependency graph for concurrency package
+{
+  "name": "dependency_graph",
+  "arguments": {"package": "concurrency"}
+}
 ```
 
 ---
@@ -312,11 +470,11 @@ See [gog-tool.md](gog-tool.md) for complete reference.
 
 ## 📨 Email Tools
 
-Full email system for `yolo@b-haven.org` with DKIM signing via Postfix.
+Full email system for `yolo@example.com` with DKIM signing via Postfix.
 
 ### check_inbox - Read Incoming Emails
 
-Reads Maildir at `/var/mail/b-haven.org/yolo/new/`.
+Reads Maildir at `/var/mail/example.com/yolo/new/`.
 
 ```json
 {
@@ -440,6 +598,198 @@ Read webpage content (HTML converted to plain text).
 - Read documentation pages
 - Extract article content
 - Check API references
+
+---
+
+## 🔧 Git Version Control
+
+Full git repository management.
+
+| Tool | Description | Parameters |
+|------|---|--------|
+| `git_status` | Show current repository status | (none) |
+| `git_diff` | Show changes (staged/unstaged) | `file` (optional) |
+| `git_log` | Recent commit history | `limit` (default: 10) |
+| `git_branch` | List all branches | (none) |
+| `git_checkout` | Switch branch or restore file | `branch`, `file` |
+| `git_add` | Stage files for commit | `file` (default: all) |
+| `git_commit` | Commit staged changes | `message`, `all` |
+| `git_show` | Show commit details | `commit` (default: HEAD) |
+| `git_remote` | Show configured remotes | (none) |
+
+### Examples
+
+```json
+// Check status
+{"name": "git_status", "arguments": {}}
+
+// Stage all changes
+{"name": "git_add", "arguments": {}}
+
+// Commit with message
+{
+  "name": "git_commit",
+  "arguments": {"message": "Fix documentation for memory tools"}
+}
+
+// Auto-stage and commit
+{
+  "name": "git_commit",
+  "arguments": {
+    "all": true,
+    "message": "Update README with current model"
+  }
+}
+
+// View recent commits
+{"name": "git_log", "arguments": {"limit": 20}}
+
+// Switch branches
+{
+  "name": "git_checkout",
+  "arguments": {"branch": "feature/new-tool"}
+}
+
+// Restore a file from HEAD
+{
+  "name": "git_checkout",
+  "arguments": {"file": "tools.go"}
+}
+```
+
+---
+
+## 📜 History Search
+
+Search conversation history beyond the current context window.
+
+### history_search
+
+Search all past conversations by keyword. Returns matching messages with timestamps and context.
+
+```json
+{
+  "name": "history_search",
+  "arguments": {
+    "query": "race condition fix",
+    "limit": 10
+  }
+}
+```
+
+**Parameters:**
+- `query` (required): Search terms (words ANDed; use quotes for exact phrases)
+- `limit` (optional): Max results (default: 20)
+
+**Use Cases:**
+- Recall past decisions and implementations
+- Find previous bug fixes
+- Locate technical discussions
+
+---
+
+## 📸 Browser Automation & Screenshots
+
+Web page interaction and screenshot capture.
+
+| Tool | Description | Parameters |
+|------|---|--------|
+| `playwright_mcp` | Navigate, interact with DOM, extract content | `action`, `selector`, `url`, etc. |
+| `screenshot` | Capture web page screenshot | `url`, `path`, `full_page`, `width`, `height` |
+
+### playwright_mcp Actions
+
+- `navigate`: Load a URL
+- `click`: Click an element
+- `fill`: Fill input field
+- `getHTML`: Extract HTML from selector
+- `screenshot`: Take screenshot
+
+```json
+// Navigate to a page
+{
+  "name": "playwright_mcp",
+  "arguments": {
+    "action": "navigate",
+    "url": "https://example.com",
+    "waitUntil": "networkidle"
+  }
+}
+
+// Fill a search form and submit
+{
+  "name": "playwright_mcp",
+  "arguments": {
+    "action": "fill",
+    "selector": "#search-input",
+    "value": "Go programming concurrency"
+  }
+}
+```
+
+### screenshot Tool
+
+```json
+// Capture full page screenshot
+{
+  "name": "screenshot",
+  "arguments": {
+    "url": "https://example.com/documentation",
+    "full_page": true,
+    "path": "./screenshots/doc-page.png"
+  }
+}
+```
+
+**Parameters:**
+- `url` (required): Web page to capture
+- `path` (optional): Output file path (default: temp directory)
+- `full_page` (optional): Capture entire scrollable page
+- `width`, `height` (optional): Viewport size (default: 1280x720)
+
+---
+
+## 🛠️ Configuration Management
+
+Runtime configuration for YOLO behavior.
+
+| Tool | Description | Parameters |
+|------|---|--------|
+| `get_config` | Get all or specific config value | `key` (optional) |
+| `set_config` | Update a configuration value | `key`, `value` |
+
+### Examples
+
+```json
+// Get all configuration
+{"name": "get_config", "arguments": {}}
+
+// Get specific setting
+{
+  "name": "get_config",
+  "arguments": {"key": "model"}
+}
+
+// Enable autonomous mode
+{
+  "name": "set_config",
+  "arguments": {
+    "key": "auto_mode",
+    "value": "true"
+  }
+}
+
+// Set custom model
+{
+  "name": "set_config",
+  "arguments": {
+    "key": "model", 
+    "value": "qwen3.5:27b-q4_K_M"
+  }
+}
+```
+
+**Available Keys:** `model`, `auto_mode`, `debug_mode`, `terminal_mode`, `think_mode`, `tts_enabled`, `email_from`, `email_to`, `inbox_path`, and more.
 
 ---
 
