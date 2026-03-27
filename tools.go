@@ -257,6 +257,39 @@ var ollamaTools = []ToolDef{
 			"query": {Type: "string", Description: "Search terms (words are ANDed; use OR for alternatives, quotes for exact phrases)"},
 			"limit": {Type: "integer", Description: "Maximum results to return (default: 20)"},
 		}, []string{"query"}),
+	// Git tools - native git integration
+	toolDef("git_status", "Show the current git status in a structured format. Lists modified, added, deleted, and untracked files.",
+		map[string]ToolParam{}, nil),
+	toolDef("git_diff", "Show the diff of changes. Optionally specify a file to show only that file's changes.",
+		map[string]ToolParam{
+			"file": {Type: "string", Description: "Optional file path to show changes for (relative path)"},
+		}, nil),
+	toolDef("git_log", "Show recent commit history with oneline format.",
+		map[string]ToolParam{
+			"limit": {Type: "integer", Description: "Number of commits to show (default: 10)"},
+		}, nil),
+	toolDef("git_branch", "List all branches with current branch marked.",
+		map[string]ToolParam{}, nil),
+	toolDef("git_checkout", "Checkout a branch or restore a file from HEAD.",
+		map[string]ToolParam{
+			"branch": {Type: "string", Description: "Branch name to checkout (if not restoring a file)"},
+			"file":   {Type: "string", Description: "File to restore from HEAD (if not switching branches)"},
+		}, []string{}),
+	toolDef("git_commit", "Commit staged changes with a message.",
+		map[string]ToolParam{
+			"message": {Type: "string", Description: "Commit message (required)"},
+			"all":     {Type: "boolean", Description: "Auto-stage all changes before committing (default: false)"},
+		}, []string{"message"}),
+	toolDef("git_add", "Stage files for commit. If no file specified, stages all changes.",
+		map[string]ToolParam{
+			"file": {Type: "string", Description: "File to stage (optional, defaults to .)"},
+		}, nil),
+	toolDef("git_show", "Show details of a specific commit.",
+		map[string]ToolParam{
+			"commit": {Type: "string", Description: "Commit hash or reference (default: HEAD)"},
+		}, nil),
+	toolDef("git_remote", "Show configured git remotes with URLs.",
+		map[string]ToolParam{}, nil),
 	toolDef("set_config", "Set a YOLO configuration value in config.json. Available keys: model, email_from, email_to, inbox_path, user_agent, temp_dir, tts_voice, terminal_mode, debug_mode, auto_mode, think_mode, tts_enabled.",
 		map[string]ToolParam{
 			"key":   {Type: "string", Description: "Configuration key to set"},
@@ -282,6 +315,7 @@ var validTools = []string{
 	"schedule_add", "schedule_remove", "schedule_list", "schedule_toggle",
 	"project_map", "dependency_graph", "symbol_search", "project_summary",
 	"history_search", "set_config", "get_config",
+	"git_status", "git_diff", "git_log", "git_branch", "git_checkout", "git_commit", "git_add", "git_show", "git_remote",
 }
 
 // fileNameRegex extracts the agent ID from filenames like "agent_1.json"
@@ -294,6 +328,7 @@ var subagentToolNames = map[string]bool{
 	"think": true, "make_dir": true, "remove_dir": true,
 	"copy_file": true, "move_file": true, "reddit": true,
 	"gog": true, "web_search": true, "read_webpage": true,
+	"git_status": true, "git_diff": true, "git_log": true, "git_branch": true, "git_add": true,
 }
 
 // emailToolNames extends subagentToolNames with todo tools.
