@@ -1,12 +1,12 @@
 # Email Processing System for YOLO
 
 ## Overview
-YOLO can automatically process inbound emails to `yolo@b-haven.org` with intelligent response generation and automatic deletion.
+YOLO can automatically process inbound emails to `yolo@example.com` with intelligent response generation and automatic deletion.
 
 ## Features
 
 ### 1. Email Inbox Reading (`check_inbox`)
-- Reads all new emails from Maildir (`/var/mail/b-haven.org/yolo/new/`)
+- Reads all new emails from Maildir (`/var/mail/example.com/yolo/new/`)
 - Displays full email details (From, Subject, Date, Content-Type, Body)
 - Optional `mark_read` parameter to move processed emails to `cur/` directory
 

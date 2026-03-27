@@ -136,7 +136,7 @@ See [Autonomous Operations](./AUTONOMOUS_OPERATIONS.md) for detailed workflows.
 
 ### Email Communication
 
-YOLO has a dedicated email address: `yolo@b-haven.org`
+YOLO has a dedicated email address: `yolo@example.com`
 
 Features:
 - Read incoming emails from Maildir inbox
@@ -235,11 +235,11 @@ See [Tools Reference](./tools.md) for detailed examples and parameters.
 
 ## Email System
 
-YOLO operates with email at `yolo@b-haven.org`.
+YOLO operates with email at `yolo@example.com`.
 
 ### Architecture
 
-- **Inbox**: `/var/mail/b-haven.org/yolo/new/` (Maildir format)
+- **Inbox**: `/var/mail/example.com/yolo/new/` (Maildir format)
 - **Outgoing**: Postfix with automatic DKIM signing
 - **Processing**: Direct LLM-generated responses
 
@@ -394,8 +394,8 @@ switch_model llama3.2
 
 ### Email Configuration
 
-- **Address**: `yolo@b-haven.org`
-- **Inbox path**: `/var/mail/b-haven.org/yolo/new/`
+- **Address**: `yolo@example.com`
+- **Inbox path**: `/var/mail/example.com/yolo/new/`
 - **Delivery**: Postfix with automatic DKIM signing
 - **Rate Limiting**: Configurable in email processor
 
@@ -440,7 +440,7 @@ go test -race -v ./...
 ### Email Processing Issues
 
 1. Check Postfix is running: `sudo systemctl status postfix`
-2. Verify Maildir permissions: `ls -la /var/mail/b-haven.org/yolo/new/`
+2. Verify Maildir permissions: `ls -la /var/mail/example.com/yolo/new/`
 3. Check spam filters in email content
 
 See [Autonomous Operations](./AUTONOMOUS_OPERATIONS.md#troubleshooting-common-issues) for more solutions.

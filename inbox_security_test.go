@@ -10,7 +10,7 @@ func TestParseEmailHeaderSanitization(t *testing.T) {
 	emailContent := `From: attacker@evil.com
 Subject: Test\r\nBcc: victim@target.com
 Date: Mon, 1 Jan 2024 00:00:00 +0000
-To: yolo@b-haven.org
+To: yolo@example.com
 
 Test email content`
 

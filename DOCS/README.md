@@ -32,8 +32,8 @@ Welcome to the complete documentation for **YOLO (Your Own Living Operator)** - 
 - **Current model**: `qwen3.5:27b-q4_K_M`
 
 ### Email Configuration
-- **Address**: `yolo@b-haven.org`
-- **Inbox**: `/var/mail/b-haven.org/yolo/new/`
+- **Address**: `yolo@example.com`
+- **Inbox**: `/var/mail/example.com/yolo/new/`
 - **Default recipient**: `scott@stg.net`
 - **Delivery**: Postfix with DKIM signing
 

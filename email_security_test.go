@@ -61,7 +61,7 @@ func TestValidateEmailFormat(t *testing.T) {
 		},
 		{
 			name:     "valid email with subdomain",
-			input:    "user@mail.b-haven.org",
+			input:    "user@mail.example.com",
 			expected: true,
 		},
 		{

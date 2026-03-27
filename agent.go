@@ -640,40 +640,45 @@ func (a *YoloAgent) chatWithAgent(userMessage string, autonomous bool) {
 			}
 
 			debugMode := a.config.GetDebugMode()
+			suppressDisplay := name == "think" && !a.config.GetThinkMode()
 
 			argsJSON, _ := json.Marshal(args)
 			argsStr := string(argsJSON)
-			if debugMode {
-				cprint(Yellow, fmt.Sprintf("  [%s] %s", name, argsStr))
-			} else {
-				shortStr := argsStr
-				if len(shortStr) > 80 {
-					shortStr = shortStr[:80] + "..."
+			if !suppressDisplay {
+				if debugMode {
+					cprint(Yellow, fmt.Sprintf("  [%s] %s", name, argsStr))
+				} else {
+					shortStr := argsStr
+					if len(shortStr) > 80 {
+						shortStr = shortStr[:80] + "..."
+					}
+					cprint(Yellow, fmt.Sprintf("  [%s] %s", name, shortStr))
 				}
-				cprint(Yellow, fmt.Sprintf("  [%s] %s", name, shortStr))
 			}
 
 			resultStr := executeWithTimeout(a.tools, name, args)
 
-			if debugMode {
-				// Show full result verbatim
-				color := Gray
-				if strings.HasPrefix(resultStr, "Error: ") {
-					color = Red
-				}
-				cprint(color, fmt.Sprintf("  => %s", resultStr))
-			} else {
-				preview := resultStr
-				if len(preview) > 200 {
-					preview = preview[:200] + "..."
-				}
-				preview = strings.ReplaceAll(preview, "\r", "")
-				preview = strings.ReplaceAll(preview, "\n", " ")
-
-				if strings.HasPrefix(resultStr, "Error: ") {
-					cprint(Red, fmt.Sprintf("  => %s", preview))
+			if !suppressDisplay {
+				if debugMode {
+					// Show full result verbatim
+					color := Gray
+					if strings.HasPrefix(resultStr, "Error: ") {
+						color = Red
+					}
+					cprint(color, fmt.Sprintf("  => %s", resultStr))
 				} else {
-					cprint(Gray, fmt.Sprintf("  => %s", preview))
+					preview := resultStr
+					if len(preview) > 200 {
+						preview = preview[:200] + "..."
+					}
+					preview = strings.ReplaceAll(preview, "\r", "")
+					preview = strings.ReplaceAll(preview, "\n", " ")
+
+					if strings.HasPrefix(resultStr, "Error: ") {
+						cprint(Red, fmt.Sprintf("  => %s", preview))
+					} else {
+						cprint(Gray, fmt.Sprintf("  => %s", preview))
+					}
 				}
 			}
 
