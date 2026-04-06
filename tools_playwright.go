@@ -268,10 +268,49 @@ func escapeJS(s string) string {
 	s = strings.ReplaceAll(s, "\\", "\\\\")
 	s = strings.ReplaceAll(s, "'", "\\'")
 	s = strings.ReplaceAll(s, "\"", "\\\"")
-	s = strings.ReplaceAll(s, "\n", "\\n")
-	s = strings.ReplaceAll(s, "\r", "\\r")
-	s = strings.ReplaceAll(s, "\t", "\\t")
+	// Escape additional control characters that could break JavaScript strings
+	s = strings.ReplaceAll(s, "\x0b", "\\u000b")  // vertical tab
+	s = strings.ReplaceAll(s, "\x0c", "\\u000c")  // form feed
+	s = strings.ReplaceAll(s, "\x00", "\\u0000")  // null byte
 	return s
+}
+
+// validateURL checks if a URL is safe for browser navigation
+func validateURL(rawURL string) (string, error) {
+	if rawURL == "" {
+		return "", fmt.Errorf("URL cannot be empty")
+	}
+
+	// Enforce reasonable length limit (2048 chars)
+	if len(rawURL) > 2048 {
+		return "", fmt.Errorf("URL exceeds maximum length of 2048 characters")
+	}
+
+	// Ensure it's http:// or https:// to prevent file://, javascript:, etc.
+	if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
+		return "", fmt.Errorf("only HTTP and HTTPS URLs are allowed")
+	}
+
+	return rawURL, nil
+}
+
+// validateSelector checks if a CSS selector is safe
+func validateSelector(selector string) error {
+	if selector == "" {
+		return fmt.Errorf("selector cannot be empty")
+	}
+
+	// Enforce reasonable length limit (512 chars)
+	if len(selector) > 512 {
+		return fmt.Errorf("selector exceeds maximum length of 512 characters")
+	}
+
+	// Reject selectors containing newline characters (could break JS injection)
+	if strings.ContainsAny(selector, "\n\r") {
+		return fmt.Errorf("selector contains invalid characters")
+	}
+
+	return nil
 }
 
 // Execute a Playwright MCP command
@@ -287,27 +326,42 @@ func (t *ToolExecutor) playwrightMCP(args map[string]any) string {
 	switch action {
 	case "navigate":
 		url := getStringArg(args, "url", "")
+		if url == "" {
+			return errorMessage("url is required for navigate action")
+		}
+		validURL, err := validateURL(url)
+		if err != nil {
+			return errorMessage("invalid URL: %v", err)
+		}
 		waitUntil := getStringArg(args, "waitUntil", "domcontentloaded")
-		return executor.navigate(url, waitUntil)
+		return executor.navigate(validURL, waitUntil)
 
 	case "click":
 		selector := getStringArg(args, "selector", "")
 		timeout := getIntArg(args, "timeout", 5000)
-		if selector == "" {
-			return errorMessage("selector is required for click action")
+		if err := validateSelector(selector); err != nil {
+			return errorMessage("invalid selector: %v", err)
 		}
 		return executor.clickElement(selector, timeout)
 
 	case "fill":
 		selector := getStringArg(args, "selector", "")
 		value := getStringArg(args, "value", "")
-		if selector == "" || value == "" {
-			return errorMessage("selector and value are required for fill action")
+		if err := validateSelector(selector); err != nil {
+			return errorMessage("invalid selector: %v", err)
+		}
+		if value == "" {
+			return errorMessage("value is required for fill action")
 		}
 		return executor.fillInput(selector, value)
 
 	case "getHTML":
 		selector := getStringArg(args, "selector", "")
+		if selector != "" {
+			if err := validateSelector(selector); err != nil {
+				return errorMessage("invalid selector: %v", err)
+			}
+		}
 		return executor.getHTML(selector)
 
 	case "screenshot":
