@@ -11,24 +11,24 @@ import (
 func TestSendViaSendmailSuccess(t *testing.T) {
 	t.Skip("Skipped to avoid executing external sendmail command - even /usr/bin/true is a side effect")
 	/*
-	cfg := &Config{
-		From:         "test@yolo.local",
-		UseSendmail:  true,
-		SendmailPath: "/usr/bin/true", // /usr/bin/true always succeeds without doing anything
-	}
+		cfg := &Config{
+			From:         "test@yolo.local",
+			UseSendmail:  true,
+			SendmailPath: "/usr/bin/true", // /usr/bin/true always succeeds without doing anything
+		}
 
-	client := New(cfg)
+		client := New(cfg)
 
-	msg := &Message{
-		To:      []string{"recipient@example.com"},
-		Subject: "Test Subject",
-		Body:    "Test body content",
-	}
+		msg := &Message{
+			To:      []string{"recipient@example.com"},
+			Subject: "Test Subject",
+			Body:    "Test body content",
+		}
 
-	err := client.sendViaSendmail(msg)
-	if err != nil {
-		t.Errorf("Expected successful send, got error: %v", err)
-	}
+		err := client.sendViaSendmail(msg)
+		if err != nil {
+			t.Errorf("Expected successful send, got error: %v", err)
+		}
 	*/
 }
 
@@ -36,32 +36,32 @@ func TestSendViaSendmailSuccess(t *testing.T) {
 func TestSendViaSendmailFailure(t *testing.T) {
 	t.Skip("Skipped to avoid executing external command - even testing failures creates side effects")
 	/*
-	cfg := &Config{
-		From:         "test@yolo.local",
-		UseSendmail:  true,
-		SendmailPath: "/nonexistent/sendmail/path/that/does/not/exist",
-	}
+		cfg := &Config{
+			From:         "test@yolo.local",
+			UseSendmail:  true,
+			SendmailPath: "/nonexistent/sendmail/path/that/does/not/exist",
+		}
 
-	client := New(cfg)
+		client := New(cfg)
 
-	msg := &Message{
-		To:      []string{"recipient@example.com"},
-		Subject: "Test Subject",
-		Body:    "Test body content",
-	}
+		msg := &Message{
+			To:      []string{"recipient@example.com"},
+			Subject: "Test Subject",
+			Body:    "Test body content",
+		}
 
-	err := client.sendViaSendmail(msg)
-	if err == nil {
-		t.Error("Expected sendmail to fail with nonexistent path")
-	}
+		err := client.sendViaSendmail(msg)
+		if err == nil {
+			t.Error("Expected sendmail to fail with nonexistent path")
+		}
 
-	if !strings.Contains(err.Error(), "sendmail failed") {
-		t.Errorf("Expected error to contain 'sendmail failed', got: %v", err)
-	}
+		if !strings.Contains(err.Error(), "sendmail failed") {
+			t.Errorf("Expected error to contain 'sendmail failed', got: %v", err)
+		}
 
-	if !strings.Contains(err.Error(), msg.Subject) {
-		t.Errorf("Expected error to include subject, got: %v", err)
-	}
+		if !strings.Contains(err.Error(), msg.Subject) {
+			t.Errorf("Expected error to include subject, got: %v", err)
+		}
 	*/
 }
 
@@ -125,24 +125,24 @@ func TestSendViaSendmailEmailFormat(t *testing.T) {
 func TestSendViaSendmailSingleRecipient(t *testing.T) {
 	t.Skip("Skipped to avoid executing external sendmail command - side effect")
 	/*
-	cfg := &Config{
-		From:         "test@yolo.local",
-		UseSendmail:  true,
-		SendmailPath: "/usr/bin/true",
-	}
+		cfg := &Config{
+			From:         "test@yolo.local",
+			UseSendmail:  true,
+			SendmailPath: "/usr/bin/true",
+		}
 
-	client := New(cfg)
+		client := New(cfg)
 
-	msg := &Message{
-		To:      []string{"single@example.com"},
-		Subject: "Single Recipient Test",
-		Body:    "Test body",
-	}
+		msg := &Message{
+			To:      []string{"single@example.com"},
+			Subject: "Single Recipient Test",
+			Body:    "Test body",
+		}
 
-	err := client.sendViaSendmail(msg)
-	if err != nil {
-		t.Errorf("Expected successful send with single recipient, got error: %v", err)
-	}
+		err := client.sendViaSendmail(msg)
+		if err != nil {
+			t.Errorf("Expected successful send with single recipient, got error: %v", err)
+		}
 	*/
 }
 
@@ -150,24 +150,24 @@ func TestSendViaSendmailSingleRecipient(t *testing.T) {
 func TestSendViaSendmailSpecialCharacters(t *testing.T) {
 	t.Skip("Skipped to avoid executing external sendmail command - side effect")
 	/*
-	cfg := &Config{
-		From:         "test@yolo.local",
-		UseSendmail:  true,
-		SendmailPath: "/usr/bin/true",
-	}
+		cfg := &Config{
+			From:         "test@yolo.local",
+			UseSendmail:  true,
+			SendmailPath: "/usr/bin/true",
+		}
 
-	client := New(cfg)
+		client := New(cfg)
 
-	msg := &Message{
-		To:      []string{"recipient@example.com"},
-		Subject: "Test with Special Chars: <>&\"'\\/",
-		Body:    "Body with unicode: 日本語 🎉 and emojis 😀🚀",
-	}
+		msg := &Message{
+			To:      []string{"recipient@example.com"},
+			Subject: "Test with Special Chars: <>&\"'\\/",
+			Body:    "Body with unicode: 日本語 🎉 and emojis 😀🚀",
+		}
 
-	err := client.sendViaSendmail(msg)
-	if err != nil {
-		t.Errorf("Expected successful send with special characters, got error: %v", err)
-	}
+		err := client.sendViaSendmail(msg)
+		if err != nil {
+			t.Errorf("Expected successful send with special characters, got error: %v", err)
+		}
 	*/
 }
 
