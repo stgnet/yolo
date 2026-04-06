@@ -6,23 +6,17 @@ Welcome to the complete documentation for **YOLO (Your Own Living Operator)** - 
 
 ### Getting Started
 - **[Project README](../README.md)** - Overview and quick start
-- **[User Guide](./user-guide.md)** - Complete usage instructions (NEW consolidated guide)
-
-### Core Concepts
-- **[Autonomous Operations](./AUTONOMOUS_OPERATIONS.md)** - How YOLO works autonomously
-- **[Security Fixes](../SECURITY_FIXES_SUMMARY.md)** - Security improvements summary
+- **[User Guide](./user-guide.md)** - Complete usage instructions
 
 ### Tools & Integration
 - **[Tools Reference](./tools.md)** - Complete tool catalog with examples
-- **[Reddit Tool](./reddit-tool.md)** - Reddit API integration
-- **[Google Workspace (gog)](./gog-tool.md)** - Gmail, Calendar, Drive integration
-- **[Tool Verification](./tool-verification.md)** - Testing and validation
 
 ### Email System
 - **[Email Processing](./EMAIL_PROCESSING.md)** - Email architecture and workflow
 
 ### Development & Maintenance
-- **[Tools Reference](./tools.md)** - Complete tool catalog with examples
+- **[Testing Guide](../TESTING.md)** - Testing best practices and patterns
+- **[Test Safety Audit](../TEST_SAFETY_AUDIT.md)** - Test isolation verification
 
 ## 🔑 Quick Reference
 
