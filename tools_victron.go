@@ -68,7 +68,21 @@ var (
 func ensureVictronClient() {
 	if !clientInitDone || victronClient == nil {
 		victronClient = victron.NewClient()
+		
+		// Initialize the BlueZ backend on Linux
+		// This is done lazily to avoid errors on non-Linux systems
+		initBackend()
+		
 		clientInitDone = true
+	}
+}
+
+func initBackend() {
+	// Try to initialize the BlueZ backend if available
+	// This is done lazily to avoid errors on non-Linux systems
+	backend := victron.NewBlueZBackendCompatible()
+	if backend != nil {
+		victron.SetBackend(backend)
 	}
 }
 

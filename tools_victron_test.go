@@ -62,3 +62,93 @@ func findSubstring(s, substr string) bool {
 	}
 	return false
 }
+
+// Test all supported actions
+func TestVictronToolAllActions(t *testing.T) {
+	tool := &ToolExecutor{baseDir: "."}
+	
+	actions := []string{"scan", "connect", "disconnect", "get_values", "subscribe", "device_info"}
+	for _, action := range actions {
+		t.Run(action, func(t *testing.T) {
+			params := map[string]any{"action": action}
+			if action != "scan" {
+				params["address"] = "XX:XX:XX:XX:XX:XX"
+			}
+			
+			result := tool.victron(params)
+			if !contains(result, `"status"`) {
+				t.Errorf("Expected status field for %s action, got: %s", action, result)
+			}
+		})
+	}
+}
+
+func TestVictronToolInvalidAction(t *testing.T) {
+	tool := &ToolExecutor{baseDir: "."}
+	result := tool.victron(map[string]any{"action": "invalid_action"})
+	
+	if !contains(result, `"status":"error"`) || !contains(result, `unknown action`) {
+		t.Errorf("Expected error about unknown action, got: %s", result)
+	}
+}
+
+func TestVictronToolConnectWithTimeout(t *testing.T) {
+	tool := &ToolExecutor{baseDir: "."}
+	result := tool.victron(map[string]any{
+		"action":  "connect",
+		"address": "XX:XX:XX:XX:XX:XX",
+		"timeout": "1",
+	})
+	
+	if !contains(result, `"status"`) {
+		t.Errorf("Expected status field in connect result, got: %s", result)
+	}
+}
+
+func TestVictronToolScanWithDuration(t *testing.T) {
+	tool := &ToolExecutor{baseDir: "."}
+	result := tool.victron(map[string]any{
+		"action":   "scan",
+		"duration": "2",
+	})
+	
+	if !contains(result, `"status"`) {
+		t.Errorf("Expected status field in scan result, got: %s", result)
+	}
+}
+
+func TestVictronToolDeviceInfo(t *testing.T) {
+	tool := &ToolExecutor{baseDir: "."}
+	result := tool.victron(map[string]any{
+		"action":  "device_info",
+		"address": "XX:XX:XX:XX:XX:XX",
+	})
+	
+	if !contains(result, `"status"`) {
+		t.Errorf("Expected status field in device_info result, got: %s", result)
+	}
+}
+
+func TestVictronToolSubscribe(t *testing.T) {
+	tool := &ToolExecutor{baseDir: "."}
+	result := tool.victron(map[string]any{
+		"action":  "subscribe",
+		"address": "XX:XX:XX:XX:XX:XX",
+	})
+	
+	if !contains(result, `"status"`) {
+		t.Errorf("Expected status field in subscribe result, got: %s", result)
+	}
+}
+
+func TestVictronToolDisconnect(t *testing.T) {
+	tool := &ToolExecutor{baseDir: "."}
+	result := tool.victron(map[string]any{
+		"action":  "disconnect",
+		"address": "XX:XX:XX:XX:XX:XX",
+	})
+	
+	if !contains(result, `"status"`) {
+		t.Errorf("Expected status field in disconnect result, got: %s", result)
+	}
+}

@@ -2,6 +2,8 @@
 package victron
 
 import (
+	"context"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -32,12 +34,44 @@ func (c *Client) Scan(duration time.Duration) ([]DiscoverableDevice, error) {
 	c.scanning = true
 	defer func() { c.scanning = false }()
 	
-	// Start BLE scan - this is where the actual BLE library integration would happen
-	// For now, we'll return a timeout indicating no implementation yet
-	select {
-	case <-time.After(duration):
-		return c.scanResults, nil
+	// Clear previous results
+	c.scanResults = make([]DiscoverableDevice, 0)
+	
+	// Check if we have a backend available
+	backend := GetBackend()
+	if backend == nil {
+		// Try to auto-initialize the backend
+		if err := InitializeBackend(); err != nil {
+			return c.scanResults, fmt.Errorf("failed to initialize BLE backend: %w", err)
+		}
+		backend = GetBackend()
 	}
+	
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), duration)
+	defer cancel()
+	
+	// Scan for devices using the backend
+	devices, err := backend.ScanForDevices(ctx, duration)
+	if err != nil {
+		return c.scanResults, fmt.Errorf("scan failed: %w", err)
+	}
+	
+	// Convert BLEDevice to DiscoverableDevice
+	for _, device := range devices {
+		// Check if this appears to be a Victron device using existing helper
+		isVictron := ParseAdvertisement(device.Name, nil)
+		
+		c.scanResults = append(c.scanResults, DiscoverableDevice{
+			Address:          device.Address,
+			Name:             device.Name,
+			RSSI:             device.RSSI,
+			ManufacturerData: device.ManufacturerData,
+			IsVictron:        isVictron,
+		})
+	}
+	
+	return c.scanResults, nil
 }
 
 // StopScan stops an ongoing scan

@@ -318,6 +318,9 @@ func (t *ToolExecutor) undoEdit(args map[string]any) string {
 }
 
 func (t *ToolExecutor) listFiles(args map[string]any) string {
+	if t == nil || t.baseDir == "" {
+		return errorMessage("ToolExecutor not initialized")
+	}
 	pattern := getStringArg(args, "pattern", "*")
 
 	var matches []string
@@ -613,6 +616,9 @@ func globFiles(baseDir, pattern string) ([]string, error) {
 
 // globRecursive calls the standalone helper with the executor's base directory
 func (t *ToolExecutor) globRecursive(pattern string) ([]string, error) {
+	if t == nil || t.baseDir == "" {
+		return nil, fmt.Errorf("ToolExecutor not initialized")
+	}
 	return globFiles(t.baseDir, pattern)
 }
 

@@ -77,6 +77,7 @@ func (b *Backend) Scan(timeout int64) ([]victron.BLEDevice, error) {
 
 	var results []victron.BLEDevice
 	timeoutTimer := time.After(time.Duration(timeout) * time.Millisecond)
+	deviceMap := make(map[string]bool) // Track unique devices by address
 
 	for {
 		select {
@@ -93,37 +94,50 @@ func (b *Backend) Scan(timeout int64) ([]victron.BLEDevice, error) {
 				continue
 			}
 
+			// Get device address for uniqueness check
+			addrVariant := props.GetValue("Address")
+			var deviceAddr string
+			if addrVariant != nil {
+				if a, ok := addrVariant.(string); ok {
+					deviceAddr = a
+				}
+			}
+			
+			if deviceAddr == "" {
+				continue
+			}
+
+			// Skip if we've already seen this device (keep first sighting)
+			if deviceMap[deviceAddr] {
+				continue
+			}
+			deviceMap[deviceAddr] = true
+
 			// Look for Victron devices by name
 			nameVariant := props.GetValue("Name")
-			if nameVariant == nil {
-				continue
-			}
-
-			nameBytes, ok := nameVariant.([]uint8)
-			if !ok {
-				continue
-			}
-			deviceName := string(nameBytes)
-			
-			if deviceName == "" {
-				continue
-			}
-
-			if containsVictronPrefix(deviceName) {
-				rssiVariant := props.GetValue("RSSI")
-				rssi := int16(0)
-				if rssiVariant != nil {
-					if r, ok := rssiVariant.(int16); ok {
-						rssi = r
-					}
+			var deviceName string
+			if nameVariant != nil {
+				if nameBytes, ok := nameVariant.([]uint8); ok {
+					deviceName = string(nameBytes)
 				}
-
-				results = append(results, victron.BLEDevice{
-					Address: device.Path().String(),
-					Name:    deviceName,
-					RSSI:    int(rssi),
-				})
 			}
+
+			// Get RSSI
+			rssiVariant := props.GetValue("RSSI")
+			rssi := int16(0)
+			if rssiVariant != nil {
+				if r, ok := rssiVariant.(int16); ok {
+					rssi = r
+				}
+			}
+
+			// Add ALL devices to results, not just filtered ones
+			// The filtering can be done at a higher level if needed
+			results = append(results, victron.BLEDevice{
+				Address: deviceAddr,
+				Name:    deviceName,
+				RSSI:    int(rssi),
+			})
 		}
 	}
 }
@@ -137,6 +151,7 @@ func containsVictronPrefix(name string) bool {
 	}
 	return false
 }
+
 
 // Connect establishes a connection to the device and discovers GATT services.
 func (b *Backend) Connect(device victron.BLEDevice) error {

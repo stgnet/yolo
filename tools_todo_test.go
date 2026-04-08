@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestNewTodoList(t *testing.T) {
@@ -284,11 +285,13 @@ func TestTodoList_SortByCreation(t *testing.T) {
 	todoFile := tmpDir + "/test_todos.json"
 	list := NewTodoList(todoFile)
 	
+	now := time.Now()
+	
 	// Manually set todos out of order (simulating a corrupted file or manual insertion)
 	list.todos = []Todo{
-		{Title: "Third", CreatedAt: list.nowPlusMinutes(10)},
-		{Title: "First", CreatedAt: list.nowPlusMinutes(0)},
-		{Title: "Second", CreatedAt: list.nowPlusMinutes(5)},
+		{Title: "Third", CreatedAt: now.Add(10 * time.Minute)},
+		{Title: "First", CreatedAt: now},
+		{Title: "Second", CreatedAt: now.Add(5 * time.Minute)},
 	}
 	
 	list.SortByCreation()
@@ -296,8 +299,4 @@ func TestTodoList_SortByCreation(t *testing.T) {
 	if list.todos[0].Title != "First" || list.todos[1].Title != "Second" || list.todos[2].Title != "Third" {
 		t.Errorf("Todos should be sorted by creation time")
 	}
-}
-
-func (tl *TodoList) nowPlusMinutes(m int64) interface{} {
-	return nil // Not used, just for helper reference
 }
