@@ -162,12 +162,19 @@ YOLO has 40 built-in tools that the LLM can call:
 | `git_show` | Show details of a specific commit |
 | `git_remote` | Show configured git remotes with URLs |
 
-### Browser Automation
-| Tool | Description |
-|------|-------------|
-| `playwright_mcp` | Navigate URLs, interact with DOM, fill forms, screenshots |
+  ### Browser Automation
+  | Tool | Description |
+  |------|-------------|
+  | `playwright_mcp` | Navigate URLs, interact with DOM, fill forms, screenshots |
 
-Total: 40 tools across file operations, agent management, version control, external services, task management, system commands, and browser automation.
+  ### Hardware Integration
+  | Tool | Description |
+  |------|-------------|
+  | `victron` | Victron Energy BLE devices: scan, connect, monitor (SmartSolar, SmartShunt) |
+
+  Total: 41 tools across file operations, agent management, version control, external services, task management, system commands, browser automation, and hardware integration.
+
+
 
 
 ## Email Processing

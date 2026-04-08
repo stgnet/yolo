@@ -793,6 +793,107 @@ Runtime configuration for YOLO behavior.
 
 ---
 
+## 🔋 Victron Device Integration (Bluetooth LE)
+
+Connect to and read values from Victron SmartSolar, SmartShunt, and other BLE-enabled Victron devices.
+
+### victron
+
+Interact with Victron energy monitoring and charging devices via Bluetooth Low Energy.
+
+**Actions:**
+- `scan`: Search for nearby Victron BLE devices
+- `connect`: Establish connection to a device
+- `disconnect`: Close connection to device(s)
+- `get_values`: Read current sensor values from connected device
+- `subscribe`: Start real-time value monitoring
+- `device_info`: Get device details and capabilities
+
+```json
+// Scan for Victron devices (default: 10 seconds)
+{
+  "name": "victron",
+  "arguments": {
+    "action": "scan",
+    "duration": "30"  // optional, max 60 seconds
+  }
+}
+
+// Connect to a specific device
+{
+  "name": "victron",
+  "arguments": {
+    "action": "connect",
+    "address": "XX:XX:XX:XX:XX:XX"  // MAC address from scan results
+  }
+}
+
+// Get current values from connected device
+{
+  "name": "victron",
+  "arguments": {
+    "action": "get_values",
+    "address": "XX:XX:XX:XX:XX:XX",
+    "timeout": "10"  // optional, seconds to collect values
+  }
+}
+
+// Start real-time monitoring
+{
+  "name": "victron",
+  "arguments": {
+    "action": "subscribe",
+    "address": "XX:XX:XX:XX:XX:XX"
+  }
+}
+
+// Get device information
+{
+  "name": "victron",
+  "arguments": {
+    "action": "device_info",
+    "address": "XX:XX:XX:XX:XX:XX"
+  }
+}
+
+// Disconnect from device (or all devices if no address)
+{
+  "name": "victron",
+  "arguments": {
+    "action": "disconnect",
+    "address": "XX:XX:XX:XX:XX:XX"  // optional
+  }
+}
+```
+
+**Supported Devices:**
+- SmartSolar MPPT charge controllers
+- SmartShunt battery monitors  
+- VE.Direct Bluetooth Smart adapters
+- Any Victron device with BLE/GATT support
+
+**Available Values (depends on device type):**
+- Voltage (`V`): Battery voltage in volts
+- Current (`A`): Battery current in amps
+- Power (`W`): Battery power in watts
+- State of Charge (`SoC`): Battery remaining capacity %
+- Temperature (`T`): Device or battery temperature
+- State (`state`): System operating state (e.g., "Bulk", "Absorption", "Float")
+
+**Parameters:**
+- `action` (required): One of `scan`, `connect`, `disconnect`, `get_values`, `subscribe`, `device_info`
+- `address` (required for most actions): Device MAC address from scan results
+- `duration` (optional, scan only): Scan duration in seconds (default: 10, max: 60)
+- `timeout` (optional, get_values/subscribe): How long to collect values
+
+**Use Cases:**
+- Monitor solar charging system status
+- Track battery state of charge and health
+- Log energy consumption data
+- Integrate Victron devices into home automation systems
+
+---
+
 ## Tool Selection Best Practices
 
 ### When to Use Sub-Agents
@@ -819,6 +920,258 @@ Runtime configuration for YOLO behavior.
 1. Use `web_search` for quick information and documentation
 2. Use `read_webpage` to get full content from specific URLs
 3. Combine both: search → find relevant URL → read page
+
+---
+
+## 🔋 Victron Energy BLE Devices
+
+Interact with Victron Energy solar and battery monitoring equipment via Bluetooth Low Energy. Supports SmartSolar MPPT charge controllers, SmartShunt battery monitors, and VE.Direct adapters.
+
+### Overview
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `action` | Yes | Operation to perform: `scan`, `connect`, `disconnect`, `get_values`, `subscribe`, `device_info` |
+| `address` | Conditional | Device MAC address (required for connect/disconnect/get_values/subscribe/device_info) |
+| `duration` | No | Scan duration in seconds (default: 10, max: 60) |
+| `timeout` | No | Operation timeout in seconds (default varies by action) |
+
+### Actions
+
+| Action | Description | Parameters | Returns |
+|--------|-------------|------------|---------|
+| `scan` | Discover nearby Victron devices | `duration` | List of devices with addresses, names, RSSI |
+| `connect` | Connect to a device | `address`, `timeout` | Device info and connection status |
+| `disconnect` | Disconnect from device(s) | `address` (optional) | Disconnection confirmation |
+| `get_values` | Read current sensor values | `address`, `timeout` | Array of sensor readings |
+| `subscribe` | Monitor real-time updates | `address`, `timeout` | Stream of value changes |
+| `device_info` | Get device details | `address` | Device type, name, capabilities |
+
+### Common Sensor Keys
+
+#### Voltage
+- `V` - System voltage
+- `B.V` - Battery voltage
+- `P.V` - PV input voltage (panel 1)
+- `P.V(2)` - PV input voltage (panel 2)
+
+#### Current
+- `A` - System current (charging)
+- `B.A` - Battery current
+- `P.A` - PV input current (panel 1)
+- `P.A(2)` - PV input current (panel 2)
+
+#### Power
+- `W` - System power (charging)
+- `P.W` - PV input power (panel 1)
+- `P.W(2)` - PV input power (panel 2)
+
+#### Battery State
+- `SoC` - State of charge percentage
+- `V.Ar` - Energy yield today (Ah)
+- `V.Wh.ar` - Energy yield today (Wh)
+
+#### Other
+- `T` - Device temperature
+- `Alg.S` - Charging algorithm state
+- `S` - Stage
+- `E` - Error code
+
+### Examples
+
+```json
+// Scan for Victron devices nearby
+{
+  "name": "victron",
+  "arguments": {
+    "action": "scan",
+    "duration": "15"
+  }
+}
+
+// Connect to a specific device
+{
+  "name": "victron",
+  "arguments": {
+    "action": "connect",
+    "address": "CC:50:C3:29:7D:B5",
+    "timeout": "10"
+  }
+}
+
+// Get current sensor values
+{
+  "name": "victron",
+  "arguments": {
+    "action": "get_values",
+    "address": "CC:50:C3:29:7D:B5",
+    "timeout": "5"
+  }
+}
+
+// Monitor device for 30 seconds
+{
+  "name": "victron",
+  "arguments": {
+    "action": "subscribe",
+    "address": "CC:50:C3:29:7D:B5",
+    "timeout": "30"
+  }
+}
+
+// Get device information
+{
+  "name": "victron",
+  "arguments": {
+    "action": "device_info",
+    "address": "CC:50:C3:29:7D:B5"
+  }
+}
+
+// Disconnect from device
+{
+  "name": "victron",
+  "arguments": {
+    "action": "disconnect",
+    "address": "CC:50:C3:29:7D:B5"
+  }
+}
+
+// Disconnect from all devices
+{
+  "name": "victron",
+  "arguments": {
+    "action": "disconnect"
+  }
+}
+```
+
+### Workflow Example: Solar Monitoring
+
+```json
+// Step 1: Scan for devices
+{"name": "victron", "arguments": {"action": "scan", "duration": "10"}}
+
+// Step 2: Connect to SmartSolar (from scan results)
+{
+  "name": "victron",
+  "arguments": {
+    "action": "connect",
+    "address": "CC:50:C3:29:7D:B5"
+  }
+}
+
+// Step 3: Get current solar power and battery status
+{
+  "name": "victron",
+  "arguments": {
+    "action": "get_values",
+    "address": "CC:50:C3:29:7D:B5",
+    "timeout": "5"
+  }
+}
+
+// Step 4: Monitor real-time for 1 minute to see charging patterns
+{
+  "name": "victron",
+  "arguments": {
+    "action": "subscribe",
+    "address": "CC:50:C3:29:7D:B5",
+    "timeout": "60"
+  }
+}
+
+// Step 5: Disconnect when done
+{
+  "name": "victron",
+  "arguments": {
+    "action": "disconnect",
+    "address": "CC:50:C3:29:7D:B5"
+  }
+}
+```
+
+### Typical Scan Response
+
+```json
+{
+  "status": "success",
+  "message": "Found 2 device(s)",
+  "devices": [
+    {
+      "address": "CC:50:C3:29:7D:B5",
+      "name": "SmartSolar MPPT 100/30",
+      "rssi": -45,
+      "is_victron": true
+    },
+    {
+      "address": "A4:C3:F0:12:34:56",
+      "name": "SmartShunt",
+      "rssi": -62,
+      "is_victron": true
+    }
+  ]
+}
+```
+
+### Typical Values Response
+
+```json
+{
+  "status": "success",
+  "message": "Received 8 value(s)",
+  "values": [
+    {
+      "key": "V",
+      "raw_value": "13.85",
+      "float_value": 13.85,
+      "timestamp": "2026-03-20T14:30:25Z"
+    },
+    {
+      "key": "A",
+      "raw_value": "5.2",
+      "float_value": 5.2,
+      "timestamp": "2026-03-20T14:30:25Z"
+    },
+    {
+      "key": "W",
+      "raw_value": "72.0",
+      "float_value": 72.0,
+      "timestamp": "2026-03-20T14:30:25Z"
+    },
+    {
+      "key": "SoC",
+      "raw_value": "85",
+      "float_value": 85.0,
+      "timestamp": "2026-03-20T14:30:26Z"
+    }
+  ]
+}
+```
+
+### Platform Support
+
+| Platform | Status | Notes |
+|----------|--------|-------|
+| Linux | ✅ Partial | Scanning works, GATT reading in progress (uses BlueZ via D-Bus) |
+| macOS | ❌ Mock only | Requires CoreBluetooth cgo bindings |
+| Windows | ❌ Mock only | Requires WinRT Bluetooth bindings |
+
+### Hardware Requirements (Linux)
+
+- Bluetooth adapter supporting BLE 4.0+
+- BlueZ 5.43 or higher
+- Proper D-Bus permissions (may need root or udev rules)
+- Victron device with Bluetooth Smart/VE.Direct support
+
+### Use Cases
+
+✅ **Solar monitoring**: Track PV production, battery charging status  
+✅ **Battery health**: Monitor SOC, voltage, current for lithium/flooded batteries  
+✅ **System diagnostics**: Detect errors, temperature alerts, abnormal readings  
+✅ **Energy tracking**: Log daily energy yield and consumption patterns  
+
+See [DOCS/VICTRON_BLE_LIBRARIES.md](VICTRON_BLE_LIBRARIES.md) for implementation details.
 
 ---
 

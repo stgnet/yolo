@@ -126,6 +126,13 @@ var ollamaTools = []ToolDef{
 			"post_id":   {Type: "string", Description: "Post/comment ID for 'thread' action"},
 			"limit":     {Type: "integer", Description: "Max results to return (default: 25, max: 100)"},
 		}, []string{"action"}),
+	toolDef("victron", "Connect to and read values from Victron Energy devices via Bluetooth Low Energy (BLE). Supports SmartSolar MPPT charge controllers, SmartShunt battery monitors, and VE.Direct adapters.",
+		map[string]ToolParam{
+			"action":  {Type: "string", Description: "Action: 'scan' (find nearby devices), 'connect' (establish connection), 'disconnect' (close connection), 'get_values' (read current values), 'subscribe' (monitor real-time updates), 'device_info' (get device details)"},
+			"address": {Type: "string", Description: "Device MAC address - required for 'connect', 'disconnect', 'get_values', 'subscribe', 'device_info' actions"},
+			"duration":{Type: "string", Description: "Scan duration in seconds (default: 10, max: 60)"},
+			"timeout": {Type: "string", Description: "Operation timeout in seconds (default varies by action)"},
+		}, []string{"action"}),
 	toolDef("gog", "Google CLI tool for Gmail, Calendar, Drive, Docs, Sheets, Slides, Contacts, Tasks, People, Chat, Classroom. Use 'command' parameter to pass gog subcommands (e.g., 'gmail search inbox:unread', 'calendar list events', 'drive list'). Output is JSON by default.",
 		map[string]ToolParam{
 			"command": {Type: "string", Description: "gog subcommand and arguments (e.g., 'gmail search newer_than:1d --max 5', 'calendar list events', 'drive list')"},
@@ -299,6 +306,13 @@ var ollamaTools = []ToolDef{
 		map[string]ToolParam{
 			"key": {Type: "string", Description: "Specific config key to retrieve (optional, omit to show all)"},
 		}, nil),
+	toolDef("victron", "Connect to and read values from Victron Energy devices via Bluetooth Low Energy. Supports SmartSolar MPPT charge controllers, SmartShunt battery monitors, and VE.Direct adapters.",
+		map[string]ToolParam{
+			"action":  {Type: "string", Description: "Action: 'scan' (find nearby devices), 'connect' (establish connection), 'disconnect' (close connection), 'get_values' (read current values), 'subscribe' (monitor real-time updates), 'device_info' (get device details)"},
+			"address": {Type: "string", Description: "Device MAC address - required for 'connect', 'disconnect', 'get_values', 'subscribe', 'device_info' actions"},
+			"duration":{Type: "string", Description: "Scan duration in seconds (default: 10, max: 60)"},
+			"timeout": {Type: "string", Description: "Operation timeout in seconds (default varies by action)"},
+		}, []string{"action"}),
 }
 
 // ─── Tool Executor ───────────────────────────────────────────────────
@@ -316,6 +330,7 @@ var validTools = []string{
 	"project_map", "dependency_graph", "symbol_search", "project_summary",
 	"history_search", "set_config", "get_config",
 	"git_status", "git_diff", "git_log", "git_branch", "git_checkout", "git_commit", "git_add", "git_show", "git_remote",
+	"victron",
 }
 
 // fileNameRegex extracts the agent ID from filenames like "agent_1.json"
@@ -526,6 +541,8 @@ func (t *ToolExecutor) Execute(name string, args map[string]any) string {
 		return t.gitShow(args)
 	case "git_remote":
 		return t.gitRemote(args)
+	case "victron":
+		return t.victron(args)
 	default:
 		// Check if this is an MCP tool
 		if t.agent != nil && t.agent.mcp != nil && t.agent.mcp.IsMCPTool(name) {
