@@ -2,6 +2,7 @@ package email
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -422,5 +423,303 @@ func TestSendViaSendmailFormat(t *testing.T) {
 	err = client.ValidateMessage(&Message{Subject: "Test", Body: "Test"}) // missing recipients
 	if err == nil {
 		t.Error("Should have errored on missing recipients")
+	}
+}
+
+// TestConfigWithFrom tests ConfigWithFrom function with various inputs
+func TestConfigWithFrom(t *testing.T) {
+	testCases := []struct {
+		name         string
+		from         string
+		expectedFrom string
+	}{
+		{
+			name:         "with valid custom from",
+			from:         "custom@example.com",
+			expectedFrom: "custom@example.com",
+		},
+		{
+			name:         "with empty from uses default",
+			from:         "",
+			expectedFrom: DefaultFrom,
+		},
+		{
+			name:         "with complex email address",
+			from:         "user+tag@subdomain.example.com",
+			expectedFrom: "user+tag@subdomain.example.com",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Unset environment variable to ensure we use defaults
+			os.Unsetenv(EnvFrom)
+			defer os.Unsetenv(EnvFrom)
+
+			cfg := ConfigWithFrom(tc.from)
+			if cfg == nil {
+				t.Fatal("Expected non-nil config")
+			}
+			if cfg.From != tc.expectedFrom {
+				t.Errorf("Expected From=%s, got %s", tc.expectedFrom, cfg.From)
+			}
+			if !cfg.UseSendmail {
+				t.Error("Expected UseSendmail to be true")
+			}
+			if cfg.SendmailPath == "" {
+				t.Error("Expected SendmailPath to be set")
+			}
+		})
+	}
+}
+
+// TestSanitizeFilename tests filename sanitization for email headers
+func TestSanitizeFilename(t *testing.T) {
+	testCases := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "simple filename",
+			input:    "document.pdf",
+			expected: "document.pdf",
+		},
+		{
+			name:     "filename with quotes",
+			input:    `file"name.txt`,
+			expected: "filename.txt",
+		},
+		{
+			name:     "filename with multiple quotes",
+			input:    `"test"file"data.pdf`,
+			expected: "testfiledata.pdf",
+		},
+		{
+			name:     "filename with newline",
+			input:    "file\nwith\nnewlines.txt",
+			expected: "file_with_newlines.txt",
+		},
+		{
+			name:     "filename with carriage return",
+			input:    "file\rwith\rcrlf.txt",
+			expected: "file_with_crlf.txt",
+		},
+		{
+			name:     "filename with mixed problematic chars",
+			input:    "\"test\nfile\rdata.pdf",
+			expected: "test_file_data.pdf",
+		},
+		{
+			name:     "empty filename",
+			input:    "",
+			expected: "",
+		},
+		{
+			name:     "filename with path",
+			input:    "/path/to/file.txt",
+			expected: "/path/to/file.txt",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := sanitizeFilename(tc.input)
+			if result != tc.expected {
+				t.Errorf("Expected %q, got %q", tc.expected, result)
+			}
+		})
+	}
+}
+
+// TestBuildMultipartMessage tests multipart message building with attachments
+func TestBuildMultipartMessage(t *testing.T) {
+	cfg := &Config{
+		From:         "test@example.com",
+		UseSendmail:  true,
+		SendmailPath: "/usr/sbin/sendmail",
+	}
+	client := New(cfg)
+
+	testCases := []struct {
+		name            string
+		message         *Message
+		checkBoundaries bool
+	}{
+		{
+			name: "single attachment",
+			message: &Message{
+				To:      []string{"recipient@example.com"},
+				Subject: "Test with Attachment",
+				Body:    "This is a test email with an attachment.",
+				Attachments: []Attachment{
+					{
+						Filename: "test.pdf",
+						Content:  []byte("PDF content here"),
+					},
+				},
+			},
+			checkBoundaries: true,
+		},
+		{
+			name: "multiple attachments",
+			message: &Message{
+				To:      []string{"recipient@example.com"},
+				Subject: "Multiple Attachments",
+				Body:    "Email with multiple files.",
+				Attachments: []Attachment{
+					{
+						Filename: "file1.txt",
+						Content:  []byte("Content 1"),
+					},
+					{
+						Filename: "file2.pdf",
+						Content:  []byte("Content 2"),
+					},
+				},
+			},
+			checkBoundaries: true,
+		},
+		{
+			name: "attachment with special filename chars",
+			message: &Message{
+				To:      []string{"recipient@example.com"},
+				Subject: "Special Filename Test",
+				Body:    "Testing sanitized filenames.",
+				Attachments: []Attachment{
+					{
+						Filename: `"test\nfile".pdf`,
+						Content:  []byte("Test content"),
+					},
+				},
+			},
+			checkBoundaries: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			buf := client.buildMultipartMessage(tc.message)
+			content := buf.String()
+
+			// Check basic headers exist
+			expectedHeaders := []string{
+				"From: test@example.com",
+				fmt.Sprintf("To: %s", tc.message.To[0]),
+				fmt.Sprintf("Subject: %s", tc.message.Subject),
+				"MIME-Version: 1.0",
+				"Content-Type: multipart/mixed; boundary=",
+			}
+
+			for _, header := range expectedHeaders {
+				if !strings.Contains(content, header) {
+					t.Errorf("Expected header %q in content", header)
+				}
+			}
+
+			// Check text part exists
+			if !strings.Contains(content, "Content-Type: text/plain; charset=utf-8") {
+				t.Error("Expected text part Content-Type header")
+			}
+
+			if !strings.Contains(content, "Content-Transfer-Encoding: quoted-printable") {
+				t.Error("Expected quoted-printable encoding header")
+			}
+
+			// Check attachment parts exist
+			for i, att := range tc.message.Attachments {
+				sanitizedFilename := sanitizeFilename(att.Filename)
+				if !strings.Contains(content, fmt.Sprintf(`name="%s"`, sanitizedFilename)) {
+					t.Errorf("Expected attachment %d with filename %q", i+1, sanitizedFilename)
+				}
+
+				if !strings.Contains(content, "Content-Type: application/octet-stream") {
+					t.Errorf("Expected attachment %d to have application/octet-stream content type", i+1)
+				}
+
+				if !strings.Contains(content, "Content-Transfer-Encoding: base64") {
+					t.Errorf("Expected attachment %d to have base64 encoding", i+1)
+				}
+			}
+
+			// Check boundaries if requested
+			if tc.checkBoundaries {
+				// Content should contain boundary markers
+				if !strings.Contains(content, "Content-Type: multipart/mixed; boundary=") {
+					t.Error("Expected Content-Type header with boundary parameter")
+				}
+
+				// Should have at least one opening boundary marker (--)
+				boundaryCount := strings.Count(content, "--yolo-")
+				if boundaryCount < 2 {
+					t.Errorf("Expected at least 2 boundary markers ('--yolo-'), found %d", boundaryCount)
+				}
+
+				// Content should end with closing boundary
+				if !strings.HasSuffix(strings.TrimSpace(content), "--\r\n") && !strings.HasSuffix(strings.TrimSpace(content), "--") {
+					t.Error("Expected content to end with closing boundary '--'")
+				}
+			}
+		})
+	}
+}
+
+// TestBuildMultipartMessageBase64Encoding tests that attachment content is properly base64 encoded
+func TestBuildMultipartMessageBase64Encoding(t *testing.T) {
+	cfg := DefaultConfig()
+	client := New(cfg)
+
+	testContent := []byte("Hello, World!")
+	expectedEncoded := "SGVsbG8sIFdvcmxkIQ==" // Base64 of "Hello, World!"
+
+	msg := &Message{
+		To:      []string{"test@example.com"},
+		Subject: "Test",
+		Body:    "Test body",
+		Attachments: []Attachment{
+			{
+				Filename: "test.txt",
+				Content:  testContent,
+			},
+		},
+	}
+
+	buf := client.buildMultipartMessage(msg)
+	content := buf.String()
+
+	if !strings.Contains(content, expectedEncoded) {
+		t.Errorf("Expected base64 encoded content %q in message body", expectedEncoded)
+	}
+}
+
+// TestBuildMultipartMessageLongContent tests that long attachment content is properly wrapped
+func TestBuildMultipartMessageLongContent(t *testing.T) {
+	cfg := DefaultConfig()
+	client := New(cfg)
+
+	// Create content that will be longer than 76 chars when base64 encoded
+	longContent := bytes.Repeat([]byte("A"), 100)
+
+	msg := &Message{
+		To:      []string{"test@example.com"},
+		Subject: "Test",
+		Body:    "Test body",
+		Attachments: []Attachment{
+			{
+				Filename: "long.txt",
+				Content:  longContent,
+			},
+		},
+	}
+
+	buf := client.buildMultipartMessage(msg)
+	content := buf.String()
+
+	// Check that lines are properly wrapped (no line should exceed 76 chars for base64)
+	lines := strings.Split(content, "\r\n")
+	for i, line := range lines {
+		if len(line) > 78 && strings.Contains(line, "AAAAA") { // Base64 'A' is 'Q=='
+			t.Errorf("Line %d exceeds expected length: %d chars", i, len(line))
+		}
 	}
 }
