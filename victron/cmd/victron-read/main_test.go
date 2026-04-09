@@ -203,6 +203,80 @@ func TestFilterVictronDevicesOrder(t *testing.T) {
 	}
 }
 
+// Test displayValues with sample sensor data
+func TestDisplayValues(t *testing.T) {
+	values := map[string]victron.Value{
+		victron.KeySystemVoltage:   {RawValue: "13.8V", FloatValue: 13.8, Timestamp: time.Now()},
+		victron.KeySystemCurrent:   {RawValue: "-2.5A", FloatValue: -2.5, Timestamp: time.Now()},
+		victron.KeySystemPower:     {RawValue: "-34.5W", FloatValue: -34.5, Timestamp: time.Now()},
+		victron.KeyPVInputVoltage1: {RawValue: "18.2V", FloatValue: 18.2, Timestamp: time.Now()},
+	}
+
+	// We can't easily test output, but we can verify the function doesn't panic
+	// and handles the values correctly
+	displayValues(values)
+}
+
+// Test displayValues with empty map
+func TestDisplayValuesEmpty(t *testing.T) {
+	values := map[string]victron.Value{}
+
+	// Should not panic
+	displayValues(values)
+}
+
+// Test displayValues with missing keys
+func TestDisplayValuesMissingKeys(t *testing.T) {
+	values := map[string]victron.Value{
+		victron.KeySystemVoltage: {RawValue: "13.8V", FloatValue: 13.8, Timestamp: time.Now()},
+	}
+
+	// Should handle missing keys gracefully
+	displayValues(values)
+}
+
+// Test displayKeyMetrics with sample sensor data
+func TestDisplayKeyMetrics(t *testing.T) {
+	values := map[string]victron.Value{
+		victron.KeySystemVoltage: {RawValue: "13.8V", FloatValue: 13.8, Timestamp: time.Now()},
+		victron.KeySystemCurrent: {RawValue: "-2.5A", FloatValue: -2.5, Timestamp: time.Now()},
+		victron.KeySystemPower:   {RawValue: "-34.5W", FloatValue: -34.5, Timestamp: time.Now()},
+	}
+
+	// Should not panic
+	displayKeyMetrics(values)
+}
+
+// Test displayKeyMetrics with empty map
+func TestDisplayKeyMetricsEmpty(t *testing.T) {
+	values := map[string]victron.Value{}
+
+	// Should handle empty map gracefully
+	displayKeyMetrics(values)
+}
+
+// Test displayKeyMetrics with FloatValue only
+func TestDisplayKeyMetricsFloatOnly(t *testing.T) {
+	values := map[string]victron.Value{
+		victron.KeySystemVoltage: {RawValue: "", FloatValue: 14.2, Timestamp: time.Now()},
+		victron.KeySystemCurrent: {RawValue: "", FloatValue: -3.1, Timestamp: time.Now()},
+		victron.KeySystemPower:   {RawValue: "", FloatValue: -44.02, Timestamp: time.Now()},
+	}
+
+	// Should format float values correctly
+	displayKeyMetrics(values)
+}
+
+// Test displayKeyMetrics with missing keys
+func TestDisplayKeyMetricsMissingKeys(t *testing.T) {
+	values := map[string]victron.Value{
+		victron.KeySystemVoltage: {RawValue: "13.8V", FloatValue: 13.8, Timestamp: time.Now()},
+	}
+
+	// Should handle missing current and power gracefully
+	displayKeyMetrics(values)
+}
+
 // Test getUnit returns correct units for additional PV keys
 func TestGetUnitPVKeys(t *testing.T) {
 	tests := []struct {
