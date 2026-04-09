@@ -134,7 +134,22 @@ func (t *ToolExecutor) victronScan(args map[string]any) string {
 	}
 
 	if len(devices) == 0 {
-		return fmt.Sprintf(`{"status":"success","message":"No Victron devices found in scan"}`)
+		return fmt.Sprintf(`{"status":"success","message":"No BLE devices found in scan"}`)
+	}
+
+	// Count Victron vs non-Victron devices
+	victronCount := 0
+	otherCount := 0
+	for _, d := range devices {
+		if d.IsVictron {
+			victronCount++
+		} else {
+			otherCount++
+		}
+	}
+
+	if victronCount == 0 {
+		return fmt.Sprintf(`{"status":"success","message":"No Victron devices found (but found %d other BLE device(s))","devices":devices}`, otherCount)
 	}
 
 	resp := map[string]any{
