@@ -21,7 +21,7 @@ func TestMainFlagsCoverage(t *testing.T) {
 			// Just verify we can construct different flag combinations
 			// Actual execution would require BLE hardware
 			os.Args = append([]string{os.Args[0]}, tt.args...)
-			
+
 			// This is a coverage test - we're testing that the code paths exist
 			// without actually running the full CLI (which requires hardware)
 			if len(os.Args) < 1 {

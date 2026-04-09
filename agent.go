@@ -6,14 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -2332,15 +2330,14 @@ func (a *YoloAgent) Run() {
 	defer a.tts.Stop()
 
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGWINCH)
+	notifySignals(sigCh)
 	go func() {
 		for sig := range sigCh {
-			switch sig {
-			case syscall.SIGWINCH:
+			if isResizeSignal(sig) {
 				if globalUI != nil {
 					globalUI.RefreshSize()
 				}
-			case syscall.SIGINT:
+			} else { // os.Interrupt
 				a.mu.Lock()
 				cancel := a.cancelChat
 				a.mu.Unlock()

@@ -1,7 +1,7 @@
 //go:build darwin
 
 // macOS BLE backend initialization
-// 
+//
 // Status: Stub implementation - full BLE support requires CoreBluetooth integration
 //
 // To implement macOS BLE support, you need to:

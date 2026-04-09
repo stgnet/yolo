@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -26,7 +25,7 @@ func (t *ToolExecutor) runCommand(args map[string]any) string {
 	// This prevents programs like ssh/git from opening /dev/tty directly to
 	// prompt for passwords/passphrases, which would steal keystrokes from
 	// yolo and leak output onto the user's terminal.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	setSysProcAttr(cmd)
 
 	// Explicitly connect stdin to /dev/null so child processes that try to
 	// read input will get immediate EOF instead of hanging.
@@ -56,7 +55,7 @@ func (t *ToolExecutor) runCommand(args map[string]any) string {
 	case <-time.After(time.Duration(CommandTimeout) * time.Second):
 		if cmd.Process != nil {
 			// Kill the entire process group (negative PID) since we used Setsid.
-			syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			killProcessGroup(cmd.Process.Pid)
 		}
 		return errorMessage("command timed out (%ds)", CommandTimeout)
 	}
@@ -109,7 +108,7 @@ func (t *ToolExecutor) restart(args map[string]any) string {
 	buildCmd.Dir = cwd
 
 	// Fully isolate: new session (no controlling terminal) + stdin from /dev/null.
-	buildCmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	setSysProcAttr(buildCmd)
 	if devNull, derr := os.Open(os.DevNull); derr == nil {
 		buildCmd.Stdin = devNull
 		defer devNull.Close()
@@ -141,7 +140,7 @@ func (t *ToolExecutor) restart(args map[string]any) string {
 		t.agent.inputMgr.Stop()
 	}
 
-	err = syscall.Exec(newExePath, append([]string{filepath.Base(exePath)}, executableArgs...), os.Environ())
+	err = execProcess(newExePath, append([]string{filepath.Base(exePath)}, executableArgs...), os.Environ())
 	if err != nil {
 		return errorMessage("could not start new process: %v", err)
 	}

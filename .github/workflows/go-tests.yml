@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 env:
-  GO_VERSION: "1.26"
+  GO_VERSION: "1.25"
 
 jobs:
   test:
@@ -146,4 +146,4 @@ jobs:
     - name: Verify no network dependencies in core tests
       run: |
         # Check that core unit tests don't require external services
-        go test -v ./agent_test.go ./context_test.go ./mcp_test.go ./retry_test.go 2>&1 | tee core-test-results.txt
+        go test -v -run "TestAgent|TestContext|TestMCP" ./... 2>&1 | tee core-test-results.txt

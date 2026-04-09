@@ -24,7 +24,7 @@ func TestContainsIgnoreCase(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := containsIgnoreCase(tt.str, tt.substr)
 			if result != tt.expected {
-				t.Errorf("containsIgnoreCase(%q, %q) = %v, want %v", 
+				t.Errorf("containsIgnoreCase(%q, %q) = %v, want %v",
 					tt.str, tt.substr, result, tt.expected)
 			}
 		})
@@ -49,7 +49,7 @@ func TestToLowerSimple(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := toLowerSimple(tt.input)
 			if result != tt.expected {
-				t.Errorf("toLowerSimple(%q) = %q, want %q", 
+				t.Errorf("toLowerSimple(%q) = %q, want %q",
 					tt.input, result, tt.expected)
 			}
 		})
@@ -74,7 +74,7 @@ func TestFindSubstring(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := findSubstring(tt.str, tt.substr)
 			if result != tt.expected {
-				t.Errorf("findSubstring(%q, %q) = %v, want %v", 
+				t.Errorf("findSubstring(%q, %q) = %v, want %v",
 					tt.str, tt.substr, result, tt.expected)
 			}
 		})
@@ -142,9 +142,9 @@ func TestParseAdvertisement(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := ParseAdvertisement(tt.localName, tt.serviceUUIDs)
-			
+
 			if result != tt.expected {
-				t.Errorf("ParseAdvertisement(%q, %v) = %v, want %v", 
+				t.Errorf("ParseAdvertisement(%q, %v) = %v, want %v",
 					tt.localName, tt.serviceUUIDs, result, tt.expected)
 			}
 		})
@@ -168,7 +168,7 @@ func TestRemoveHyphens(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := removeHyphens(tt.input)
 			if result != tt.expected {
-				t.Errorf("removeHyphens(%q) = %q, want %q", 
+				t.Errorf("removeHyphens(%q) = %q, want %q",
 					tt.input, result, tt.expected)
 			}
 		})
@@ -190,7 +190,7 @@ func TestFormatServiceUUID(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := FormatServiceUUID(tt.input)
-			
+
 			// Just verify it doesn't crash and returns something
 			if result == "" {
 				t.Errorf("FormatServiceUUID should not return empty string")
@@ -217,7 +217,7 @@ func TestDescribeCharacteristicProperties(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := DescribeCharacteristicProperties(tt.props)
-			
+
 			// Just verify it doesn't crash and returns something meaningful
 			if result == "" {
 				// Empty is valid for 0x00 props

@@ -27,10 +27,10 @@ func TestBufferUI_New(t *testing.T) {
 func TestBufferUI_Write_Buffering(t *testing.T) {
 	b := NewBufferUI()
 	b.buffering = true
-	
+
 	testText := "test output line\n"
 	b.Write(testText)
-	
+
 	expected := testText
 	if b.buffer.String() != expected {
 		t.Errorf("buffer mismatch: got %q, want %q", b.buffer.String(), expected)
@@ -41,11 +41,11 @@ func TestBufferUI_Write_Buffering(t *testing.T) {
 func TestBufferUI_Write_NotBuffering(t *testing.T) {
 	b := NewBufferUI()
 	b.buffering = false
-	
+
 	// This would write to stdout, we can't easily capture it in test
 	// But we can verify no panic and buffer is empty
 	b.Write("test text\n")
-	
+
 	if b.buffer.Len() != 0 {
 		t.Error("buffer should be empty when not buffering")
 	}
@@ -55,10 +55,10 @@ func TestBufferUI_Write_NotBuffering(t *testing.T) {
 func TestBufferUI_Write_NoEscaping(t *testing.T) {
 	b := NewBufferUI()
 	b.buffering = true
-	
+
 	testText := "test **bold** and `code`"
 	b.Write(testText)
-	
+
 	// BufferUI writes text as-is without escaping
 	expected := testText
 	if b.buffer.String() != expected {
@@ -71,12 +71,12 @@ func TestBufferUI_Write_MidLineTracking(t *testing.T) {
 	b := NewBufferUI()
 	// When buffering=true, Write() doesn't update midLine
 	b.buffering = false
-	
+
 	// midLine starts as false
 	if b.midLine {
 		t.Error("midLine should be false initially")
 	}
-	
+
 	// After writing without newline, midLine should be true
 	b.Write("line2")
 	if !b.midLine {
@@ -87,10 +87,10 @@ func TestBufferUI_Write_MidLineTracking(t *testing.T) {
 // TestBufferUI_PromptReady tests PromptReady returns correct channel state
 func TestBufferUI_PromptReady(t *testing.T) {
 	b := NewBufferUI()
-	
+
 	// Initial promptReady is closed, so reading from it should succeed immediately
 	ch := b.PromptReady()
-	
+
 	select {
 	case <-ch:
 		// OK - channel was closed (initial state is "ready")
@@ -102,15 +102,15 @@ func TestBufferUI_PromptReady(t *testing.T) {
 // TestBufferUI_IsUserTyping tests IsUserTyping returns correct state
 func TestBufferUI_IsUserTyping(t *testing.T) {
 	b := NewBufferUI()
-	
+
 	if b.IsUserTyping() {
 		t.Error("IsUserTyping should return false initially")
 	}
-	
+
 	b.mu.Lock()
 	b.userWantsInput = true
 	b.mu.Unlock()
-	
+
 	if !b.IsUserTyping() {
 		t.Error("IsUserTyping should return true after user types")
 	}
@@ -119,15 +119,15 @@ func TestBufferUI_IsUserTyping(t *testing.T) {
 // TestBufferUI_IsPromptShown tests IsPromptShown returns correct state
 func TestBufferUI_IsPromptShown(t *testing.T) {
 	b := NewBufferUI()
-	
+
 	if b.IsPromptShown() {
 		t.Error("IsPromptShown should return false initially")
 	}
-	
+
 	b.mu.Lock()
 	b.promptShown = true
 	b.mu.Unlock()
-	
+
 	if !b.IsPromptShown() {
 		t.Error("IsPromptShown should return true after prompt shown")
 	}
@@ -136,10 +136,10 @@ func TestBufferUI_IsPromptShown(t *testing.T) {
 // TestBufferUI_ShowInitialPrompt tests ShowInitialPrompt sets correct state
 func TestBufferUI_ShowInitialPrompt(t *testing.T) {
 	b := NewBufferUI()
-	
+
 	// NewBufferUI creates a closed channel, so we don't close it again
 	b.ShowInitialPrompt()
-	
+
 	if !b.promptShown {
 		t.Error("promptShown should be true after ShowInitialPrompt")
 	}
@@ -151,9 +151,9 @@ func TestBufferUI_ResetPrompt(t *testing.T) {
 	b.mu.Lock()
 	b.promptShown = true
 	b.mu.Unlock()
-	
+
 	b.ResetPrompt()
-	
+
 	// ResetPrompt only clears promptShown, not other states
 	if b.IsUserTyping() {
 		t.Error("userWantsInput should remain false")
@@ -170,13 +170,13 @@ func TestBufferUI_FlushBuffer(t *testing.T) {
 	b.buffering = true
 	testText := "flushed content\n"
 	b.Write(testText)
-	
+
 	// Capture buffer state before flush
 	bufStr := b.buffer.String()
 	if bufStr != testText {
 		t.Errorf("buffer mismatch before flush: got %q, want %q", bufStr, testText)
 	}
-	
+
 	// After flush, buffer should be empty
 	b.FlushBuffer()
 	if b.buffer.Len() != 0 {
@@ -195,9 +195,9 @@ func TestBufferUI_CancelInput(t *testing.T) {
 	b.buffering = true
 	b.buffer.WriteString("cancelled\n")
 	b.mu.Unlock()
-	
+
 	b.CancelInput()
-	
+
 	if b.IsUserTyping() {
 		t.Error("userWantsInput should be false after CancelInput")
 	}
@@ -212,15 +212,15 @@ func TestBufferUI_CancelInput(t *testing.T) {
 // TestBufferUI_EnterKey tests EnterKey sets pastFirstLine correctly
 func TestBufferUI_EnterKey(t *testing.T) {
 	b := NewBufferUI()
-	
+
 	// EnterKey requires promptShown=true to actually do anything
 	b.mu.Lock()
 	b.promptShown = true
 	b.pastFirstLine = false
 	b.mu.Unlock()
-	
+
 	b.EnterKey()
-	
+
 	if !b.pastFirstLine {
 		t.Error("pastFirstLine should be true after EnterKey")
 	}
@@ -230,7 +230,7 @@ func TestBufferUI_EnterKey(t *testing.T) {
 func TestBufferUI_Write_Concurrent(t *testing.T) {
 	b := NewBufferUI()
 	b.buffering = true
-	
+
 	done := make(chan bool, 10)
 	for i := 0; i < 10; i++ {
 		go func(val int) {
@@ -238,11 +238,11 @@ func TestBufferUI_Write_Concurrent(t *testing.T) {
 			done <- true
 		}(i)
 	}
-	
+
 	for i := 0; i < 10; i++ {
 		<-done
 	}
-	
+
 	if !strings.Contains(b.buffer.String(), "line") {
 		t.Error("concurrent writes should all be captured in buffer")
 	}
@@ -251,11 +251,11 @@ func TestBufferUI_Write_Concurrent(t *testing.T) {
 // TestBufferUI_BasicState_MutexConsistency tests basic mutex is present
 func TestBufferUI_BasicState_MutexConsistency(t *testing.T) {
 	b := NewBufferUI()
-	
+
 	// Verify mutex exists and can be locked/unlocked
 	var wg sync.WaitGroup
 	wg.Add(10)
-	
+
 	for i := 0; i < 10; i++ {
 		go func() {
 			defer wg.Done()
@@ -264,7 +264,7 @@ func TestBufferUI_BasicState_MutexConsistency(t *testing.T) {
 			b.mu.Unlock()
 		}()
 	}
-	
+
 	wg.Wait()
 	// If we get here without deadlock, mutex is working
 }
@@ -272,17 +272,17 @@ func TestBufferUI_BasicState_MutexConsistency(t *testing.T) {
 // TestBufferUI_NotifyKeypress tests keyboard input handling doesn't panic
 func TestBufferUI_NotifyKeypress(t *testing.T) {
 	b := NewBufferUI()
-	
+
 	// NotifyKeypress handles Ctrl+C and Enter keys from the terminal reader goroutine
 	// It sets userWantsInput=true and enters buffering mode when ready
 	// We test that it doesn't panic when called
-	
+
 	defer func() {
 		if r := recover(); r != nil {
 			t.Errorf("NotifyKeypress panicked unexpectedly: %v", r)
 		}
 	}()
-	
+
 	// Before NotifyKeypress, state should be initial
 	if b.IsUserTyping() {
 		t.Error("userWantsInput should be false initially")
@@ -290,10 +290,10 @@ func TestBufferUI_NotifyKeypress(t *testing.T) {
 	if b.buffering {
 		t.Error("buffering should be false initially")
 	}
-	
+
 	// Call should set userWantsInput and may enter buffering mode
 	b.NotifyKeypress()
-	
+
 	// After NotifyKeypress, user should want input
 	if !b.IsUserTyping() {
 		t.Error("userWantsInput should be true after NotifyKeypress")
@@ -305,13 +305,13 @@ func TestBufferUI_NotifyKeypress(t *testing.T) {
 // TestBufferUI_RedrawPrompt tests prompt redrawing doesn't panic
 func TestBufferUI_RedrawPrompt(t *testing.T) {
 	b := NewBufferUI()
-	
+
 	// RedrawPrompt redraws the prompt line with any buffered content and user input
 	// We test it doesn't panic with various input scenarios
-	
+
 	testCases := []struct {
-		name   string
-		input  string
+		name  string
+		input string
 	}{
 		{"empty", ""},
 		{"short", "hello"},
@@ -319,7 +319,7 @@ func TestBufferUI_RedrawPrompt(t *testing.T) {
 		{"with newlines", "line1\nline2"},
 		{"with special chars", "test **bold** and `code`"},
 	}
-	
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			defer func() {
@@ -327,7 +327,7 @@ func TestBufferUI_RedrawPrompt(t *testing.T) {
 					t.Errorf("RedrawPrompt panicked with input %q: %v", tc.input, r)
 				}
 			}()
-			
+
 			// Should not panic even though we're not in a real terminal
 			b.RedrawPrompt(tc.input)
 		})

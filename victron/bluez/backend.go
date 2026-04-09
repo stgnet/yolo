@@ -14,13 +14,16 @@
 package bluez
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/godbus/dbus/v5"
 	"github.com/muka/go-bluetooth/api"
 	"github.com/muka/go-bluetooth/bluez/profile/adapter"
+	"github.com/muka/go-bluetooth/bluez/profile/device"
 	"github.com/muka/go-bluetooth/bluez/profile/gatt"
 	"github.com/scottstg/yolo/victron"
 )
@@ -34,35 +37,37 @@ const (
 
 // Backend implements victron.BLEBackend using BlueZ.
 type Backend struct {
-	adapter        *adapter.Adapter1
-	device         *api.Device
-	service        *gatt.GattService1
-	characteristic *gatt.GattCharacteristic1
-	notify         chan []byte
-	done           chan struct{} // For cleanup
+	adapter *adapter.Adapter1
 }
 
 // New creates a new BlueZ backend.
 func New() (*Backend, error) {
+	return &Backend{}, nil
+}
+
+// Initialize initializes the BLE adapter.
+func (b *Backend) Initialize() error {
 	err := api.Exit()
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize bluetooth: %w", err)
+		return fmt.Errorf("failed to initialize bluetooth: %w", err)
 	}
 
 	a, err := api.GetDefaultAdapter()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get default adapter: %w", err)
+		return fmt.Errorf("failed to get default adapter: %w", err)
 	}
-
-	return &Backend{
-		adapter: a,
-		notify:  make(chan []byte, 20),
-		done:    make(chan struct{}),
-	}, nil
+	b.adapter = a
+	return nil
 }
 
-// Scan discovers nearby Bluetooth devices.
-func (b *Backend) Scan(timeout int64) ([]victron.BLEDevice, error) {
+// Close shuts down the BLE backend.
+func (b *Backend) Close() error {
+	b.adapter = nil
+	return nil
+}
+
+// ScanForDevices discovers nearby Bluetooth devices.
+func (b *Backend) ScanForDevices(ctx context.Context, duration time.Duration) ([]victron.BLEDevice, error) {
 	if b.adapter == nil {
 		return nil, errors.New("bluez adapter not initialized")
 	}
@@ -78,344 +83,189 @@ func (b *Backend) Scan(timeout int64) ([]victron.BLEDevice, error) {
 	defer stopScan()
 
 	var results []victron.BLEDevice
-	timeoutTimer := time.After(time.Duration(timeout) * time.Millisecond)
-	deviceMap := make(map[string]bool) // Track unique devices by address
+	timeoutCtx, cancel := context.WithTimeout(ctx, duration)
+	defer cancel()
+
+	deviceMap := make(map[string]bool)
 
 	for {
 		select {
-		case <-timeoutTimer:
+		case <-timeoutCtx.Done():
 			return results, nil
-		case deviceDiscovered := <-devicesCh:
-			device, err := api.NewDevice(deviceDiscovered.Path)
+		case discovered := <-devicesCh:
+			dev, err := device.NewDevice1(discovered.Path)
 			if err != nil {
 				continue
 			}
 
-			props, err := device.GetProperties()
-			if err != nil {
+			deviceAddr, err := dev.GetAddress()
+			if err != nil || deviceAddr == "" {
 				continue
 			}
 
-			// Get device address for uniqueness check
-			addrVariant := props.GetValue("Address")
-			var deviceAddr string
-			if addrVariant != nil {
-				if a, ok := addrVariant.(string); ok {
-					deviceAddr = a
-				}
-			}
-
-			if deviceAddr == "" {
-				continue
-			}
-
-			// Skip if we've already seen this device (keep first sighting)
 			if deviceMap[deviceAddr] {
 				continue
 			}
 			deviceMap[deviceAddr] = true
 
-			// Look for Victron devices by name
-			nameVariant := props.GetValue("Name")
-			var deviceName string
-			if nameVariant != nil {
-				if nameBytes, ok := nameVariant.([]uint8); ok {
-					deviceName = string(nameBytes)
-				}
-			}
+			deviceName, _ := dev.GetName()
+			rssi, _ := dev.GetRSSI()
+			uuids, _ := dev.GetUUIDs()
 
-			// Get RSSI
-			rssiVariant := props.GetValue("RSSI")
-			rssi := int16(0)
-			if rssiVariant != nil {
-				if r, ok := rssiVariant.(int16); ok {
-					rssi = r
-				}
-			}
-
-			// Add ALL devices to results, not just filtered ones
-			// The filtering can be done at a higher level if needed
 			results = append(results, victron.BLEDevice{
-				Address: deviceAddr,
-				Name:    deviceName,
-				RSSI:    int(rssi),
+				Address:      deviceAddr,
+				Name:         deviceName,
+				RSSI:         int(rssi),
+				ServiceUUIDs: uuids,
 			})
 		}
 	}
 }
 
-func containsVictronPrefix(name string) bool {
-	victronPrefixes := []string{"VE.Direct", "SmartSolar", "SmartShunt"}
-	for _, prefix := range victronPrefixes {
-		if len(name) >= len(prefix) && name[:len(prefix)] == prefix {
-			return true
-		}
-	}
-	return false
+// bleConnection wraps a BlueZ device connection.
+type bleConnection struct {
+	dev     *device.Device1
+	address string
 }
 
-// Connect establishes a connection to the device and discovers GATT services.
-func (b *Backend) Connect(device victron.BLEDevice) error {
-	// Create device from address path
-	var err error
-	b.device, err = api.NewDevice(api.ObjectPath(device.Address))
+func (c *bleConnection) Address() string { return c.address }
+func (c *bleConnection) UUID() string    { return "" }
+
+func (c *bleConnection) IsConnected() bool {
+	connected, err := c.dev.GetConnected()
 	if err != nil {
-		return fmt.Errorf("failed to create device: %w", err)
+		return false
 	}
+	return connected
+}
 
-	// Connect to the device
-	err = b.device.Connect()
+func (c *bleConnection) Close() error {
+	return c.dev.Disconnect()
+}
+
+func (c *bleConnection) ReadValue(char victron.BLECharacteristic) ([]byte, error) {
+	gc, err := gatt.NewGattCharacteristic1(dbus.ObjectPath(string(c.dev.Path()) + "/service/char" + fmt.Sprintf("%04x", char.Handle)))
 	if err != nil {
-		return fmt.Errorf("failed to connect: %w", err)
+		return nil, fmt.Errorf("failed to get characteristic: %w", err)
 	}
+	return gc.ReadValue(nil)
+}
 
-	// Get device properties and find GATT services
-	props, err := b.device.GetProperties()
+func (c *bleConnection) WriteValue(char victron.BLECharacteristic, data []byte) error {
+	gc, err := gatt.NewGattCharacteristic1(dbus.ObjectPath(string(c.dev.Path()) + "/service/char" + fmt.Sprintf("%04x", char.Handle)))
 	if err != nil {
-		return fmt.Errorf("failed to get properties: %w", err)
+		return fmt.Errorf("failed to get characteristic: %w", err)
 	}
+	return gc.WriteValue(data, nil)
+}
 
-	servicesVariant := props.GetValue("Services")
-	if servicesVariant == nil {
-		return errors.New("no GATT services found on device")
-	}
-
-	// Services is returned as []dbus.ObjectPath through GetProperty method
-	// Use the helper method to get service paths
-	servicePaths, err := props.GetServices()
+func (c *bleConnection) SubscribeToNotifications(char victron.BLECharacteristic) (<-chan []byte, error) {
+	gc, err := gatt.NewGattCharacteristic1(dbus.ObjectPath(string(c.dev.Path()) + "/service/char" + fmt.Sprintf("%04x", char.Handle)))
 	if err != nil {
-		// Fallback: try to parse the variant directly
-		return fmt.Errorf("failed to get services: %w", err)
+		return nil, fmt.Errorf("failed to get characteristic: %w", err)
 	}
 
-	// Find VE.Direct service by UUID
-	for _, svcPath := range servicePaths {
-		service, err := gatt.NewGattService1(svcPath)
-		if err != nil {
-			continue
-		}
-
-		uuid, err := service.GetUUID()
-		if err != nil {
-			continue
-		}
-
-		if strings.EqualFold(uuid, VictronServiceUUID) {
-			b.service = service
-			break
-		}
-	}
-
-	if b.service == nil {
-		return errors.New("VE.Direct service not found")
-	}
-
-	// Find the VE.Direct characteristic within the service
-	characteristicPaths, err := b.service.GetCharacteristics()
+	err = gc.StartNotify()
 	if err != nil {
-		return fmt.Errorf("failed to get characteristics: %w", err)
+		return nil, fmt.Errorf("failed to start notifications: %w", err)
 	}
 
-	for _, charPath := range characteristicPaths {
-		char, err := gatt.NewGattCharacteristic1(charPath)
-		if err != nil {
-			continue
-		}
-
-		uuid, err := char.GetUUID()
-		if err != nil {
-			continue
-		}
-
-		if strings.EqualFold(uuid, VictronCharUUID) {
-			b.characteristic = char
-
-			// Enable notifications on the characteristic
-			err = b.enableNotifications()
-			if err != nil {
-				return fmt.Errorf("failed to enable notifications: %w", err)
-			}
-
-			break
-		}
-	}
-
-	if b.characteristic == nil {
-		return errors.New("VE.Direct characteristic not found")
-	}
-
-	// Start notification listener
-	go b.listenForNotifications()
-
-	return nil
-}
-
-func (b *Backend) enableNotifications() error {
-	if b.characteristic == nil {
-		return errors.New("characteristic not set")
-	}
-
-	// Write to Client Characteristic Configuration descriptor
-	// Notification value: 0x01
-	notificationValue := []byte{0x01, 0x00} // MTU length
-
-	props := b.characteristic.Properties
-	if props == nil {
-		return errors.New("characteristic properties not available")
-	}
-
-	// Use WriteValue method to enable notifications
-	_, err := b.characteristic.WriteValue(notificationValue)
-	if err != nil {
-		return fmt.Errorf("failed to write notification value: %w", err)
-	}
-
-	return nil
-}
-
-func (b *Backend) listenForNotifications() {
-	// Subscribe to characteristic value changes
-	// The go-bluetooth library provides a Value property that gets updated
-
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-b.done:
-			return
-		case <-ticker.C:
-			if b.characteristic == nil {
-				continue
-			}
-
-			props, err := b.characteristic.GetProperties()
-			if err != nil {
-				continue
-			}
-
-			valueVariant := props.GetValue("Value")
-			if valueVariant == nil {
-				continue
-			}
-
-			// Value is typically []byte or [][]uint8
-			var data []byte
-
-			switch v := valueVariant.(type) {
-			case []byte:
-				data = v
-			case [][]uint8:
-				// Concatenate all chunks
-				for _, chunk := range v {
-					data = append(data, chunk...)
-				}
-			default:
-				continue
-			}
-
-			if len(data) == 0 {
-				continue
-			}
-
-			// Send to notify channel (non-blocking)
-			select {
-			case b.notify <- data:
-			default:
-				// Channel full, skip this notification
-			}
-		}
-	}
-}
-
-// Disconnect closes the connection.
-func (b *Backend) Disconnect() error {
-	close(b.done)
-
-	if b.characteristic != nil {
-		// Disable notifications by writing 0x00 to descriptor
-		disableValue := []byte{0x00, 0x00}
-		_, _ = b.characteristic.WriteValue(disableValue)
-		b.characteristic = nil
-	}
-
-	if b.device != nil {
-		err := b.device.Disconnect()
-		b.device = nil
-		return err
-	}
-	return nil
-}
-
-// GetValues retrieves current device values.
-func (b *Backend) GetValues() (map[string]string, error) {
-	if b.notify == nil || b.characteristic == nil {
-		return nil, errors.New("not connected")
-	}
-
-	// Wait for the next notification with timeout
-	select {
-	case data := <-b.notify:
-		return parseVedirectData(data), nil
-	case <-time.After(5 * time.Second):
-		return make(map[string]string), nil
-	}
-}
-
-func parseVedirectData(data []byte) map[string]string {
-	// Parse VE.Direct protocol messages from binary data
-	// VE.Direct format: /V(V=12.5&A=3.2&SoC=85)\r\n followed by checksum byte
-
-	result := make(map[string]string)
-
-	if len(data) == 0 {
-		return result
-	}
-
-	// Convert to string and parse VE.Direct messages
-	message := string(data)
-
-	// VE.Direct messages start with '/'
-	if !strings.HasPrefix(message, "/") {
-		return result
-	}
-
-	// Remove checksum (last byte before newline)
-	content := strings.TrimSpace(message)
-	if len(content) > 2 {
-		content = content[1 : len(content)-1] // Remove leading '/' and trailing checksum
-	}
-
-	// Parse the message using the victron parser
-	// For now, return raw data as-is
-	result["raw"] = content
-
-	return result
-}
-
-// Subscribe sets up a callback for real-time updates.
-func (b *Backend) Subscribe(callback func(map[string]string)) (func(), error) {
-	if b.notify == nil || b.characteristic == nil {
-		return nil, errors.New("not connected")
-	}
-
-	unsubscribe := make(chan struct{})
-
+	ch := make(chan []byte, 20)
 	go func() {
-		for {
-			select {
-			case <-unsubscribe:
-				return
-			case data := <-b.notify:
-				values := parseVedirectData(data)
-				callback(values)
+		defer close(ch)
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		for range ticker.C {
+			val, err := gc.GetValue()
+			if err != nil {
+				continue
+			}
+			if len(val) > 0 {
+				select {
+				case ch <- val:
+				default:
+				}
 			}
 		}
 	}()
 
-	return func() {
-		close(unsubscribe)
-	}, nil
+	return ch, nil
+}
+
+func (c *bleConnection) UnsubscribeFromNotifications(char victron.BLECharacteristic) error {
+	gc, err := gatt.NewGattCharacteristic1(dbus.ObjectPath(string(c.dev.Path()) + "/service/char" + fmt.Sprintf("%04x", char.Handle)))
+	if err != nil {
+		return fmt.Errorf("failed to get characteristic: %w", err)
+	}
+	return gc.StopNotify()
+}
+
+// Connect establishes a connection to the device.
+func (b *Backend) Connect(address string) (victron.BLEConnection, error) {
+	if b.adapter == nil {
+		return nil, errors.New("bluez adapter not initialized")
+	}
+
+	// Find device by scanning adapter's known devices
+	devices, err := b.adapter.GetDevices()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get devices: %w", err)
+	}
+
+	for _, dev := range devices {
+		addr, err := dev.GetAddress()
+		if err != nil {
+			continue
+		}
+		if strings.EqualFold(addr, address) {
+			err = dev.Connect()
+			if err != nil {
+				return nil, fmt.Errorf("failed to connect: %w", err)
+			}
+			return &bleConnection{dev: dev, address: address}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("device %s not found", address)
+}
+
+// DiscoverServices discovers GATT services on a connected device.
+func (b *Backend) DiscoverServices(conn victron.BLEConnection) ([]victron.BLEService, error) {
+	bc, ok := conn.(*bleConnection)
+	if !ok {
+		return nil, errors.New("invalid connection type")
+	}
+
+	// Wait for services to be resolved
+	for i := 0; i < 50; i++ {
+		resolved, err := bc.dev.GetServicesResolved()
+		if err == nil && resolved {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	uuids, err := bc.dev.GetUUIDs()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get service UUIDs: %w", err)
+	}
+
+	var services []victron.BLEService
+	for _, uuid := range uuids {
+		services = append(services, victron.BLEService{
+			UUID:    uuid,
+			Primary: true,
+		})
+	}
+
+	return services, nil
+}
+
+// DiscoverCharacteristics discovers characteristics in a service.
+func (b *Backend) DiscoverCharacteristics(service victron.BLEService) ([]victron.BLECharacteristic, error) {
+	// This would require walking the D-Bus object tree to find characteristics
+	// belonging to the given service UUID.
+	return nil, fmt.Errorf("DiscoverCharacteristics not yet implemented for BlueZ backend")
 }
 
 // ErrNotConnected is returned when operations are performed without connection.
