@@ -444,7 +444,6 @@ func TestParseParamString(t *testing.T) {
 	}
 }
 
-
 // TestHandleListen tests listen mode handling
 func TestHandleListen(t *testing.T) {
 	t.Log("handleListen() tested - interactive function")
@@ -520,7 +519,6 @@ func TestShowCronStatus(t *testing.T) {
 	agent.showCronStatus("")
 }
 
-
 // TestHandoffRemainingTools tests handoff tool listing
 func TestHandoffRemainingTools(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -545,7 +543,7 @@ func TestSetupFirstRun(t *testing.T) {
 	t.Skip("setupFirstRun requires Ollama connection and user input - skipped in unit tests")
 	// In a real environment, this would:
 	// 1. Connect to Ollama
-	// 2. List available models  
+	// 2. List available models
 	// 3. Set up initial configuration
 	// Skipping because it requires network connectivity and actual Ollama server
 }

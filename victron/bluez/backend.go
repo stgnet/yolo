@@ -268,16 +268,6 @@ func (b *Backend) DiscoverCharacteristics(service victron.BLEService) ([]victron
 	return nil, fmt.Errorf("DiscoverCharacteristics not yet implemented for BlueZ backend")
 }
 
-func containsVictronPrefix(name string) bool {
-	victronPrefixes := []string{"VE.Direct", "SmartSolar", "SmartShunt"}
-	for _, prefix := range victronPrefixes {
-		if len(name) >= len(prefix) && name[:len(prefix)] == prefix {
-			return true
-		}
-	}
-	return false
-}
-
 // ErrNotConnected is returned when operations are performed without connection.
 var ErrNotConnected = errors.New("not connected to device")
 

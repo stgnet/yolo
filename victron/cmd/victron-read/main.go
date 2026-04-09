@@ -39,7 +39,7 @@ func main() {
 	} else {
 		// Scan mode: discover nearby Victron devices
 		fmt.Println("\nScanning for nearby Victron devices...")
-		
+
 		results, err := client.Scan(10 * time.Second)
 		if err != nil {
 			log.Fatalf("Scan failed: %v", err)

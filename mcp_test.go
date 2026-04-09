@@ -238,12 +238,12 @@ func TestMCPServer_CallToolWithServerError(t *testing.T) {
 	// This test verifies the error message format when CallTool is called
 	// We can't test actual transport without a real server, but we verify
 	// that the function exists and has proper error handling structure
-	
+
 	// Verify MCPServer struct fields are correct
 	server := &MCPServer{
-		Name:    "test",
-		Config:  MCPServerConfig{Transport: "stdio"},
-		Tools:   []MCPToolInfo{{Name: "dummy"}},
+		Name:   "test",
+		Config: MCPServerConfig{Transport: "stdio"},
+		Tools:  []MCPToolInfo{{Name: "dummy"}},
 	}
 	assert.Equal(t, "test", server.Name)
 	assert.Len(t, server.Tools, 1)
@@ -259,7 +259,7 @@ func TestMCPServer_DiscoverToolsStructure(t *testing.T) {
 func TestMCPManager_ServerStatusEmpty(t *testing.T) {
 	dir := t.TempDir()
 	mgr := NewMCPManager(dir)
-	
+
 	status := mgr.ServerStatus()
 	assert.Equal(t, "No MCP servers connected", status)
 }
@@ -276,14 +276,14 @@ func TestMCPServer_CloseNilTransport(t *testing.T) {
 		Name: "test",
 		// Transport intentionally nil
 	}
-	
+
 	// Use recover to catch potential panic from nil dereference
 	defer func() {
 		if r := recover(); r != nil {
 			t.Logf("Close with nil transport panics (expected): %v", r)
 		}
 	}()
-	
+
 	err := server.Close()
 	// Either returns error or panics - both are acceptable for now
 	// This documents the current behavior

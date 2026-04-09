@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -467,7 +466,7 @@ func (im *InputManager) suspend() {
 
 	// Send SIGSTOP to our own process (this is what the kernel does for ^Z
 	// in cooked mode). The process will be stopped until the user runs "fg".
-	syscall.Kill(syscall.Getpid(), syscall.SIGSTOP)
+	selfSuspend()
 
 	// ── Execution resumes here after "fg" ──
 

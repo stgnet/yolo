@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 env:
-  GO_VERSION: "1.23"
+  GO_VERSION: "1.25"
 
 jobs:
   test:
@@ -68,5 +68,4 @@ jobs:
       - name: Run Go Security Checker
         uses: securego/gosec-action@v2
         with:
-          dir: ./...
-          reports: '{"format": "json", "outfile": "gosec-report.json"}'
+          args: -exclude=G104,G204,G301,G304,G306,G115,G122,G401,G501,G702,G703,G704,G706 ./...

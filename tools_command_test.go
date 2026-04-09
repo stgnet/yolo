@@ -33,8 +33,8 @@ func TestRunCommand(t *testing.T) {
 			name:    "command with stderr",
 			command: "echo 'stdout message' && echo 'stderr message' >&2",
 			check: func(output string) bool {
-				return strings.Contains(output, "stdout message") && 
-				       strings.Contains(output, "STDERR: stderr message")
+				return strings.Contains(output, "stdout message") &&
+					strings.Contains(output, "STDERR: stderr message")
 			},
 		},
 		{
@@ -92,16 +92,16 @@ func TestRunCommand(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tempDir := t.TempDir()
 			executor := NewToolExecutor(tempDir, nil)
-			
+
 			output := executor.runCommand(map[string]any{
 				"command": tt.command,
 			})
-			
-			if tt.expectError && !strings.Contains(output, "error") && 
-			   !strings.Contains(output, "(exit code ") {
+
+			if tt.expectError && !strings.Contains(output, "error") &&
+				!strings.Contains(output, "(exit code ") {
 				t.Logf("Expected error but got: %s", output)
 			}
-			
+
 			if tt.check != nil && !tt.check(output) {
 				t.Errorf("Output check failed. Got: %s", output)
 			}
@@ -112,9 +112,9 @@ func TestRunCommand(t *testing.T) {
 func TestRunCommandNoCommandProvided(t *testing.T) {
 	tempDir := t.TempDir()
 	executor := NewToolExecutor(tempDir, nil)
-	
+
 	output := executor.runCommand(map[string]any{})
-	
+
 	if !strings.Contains(strings.ToLower(output), "error") {
 		t.Errorf("Expected error when command is not provided. Got: %s", output)
 	}
@@ -123,11 +123,11 @@ func TestRunCommandNoCommandProvided(t *testing.T) {
 func TestRunCommandEmptyString(t *testing.T) {
 	tempDir := t.TempDir()
 	executor := NewToolExecutor(tempDir, nil)
-	
+
 	output := executor.runCommand(map[string]any{
 		"command": "",
 	})
-	
+
 	if !strings.Contains(strings.ToLower(output), "error") {
 		t.Errorf("Expected error when command is empty string. Got: %s", output)
 	}
@@ -135,13 +135,13 @@ func TestRunCommandEmptyString(t *testing.T) {
 
 func TestRestart(t *testing.T) {
 	t.Skip("Skipped to avoid process replacement during test execution")
-	
+
 	tempDir := t.TempDir()
 	executor := NewToolExecutor(tempDir, nil)
 	output := executor.restart(map[string]any{})
-	
-	if !strings.Contains(output, "error") && 
-	   !strings.Contains(output, "Process replaced") {
+
+	if !strings.Contains(output, "error") &&
+		!strings.Contains(output, "Process replaced") {
 		t.Errorf("Unexpected restart output: %s", output)
 	}
 }
@@ -150,13 +150,13 @@ func TestRestartNotDevMode(t *testing.T) {
 	testAgent := &YoloAgent{
 		devMode: false,
 	}
-	
+
 	tempDir := t.TempDir()
 	executor := NewToolExecutor(tempDir, testAgent)
 	output := executor.restart(map[string]any{})
-	
-	if !strings.Contains(strings.ToLower(output), "error") && 
-	   !strings.Contains(output, "not available") {
+
+	if !strings.Contains(strings.ToLower(output), "error") &&
+		!strings.Contains(output, "not available") {
 		t.Errorf("Expected error when not in dev mode. Got: %s", output)
 	}
 }
