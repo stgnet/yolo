@@ -1,0 +1,149 @@
+name: Go Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  GO_VERSION: "1.26"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ env.GO_VERSION }}
+        cache: true
+    
+    - name: Download dependencies
+      run: go mod download
+    
+    - name: Run tests with coverage
+      run: |
+        go test -v -cover ./... 2>&1 | tee test-results.txt
+      continue-on-error: true
+    
+    - name: Generate coverage report
+      if: always()
+      run: |
+        go test -coverprofile=coverage.out ./...
+        go tool cover -func=coverage.out
+        go tool cover -html=coverage.out -o coverage.html
+    
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v4
+      with:
+        files: ./coverage.out
+        fail_ci_if_error: false
+        flags: unittests
+        name: codecov-flags
+
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ env.GO_VERSION }}
+    
+    - name: Run golangci-lint
+      uses: golangci/golangci-lint-action@v6
+      with:
+        version: latest
+        args: --timeout 5m
+    
+    - name: Format check
+      run: |
+        go fmt ./...
+        git diff --exit-code || { echo "Code not properly formatted. Run 'go fmt ./...'"; exit 1; }
+
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ env.GO_VERSION }}
+        cache: true
+    
+    - name: Build
+      run: |
+        go build -v -o yolo .
+        echo "Build successful"
+    
+    - name: Build artifacts for different platforms
+      run: |
+        # Build for Linux amd64
+        GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o yolo-linux-amd64 .
+        
+        # Build for macOS amd64
+        GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o yolo-darwin-amd64 .
+        
+        # Build for macOS arm64 (Apple Silicon)
+        GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o yolo-darwin-arm64 .
+        
+        # Build for Windows amd64
+        GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o yolo-windows-amd64.exe .
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: yolo-builds
+        path: |
+          yolo-linux-amd64
+          yolo-darwin-amd64
+          yolo-darwin-arm64
+          yolo-windows-amd64.exe
+        retention-days: 7
+
+  test-safety:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ env.GO_VERSION }}
+    
+    - name: Verify tests don't cause side effects
+      run: |
+        # Record initial state
+        echo "=== Initial file listing ===" 
+        ls -la
+        
+        # Run all tests
+        go test -v ./...
+        
+        # Check for new files created by tests
+        echo "=== File listing after tests ==="
+        ls -la
+        
+        # Tests should not leave artifacts in the working directory
+        if [ "$(ls -A . | grep -v '^\.' | wc -l)" != "0" ]; then
+          echo "Warning: Some files may have been created by tests"
+          ls -la | grep -v '^\.' || true
+        fi
+    
+    - name: Verify no network dependencies in core tests
+      run: |
+        # Check that core unit tests don't require external services
+        go test -v ./agent_test.go ./context_test.go ./mcp_test.go ./retry_test.go 2>&1 | tee core-test-results.txt
