@@ -542,7 +542,7 @@ func TestHandoffRemainingTools(t *testing.T) {
 
 // TestSetupFirstRun tests first run setup
 func TestSetupFirstRun(t *testing.T) {
-	t.Skip("setupFirstRun requires Ollama connection - skipped in unit tests")
+	t.Skip("setupFirstRun requires Ollama connection and user input - skipped in unit tests")
 	// In a real environment, this would:
 	// 1. Connect to Ollama
 	// 2. List available models  
