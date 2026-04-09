@@ -69,12 +69,14 @@ func ParseVEDirectMessage(msg string) (*VEDirectFrame, error) {
 func parseDataFrame(msg string, frame *VEDirectFrame) (*VEDirectFrame, error) {
 	// Format: /[field(value)checksum
 	// Example: /V(V=12.5)A
-
+	
 	if len(msg) < 4 {
-		frame.Valid = false
 		return frame, fmt.Errorf("message too short")
 	}
 
+	// Initialize Valid to true - will be set to false if validation fails
+	frame.Valid = true
+  
 	// Find the field name and value in parentheses
 	startParen := strings.Index(msg, "(")
 	endParen := strings.Index(msg, ")")
@@ -119,7 +121,7 @@ func parseDataFrame(msg string, frame *VEDirectFrame) (*VEDirectFrame, error) {
 	checksumPos := endParen + 1
 	if checksumPos < len(msg) {
 		frame.Checksum = msg[checksumPos]
-
+		
 		// Validate checksum (XOR of all bytes from start to end paren)
 		expectedChecksum := calculateChecksum([]byte(msg[:endParen+1]))
 		if frame.Checksum != expectedChecksum {
