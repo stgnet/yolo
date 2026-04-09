@@ -268,3 +268,68 @@ func TestBufferUI_BasicState_MutexConsistency(t *testing.T) {
 	wg.Wait()
 	// If we get here without deadlock, mutex is working
 }
+
+// TestBufferUI_NotifyKeypress tests keyboard input handling doesn't panic
+func TestBufferUI_NotifyKeypress(t *testing.T) {
+	b := NewBufferUI()
+	
+	// NotifyKeypress handles Ctrl+C and Enter keys from the terminal reader goroutine
+	// It sets userWantsInput=true and enters buffering mode when ready
+	// We test that it doesn't panic when called
+	
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("NotifyKeypress panicked unexpectedly: %v", r)
+		}
+	}()
+	
+	// Before NotifyKeypress, state should be initial
+	if b.IsUserTyping() {
+		t.Error("userWantsInput should be false initially")
+	}
+	if b.buffering {
+		t.Error("buffering should be false initially")
+	}
+	
+	// Call should set userWantsInput and may enter buffering mode
+	b.NotifyKeypress()
+	
+	// After NotifyKeypress, user should want input
+	if !b.IsUserTyping() {
+		t.Error("userWantsInput should be true after NotifyKeypress")
+	}
+	// Buffering is set to true when prompt is shown (which happens inside NotifyKeypress)
+	// This is expected behavior - it prepares for user input
+}
+
+// TestBufferUI_RedrawPrompt tests prompt redrawing doesn't panic
+func TestBufferUI_RedrawPrompt(t *testing.T) {
+	b := NewBufferUI()
+	
+	// RedrawPrompt redraws the prompt line with any buffered content and user input
+	// We test it doesn't panic with various input scenarios
+	
+	testCases := []struct {
+		name   string
+		input  string
+	}{
+		{"empty", ""},
+		{"short", "hello"},
+		{"long", strings.Repeat("a", 100)},
+		{"with newlines", "line1\nline2"},
+		{"with special chars", "test **bold** and `code`"},
+	}
+	
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("RedrawPrompt panicked with input %q: %v", tc.input, r)
+				}
+			}()
+			
+			// Should not panic even though we're not in a real terminal
+			b.RedrawPrompt(tc.input)
+		})
+	}
+}
