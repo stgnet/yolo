@@ -344,11 +344,77 @@ func TestSpawnSubagent(t *testing.T) {
 // TestParseParamString tests parsing parameter strings
 func TestParseParamString(t *testing.T) {
 	testCases := []struct {
-		name  string
-		input string
+		name     string
+		input    string
+		expected map[string]any
 	}{
-		{"empty", ""},
-		{"single_param", "path=\"test.txt\""},
+		{
+			name:     "empty",
+			input:    "",
+			expected: map[string]any{},
+		},
+		{
+			name:     "single_param_quoted_string",
+			input:    `path="test.txt"`,
+			expected: map[string]any{"path": "test.txt"},
+		},
+		{
+			name:     "single_param_single_quotes",
+			input:    `path='test.txt'`,
+			expected: map[string]any{"path": "test.txt"},
+		},
+		{
+			name:     "integer_value",
+			input:    `count=42`,
+			expected: map[string]any{"count": int64(42)},
+		},
+		{
+			name:     "float_value",
+			input:    `price=19.99`,
+			expected: map[string]any{"price": 19.99},
+		},
+		{
+			name:     "boolean_true",
+			input:    `enabled=true`,
+			expected: map[string]any{"enabled": true},
+		},
+		{
+			name:     "boolean_false",
+			input:    `disabled=false`,
+			expected: map[string]any{"disabled": false},
+		},
+		{
+			name:  "multiple_params",
+			input: `path="test.txt",count=10,enabled=true`,
+			expected: map[string]any{
+				"path":    "test.txt",
+				"count":   int64(10),
+				"enabled": true,
+			},
+		},
+		{
+			name:  "params_with_spaces",
+			input: `path = "test.txt" , count = 5`,
+			expected: map[string]any{
+				"path":  "test.txt",
+				"count": int64(5),
+			},
+		},
+		{
+			name:     "unquoted_string",
+			input:    `name=hello`,
+			expected: map[string]any{"name": "hello"},
+		},
+		{
+			name:  "mixed_types",
+			input: `name="test",count=100,active=true,price=9.99`,
+			expected: map[string]any{
+				"name":   "test",
+				"count":  int64(100),
+				"active": true,
+				"price":  9.99,
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -356,10 +422,28 @@ func TestParseParamString(t *testing.T) {
 			result := parseParamString(tc.input)
 			if result == nil {
 				t.Error("Expected non-nil result")
+				return
+			}
+
+			// Compare results
+			if len(result) != len(tc.expected) {
+				t.Errorf("Expected %d params, got %d. Expected: %v, Got: %v",
+					len(tc.expected), len(result), tc.expected, result)
+			}
+
+			for k, expectedVal := range tc.expected {
+				actualVal, exists := result[k]
+				if !exists {
+					t.Errorf("Expected key '%s' not found", k)
+				} else if actualVal != expectedVal {
+					t.Errorf("For key '%s': expected %v (%T), got %v (%T)",
+						k, expectedVal, expectedVal, actualVal, actualVal)
+				}
 			}
 		})
 	}
 }
+
 
 // TestHandleListen tests listen mode handling
 func TestHandleListen(t *testing.T) {
