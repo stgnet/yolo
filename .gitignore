@@ -19,3 +19,5 @@ history.json
 tools/todo/.todo.json
 tmp
 archive
+victron/cmd/victron-read/victron-read
+victron/examples/energy-dashboard/main
