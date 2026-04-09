@@ -271,3 +271,169 @@ func Test_calculateChecksum(t *testing.T) {
 		})
 	}
 }
+
+// Test NewScanFilter
+func Test_NewScanFilter(t *testing.T) {
+	tests := []struct {
+		name       string
+		deviceType DeviceType
+		expectedName string
+	}{
+		{
+			name:       "SmartSolar device type",
+			deviceType: DeviceTypeSmartSolar,
+			expectedName: "SmartSolar",
+		},
+		{
+			name:       "SmartShunt device type",
+			deviceType: DeviceTypeSmartShunt,
+			expectedName: "SmartShunt",
+		},
+		{
+			name:       "VEDirectAdapter device type",
+			deviceType: DeviceTypeVEDirectAdapter,
+			expectedName: "VE.Direct",
+		},
+		{
+			name:       "Unknown device type returns empty filter",
+			deviceType: DeviceTypeUnknown,
+			expectedName: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := NewScanFilter(tt.deviceType)
+			if result.Name != tt.expectedName {
+				t.Errorf("NewScanFilter(%v).Name = %q, want %q", tt.deviceType, result.Name, tt.expectedName)
+			}
+		})
+	}
+}
+
+// Test ValidateCharacteristic
+func Test_ValidateCharacteristic(t *testing.T) {
+	tests := []struct {
+		name          string
+		characteristic *GATTCharacteristic
+		requireNotify bool
+		expectError   bool
+	}{
+		{
+			name: "valid notification characteristic with notify required",
+			characteristic: &GATTCharacteristic{
+				UUID:       VEDirectDataCharacteristic,
+				Properties: PropNotify,
+			},
+			requireNotify: true,
+			expectError:   false,
+		},
+		{
+			name: "valid characteristic without notify when not required",
+			characteristic: &GATTCharacteristic{
+				UUID:       "some-uuid",
+				Properties: PropRead | PropWrite,
+			},
+			requireNotify: false,
+			expectError:   false,
+		},
+		{
+			name: "invalid characteristic without notify when required",
+			characteristic: &GATTCharacteristic{
+				UUID:       "some-uuid",
+				Properties: PropRead | PropWrite,
+			},
+			requireNotify: true,
+			expectError:   true,
+		},
+		{
+			name:          "nil characteristic returns error",
+			characteristic: nil,
+			requireNotify:  false,
+			expectError:    true,
+		},
+		{
+			name: "characteristic with indicate when notify required",
+			characteristic: &GATTCharacteristic{
+				UUID:       VEDirectDataCharacteristic,
+				Properties: PropIndicate,
+			},
+			requireNotify: true,
+			expectError:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateCharacteristic(tt.characteristic, tt.requireNotify)
+			if tt.expectError && err == nil {
+				t.Errorf("ValidateCharacteristic() = nil, want error")
+			}
+			if !tt.expectError && err != nil {
+				t.Errorf("ValidateCharacteristic() = %v, want nil", err)
+			}
+		})
+	}
+}
+
+// Test FindNotificationCharacteristic
+func Test_FindNotificationCharacteristic(t *testing.T) {
+	serviceWithNotify := &GATTService{
+		UUID:      "test-uuid",
+		Characteristics: []*GATTCharacteristic{
+			{UUID: "read-only", Properties: PropRead},
+			{UUID: VEDirectDataCharacteristic, Properties: PropNotify},
+			{UUID: "write-only", Properties: PropWrite},
+		},
+	}
+
+	serviceWithoutNotify := &GATTService{
+		UUID:      "another-uuid",
+		Characteristics: []*GATTCharacteristic{
+			{UUID: "read-only", Properties: PropRead},
+			{UUID: "write-only", Properties: PropWrite},
+		},
+	}
+
+	tests := []struct {
+		name        string
+		service     *GATTService
+		expectError bool
+	}{
+		{
+			name:        "find notification characteristic in service",
+			service:     serviceWithNotify,
+			expectError: false,
+		},
+		{
+			name:        "no notification characteristic returns error",
+			service:     serviceWithoutNotify,
+			expectError: true,
+		},
+		{
+			name:        "nil service returns error",
+			service:     nil,
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := FindNotificationCharacteristic(tt.service)
+			
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("FindNotificationCharacteristic() = %v, nil, want error", result)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("FindNotificationCharacteristic() = nil, %v, want characteristic, nil", err)
+				} else if result == nil {
+					t.Errorf("FindNotificationCharacteristic() = nil, error, want characteristic, nil")
+				} else if !(result.Properties&(PropNotify|PropIndicate) != 0) {
+					t.Errorf("FindNotificationCharacteristic().Properties does not support notifications")
+				}
+			}
+		})
+	}
+}
