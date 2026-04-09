@@ -193,13 +193,14 @@ func ParseVEDirectStream(data string) ([]*VEDirectFrame, error) {
 	var frames []*VEDirectFrame
 
 	for _, line := range lines {
-		line = strings.TrimSpace(line)
+		// Don't use TrimSpace as it removes checksum bytes that are whitespace/control chars (e.g., 0x0C form feed)
+		// Only trim explicit newlines and leading spaces that aren't part of the message
+		line = strings.TrimRight(line, "\r\n ")
+		line = strings.TrimLeft(line, " ")
+
 		if len(line) == 0 {
 			continue
 		}
-
-		// Remove carriage return if present
-		line = strings.TrimRight(line, "\r")
 
 		frame, err := ParseVEDirectMessage(line)
 		if err != nil && frame != nil && !frame.Valid {
