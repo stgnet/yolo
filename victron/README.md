@@ -1,29 +1,20 @@
-# Victron BLE Library
+# Victron BLE Client Library
 
-A Go library for connecting to and reading data from Victron Energy devices via Bluetooth Low Energy (BLE).
+A Go library for connecting to and reading data from Victron Energy devices over Bluetooth Low Energy (BLE).
 
 ## Overview
 
-This library provides:
-- **VE.Direct protocol parsing** - Decode messages from Victron devices
-- **BLE client architecture** - Platform-agnostic interface for Bluetooth operations
-- **Mock backend** - Full functionality for testing without hardware
-- **Client layer** - Device discovery, connection management, and real-time monitoring
+This package provides functionality to:
+- Scan for nearby Victron Energy devices advertising over BLE
+- Connect to discovered devices
+- Read VE.Direct protocol messages in real-time
+- Parse and interpret telemetry data (voltage, current, power, etc.)
 
 ## Supported Devices
 
-- SmartSolar MPPT charge controllers
-- SmartShunt battery monitors  
-- VE.Direct to Bluetooth Smart adapters
-
-## Features
-
-✅ Read all device values (voltage, current, power, SoC, temperature, etc.)
-✅ Real-time monitoring via channels/callbacks
-✅ Automatic VE.Direct protocol parsing with checksum validation
-✅ Cross-platform architecture with backend interface
-✅ Comprehensive test suite with mock backend for testing without hardware
-✅ Example CLI tool (`victron-read`) demonstrating complete workflow
+Tested with Victron Energy SmartSolar MPPT charge controllers. The library should work with any Victron device supporting:
+- Bluetooth Low Energy (BLE) advertising
+- VE.Direct protocol over BLE
 
 ## Installation
 
@@ -31,245 +22,235 @@ This library provides:
 go get github.com/scottstg/yolo/victron
 ```
 
-## Examples
+## Quick Start
 
-### Command-Line Tool
-
-A complete example CLI tool is available at [`victron/cmd/victron-read/`](./cmd/victron-read/):
-
-```bash
-# Scan for and connect to Victron devices
-go run ./victron/cmd/victron-read
-
-# Connect to specific device by MAC address
-go run ./victron/cmd/victron-read AA:BB:CC:DD:EE:FF
-```
-
-See [`victron/cmd/victron-read/README.md`](./cmd/victron-read/README.md) for full documentation.
-
-### Basic Usage in Your Code
+### Scanning for Devices
 
 ```go
 package main
 
 import (
     "fmt"
-    "log"
     "time"
-    
     "github.com/scottstg/yolo/victron"
 )
 
 func main() {
-    // Initialize BLE backend (required first step)
-    if err := victron.InitializeBackend(); err != nil {
-        log.Fatalf("Failed to initialize BLE: %v", err)
-    }
-
-    // Create client
     client := victron.NewClient()
-
-    // Scan for nearby devices (10 second scan)
-    results, err := client.Scan(10 * time.Second)
+    
+    // Scan for 10 seconds
+    devices, err := client.Scan(10 * time.Second)
     if err != nil {
-        log.Fatal(err)
+        fmt.Printf("Scan error: %v\n", err)
+        return
     }
-
-    // Filter Victron devices and connect to strongest
-    for _, device := range results {
+    
+    for _, device := range devices {
         if device.IsVictron {
-            fmt.Printf("Found: %s at %s (RSSI: %d)\n", device.Name, device.Address, device.RSSI)
-            
-            // Connect to device
-            victronDevice, err := client.Connect(device.Address)
-            if err != nil {
-                log.Fatal(err)
-            }
-            defer victronDevice.Disconnect()
-
-            // Establish BLE connection
-            if err := victronDevice.Connect(); err != nil {
-                log.Fatal(err)
-            }
-
-            // Get all current values
-            values := victronDevice.GetAllValues()
-            for key, val := range values {
-                fmt.Printf("%s: %s\n", key, val.RawValue)
-            }
-
-            break // Connect to first device only
+            fmt.Printf("Found: %s (%s, RSSI: %d)\n", 
+                device.Name, device.Address, device.RSSI)
         }
     }
 }
 ```
 
-### Direct Connection (Known Device)
-
-If you already know the MAC address of your Victron device:
+### Connecting and Reading Values
 
 ```go
-// Initialize backend
-if err := victron.InitializeBackend(); err != nil {
-    log.Fatal(err)
-}
+package main
 
-client := victron.NewClient()
-device, _ := client.Connect("AA:BB:CC:DD:EE:FF")
-defer device.Disconnect()
+import (
+    "context"
+    "fmt"
+    "github.com/scottstg/yolo/victron"
+)
 
-if err := device.Connect(); err != nil {
-    log.Fatal(err)
-}
-
-// Subscribe to real-time updates
-go func() {
-    for values := range device.SubscribeBatched() {
-        voltage, exists := values[victron.KeySystemVoltage]
-        if exists {
-            fmt.Printf("Voltage: %.2f V\n", voltage.FloatValue)
-        }
+func main() {
+    client := victron.NewClient()
+    
+    // Connect to a specific device
+    device, err := client.Connect("AA:BB:CC:DD:EE:FF")
+    if err != nil {
+        fmt.Printf("Connect error: %v\n", err)
+        return
     }
-}()
-
-// Keep running to receive updates
-time.Sleep(30 * time.Second)
-```
-
-### Using with Mock Backend (Testing)
-
-For development and testing without hardware:
-
-```go
-import "github.com/scottstg/yolo/victron"
-
-// Set mock backend before initializing
-victron.SetBackend(&victron.MockBackend{})
-if err := victron.InitializeBackend(); err != nil {
-    log.Fatal(err)
-}
-
-// Rest of code works the same - mock simulates device behavior
-```
-
-## Architecture
-
-The library uses a backend interface pattern for maximum portability:
-
-```
-victron/
-├── client.go          # Main client implementation
-├── backend.go         # BLEBackend interface definition  
-├── mock_backend.go    # Testing backend (no hardware needed)
-├── parser.go          # VE.Direct protocol parsing
-└── victron.go         # Types and constants
-```
-
-### Backend Interface
-
-```go
-type BLEBackend interface {
-    Scan(timeout int64) ([]BLEDevice, error)
-    Connect(device BLEDevice) error
-    Disconnect() error
-    GetValues() (map[string]string, error)
-    Subscribe(callback func(map[string]string)) (func(), error)
+    defer client.Disconnect(device.Address)
+    
+    // Subscribe to real-time value updates
+    ctx := context.Background()
+    go func() {
+        for updates := range device.Subscribe(ctx) {
+            for key, value := range updates {
+                fmt.Printf("%s: %v\n", key, value.FloatValue)
+            }
+        }
+    }()
+    
+    // Keep connection alive
+    <-make(chan struct{})
 }
 ```
 
-## Platform Support
+### Using Auto-Discovery
 
-### Mock Backend (All Platforms) ✅
-- **Purpose**: Testing and development without hardware
-- **Features**: Simulates real Victron device behavior
-- **Usage**: `victron.WithMockBackend()`
-
-### Linux/BlueZ Backend ⚠️
-- **Requirements**: 
-  - BlueZ 5.43+ installed
-  - Proper D-Bus permissions
-  - `sudo bt-adapter` or appropriate udev rules
-- **Status**: Interface defined, implementation needed
-- **Libraries**: [`github.com/muka/go-bluetooth`](https://github.com/muka/go-bluetooth)
-
-### macOS CoreBluetooth ⚠️
-- **Requirements**: 
-  - macOS 10.12+ with Bluetooth enabled
-  - App Sandbox permissions for Bluetooth (if sandboxed app)
-  - `com.apple.security.device.bluetooth` entitlement
-- **Status**: Interface defined, implementation needed  
-- **Libraries**: cgo bindings to CoreBluetooth framework
-
-### Windows ⚠️
-- **Requirements**: 
-  - Windows 10+ with BLE support
-  - WinRT Bluetooth APIs
-- **Status**: Interface defined, implementation needed
-- **Libraries**: [`github.com/go-ble/ble`](https://github.com/go-ble/ble) (cross-platform attempt)
+```go
+// Automatically find and connect to the strongest Victron device
+device, err := client.Discover()
+if err != nil {
+    fmt.Printf("Discover error: %v\n", err)
+    return
+}
+defer client.Disconnect(device.Address)
+```
 
 ## VE.Direct Protocol
 
-The library fully implements the Victron VE.Direct protocol for parsing messages:
+Victron devices communicate using the VE.Direct protocol, an ASCII-based message format:
 
-### Data Points Available
-- `V` - Voltage (battery input voltage)
-- `A` - Current (positive = charging, negative = discharging)
-- `P` - Power
-- `SoC` - State of Charge percentage
-- `T(Ambient)` / `T(Cell)` - Temperature
-- `Wh(TotImp)` - Total energy imported
-- And many more...
+```
+/[device][field(value)checksum
+```
 
-### Message Format
+### Example Messages
+
 ```
-/V(V=12.5&A=3.2&SoC=85)0D
+/V(V=12.345)A      # Voltage = 12.345V
+/A(A=-5.678)B      # Current = -5.678A (negative = discharging)
+/P.W(W=301)C       # Power = 301W
 ```
-Where:
-- `/` = VE.Direct data indicator
-- `V(V=12.5&...)` = Voltage field with parameters
-- `0D` = Checksum (XOR of all bytes)
+
+### Parsing Messages
+
+```go
+// Parse a single VE.Direct message
+frame, err := victron.ParseVEDirectMessage("/V(V=12.345)A")
+if err != nil {
+    // Handle error
+}
+fmt.Printf("Key: %s, Value: %.3f\n", frame.DataKey, frame.Value)
+
+// Parse multiple messages from a stream
+frames, err := victron.ParseVEDirectStream("/V(V=12.345)A\n/A(A=-5.678)B")
+
+// Format values with human-readable names
+formatted := victron.FormatValue(frame)
+// Output: "System Voltage: 12.345 V"
+```
+
+## Known VE.Direct Data Keys
+
+The library recognizes these common data keys:
+
+### Voltages
+- `V` - System voltage
+- `Vin` - Battery voltage  
+- `Pn.Vin` - PV input voltage (input N)
+
+### Currents
+- `A` - System current
+- `Pn.Iin` - PV input current (input N)
+
+### Power
+- `P.W` - System power
+- `Pn.P` - PV input power (input N)
+
+### State & Status
+- `SoC` - State of charge (%)
+- `T.Temp` - Device temperature (°C)
+- `A.State` - Charging algorithm state
+
+### Identification
+- `/Dev` - Device type
+- `/Ver` - Firmware version
+- `/SN` - Serial number
+
+## API Reference
+
+### Client Methods
+
+| Method | Description |
+|--------|-------------|
+| `NewClient()` | Create a new BLE client |
+| `Scan(duration)` | Scan for nearby devices |
+| `Connect(address)` | Connect to a specific device |
+| `Disconnect(address)` | Disconnect from a device |
+| `Discover()` | Auto-discover and connect to strongest signal |
+| `GetAllConnected()` | List all connected devices |
+
+### Device Methods
+
+| Method | Description |
+|--------|-------------|
+| `Subscribe(ctx)` | Receive real-time value updates |
+| `GetValue(key)` | Get current value for a data key |
+| `GetAllValues()` | Get all current values |
+| `Disconnect()` | Disconnect this device |
+
+### Parser Functions
+
+| Function | Description |
+|----------|-------------|
+| `ParseVEDirectMessage(msg)` | Parse single VE.Direct message |
+| `ParseVEDirectStream(data)` | Parse multiple messages |
+| `ValidateVEDirectMessage(msg)` | Check message checksum |
+| `FormatValue(frame)` | Format value with unit |
+| `GetValueType(key)` | Get info about a data key |
+
+## Error Handling
+
+The library defines specific error types:
+
+```go
+type (
+    ParseError    struct{} // Message parsing failed
+    ConnectError  struct{} // BLE connection failed
+    NotFoundError struct{} // Device not found during scan
+)
+```
+
+## Troubleshooting
+
+### No Devices Found
+
+- Ensure Bluetooth is enabled on your system
+- Verify Victron device has BLE enabled (some require configuration)
+- Move closer to the device for better signal strength
+- Try scanning for longer duration
+
+### Connection Fails
+
+- Check if device is already connected to another controller
+- Some devices only allow one active connection at a time
+- Ensure you're using the correct MAC address format
+
+### Invalid Checksum Errors
+
+- VE.Direct messages include checksum validation
+- If many messages fail, there may be interference or connection issues
+- The library automatically filters invalid messages
 
 ## Testing
 
 Run the test suite:
 
 ```bash
-cd victron
-go test -v          # Verbose output
-go test -race       # Race detection  
-go test -cover      # Coverage report
+go test ./victron/... -v
 ```
 
-All tests run with the mock backend - no hardware required!
+Coverage report:
 
-## Adding a Real Backend
-
-To implement platform-specific BLE support, create a type that implements `BLEBackend`:
-
-```go
-type MyBLEBackend struct {
-    // Platform-specific Bluetooth client
-}
-
-func (b *MyBLEBackend) Scan(timeout int64) ([]victron.BLEDevice, error) {
-    // Implement device scanning for your platform
-    return devices, nil
-}
-
-func (b *MyBLEBackend) Connect(device victron.BLEDevice) error {
-    // Establish BLE connection
-    return nil
-}
-
-// ... implement other interface methods
+```bash
+go test ./victron/... -coverprofile=coverage.out
+go tool cover -html=coverage.out
 ```
 
-Then use it:
+## Examples
 
-```go
-client, err := victron.NewClient(victron.WithBackend(&MyBLEBackend{}))
-```
+See `examples/` directory for complete working examples:
+- `scan.go` - Device discovery
+- `read_values.go` - Real-time monitoring
+- `mcp_handler.go` - MCP server integration
 
 ## License
 
-MIT License - See LICENSE file in repository root.
+MIT License - see LICENSE file in repository root.
