@@ -19,10 +19,11 @@ This library provides:
 ## Features
 
 ✅ Read all device values (voltage, current, power, SoC, temperature, etc.)
-✅ Real-time monitoring via callbacks
-✅ Automatic checksum validation
-✅ Cross-platform architecture (mock backend works everywhere)
-✅ Comprehensive test suite with 100% coverage
+✅ Real-time monitoring via channels/callbacks
+✅ Automatic VE.Direct protocol parsing with checksum validation
+✅ Cross-platform architecture with backend interface
+✅ Comprehensive test suite with mock backend for testing without hardware
+✅ Example CLI tool (`victron-read`) demonstrating complete workflow
 
 ## Installation
 
@@ -30,63 +31,125 @@ This library provides:
 go get github.com/scottstg/yolo/victron
 ```
 
-## Usage
+## Examples
 
-### Basic Example
+### Command-Line Tool
+
+A complete example CLI tool is available at [`victron/cmd/victron-read/`](./cmd/victron-read/):
+
+```bash
+# Scan for and connect to Victron devices
+go run ./victron/cmd/victron-read
+
+# Connect to specific device by MAC address
+go run ./victron/cmd/victron-read AA:BB:CC:DD:EE:FF
+```
+
+See [`victron/cmd/victron-read/README.md`](./cmd/victron-read/README.md) for full documentation.
+
+### Basic Usage in Your Code
 
 ```go
 package main
 
 import (
+    "fmt"
     "log"
+    "time"
+    
     "github.com/scottstg/yolo/victron"
 )
 
 func main() {
-    // Create client with mock backend (for testing)
-    client, err := victron.NewClient(victron.WithMockBackend())
+    // Initialize BLE backend (required first step)
+    if err := victron.InitializeBackend(); err != nil {
+        log.Fatalf("Failed to initialize BLE: %v", err)
+    }
+
+    // Create client
+    client := victron.NewClient()
+
+    // Scan for nearby devices (10 second scan)
+    results, err := client.Scan(10 * time.Second)
     if err != nil {
         log.Fatal(err)
     }
-    defer client.Close()
 
-    // Scan for devices
-    devices, err := client.Scan(5000)
-    if err != nil {
-        log.Fatal(err)
-    }
+    // Filter Victron devices and connect to strongest
+    for _, device := range results {
+        if device.IsVictron {
+            fmt.Printf("Found: %s at %s (RSSI: %d)\n", device.Name, device.Address, device.RSSI)
+            
+            // Connect to device
+            victronDevice, err := client.Connect(device.Address)
+            if err != nil {
+                log.Fatal(err)
+            }
+            defer victronDevice.Disconnect()
 
-    // Connect to first device
-    if len(devices) > 0 {
-        err = client.Connect(devices[0])
-        if err != nil {
-            log.Fatal(err)
+            // Establish BLE connection
+            if err := victronDevice.Connect(); err != nil {
+                log.Fatal(err)
+            }
+
+            // Get all current values
+            values := victronDevice.GetAllValues()
+            for key, val := range values {
+                fmt.Printf("%s: %s\n", key, val.RawValue)
+            }
+
+            break // Connect to first device only
         }
-        defer client.Disconnect()
-
-        // Subscribe to updates
-        unsubscribe, err := client.Subscribe(func(values victron.Values) {
-            log.Printf("Voltage: %.2f V", values.Voltage)
-            log.Printf("Current: %.2f A", values.Current)
-        })
-        if err != nil {
-            log.Fatal(err)
-        }
-        defer unsubscribe()
-
-        // Wait for updates (mock backend simulates data)
-        <-client.Done()
     }
 }
 ```
 
-### Using with Real Hardware (Linux/BlueZ)
+### Direct Connection (Known Device)
+
+If you already know the MAC address of your Victron device:
+
+```go
+// Initialize backend
+if err := victron.InitializeBackend(); err != nil {
+    log.Fatal(err)
+}
+
+client := victron.NewClient()
+device, _ := client.Connect("AA:BB:CC:DD:EE:FF")
+defer device.Disconnect()
+
+if err := device.Connect(); err != nil {
+    log.Fatal(err)
+}
+
+// Subscribe to real-time updates
+go func() {
+    for values := range device.SubscribeBatched() {
+        voltage, exists := values[victron.KeySystemVoltage]
+        if exists {
+            fmt.Printf("Voltage: %.2f V\n", voltage.FloatValue)
+        }
+    }
+}()
+
+// Keep running to receive updates
+time.Sleep(30 * time.Second)
+```
+
+### Using with Mock Backend (Testing)
+
+For development and testing without hardware:
 
 ```go
 import "github.com/scottstg/yolo/victron"
 
-// On Linux with BlueZ installed:
-client, err := victron.NewClient(victron.WithBluezBackend())
+// Set mock backend before initializing
+victron.SetBackend(&victron.MockBackend{})
+if err := victron.InitializeBackend(); err != nil {
+    log.Fatal(err)
+}
+
+// Rest of code works the same - mock simulates device behavior
 ```
 
 ## Architecture
