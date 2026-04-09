@@ -1,318 +1,277 @@
 # Contributing to YOLO
 
-Thank you for your interest in contributing to YOLO (Your Own Living Operator)! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to the YOLO project! This document provides guidelines and information for contributors.
 
-## Table of Contents
+## Quick Start
 
-- [Getting Started](#getting-started)
-- [Development Workflow](#development-workflow)
-- [Code Style Guidelines](#code-style-guidelines)
-- [Testing Requirements](#testing-requirements)
-- [Documentation Standards](#documentation-standards)
-- [Commit Message Format](#commit-message-format)
-- [Pull Request Process](#pull-request-process)
+### Setting Up Your Environment
 
-## Getting Started
+1. **Fork the repository** on GitHub
+2. **Clone your fork**:
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/yolo.git
+   cd yolo
+   ```
 
-### Prerequisites
+3. **Install dependencies**:
+   ```bash
+   go mod download
+   ```
 
-- Go 1.26 or higher
-- Git
-- Ollama installed and running locally
-- Optional: Bluetooth hardware for Victron testing (tests gracefully handle missing hardware)
-
-### Setting Up Development Environment
-
-```bash
-# Clone the repository
-git clone https://github.com/your-username/yolo.git
-cd yolo
-
-# Download dependencies
-go mod download
-
-# Build the project
-go build -o yolo
-
-# Run tests
-go test ./...
-```
-
-### Verify Installation
-
-```bash
-./yolo --version
-go test -v ./...
-```
+4. **Verify setup** - Run all tests:
+   ```bash
+   go test -race ./...
+   ```
 
 ## Development Workflow
 
-### 1. Fork and Branch
+### 1. Create a Feature Branch
 
 ```bash
-# Fork the repository on GitHub
-# Clone your fork
-git clone https://github.com/YOUR_USERNAME/yolo.git
-cd yolo
-
-# Create a feature branch
 git checkout -b feature/your-feature-name
+# or
+git checkout -b fix/issue-description
 ```
 
-### 2. Make Changes
+### 2. Make Your Changes
 
-Follow the coding guidelines below when making changes:
-- Write tests for new functionality
-- Update documentation as needed
-- Keep changes focused and atomic
-- Run `go fmt` before committing
+Follow these guidelines:
+- Write clean, idiomatic Go code
+- Add comments for complex logic
+- Keep functions focused and small
+- Follow existing code style
 
-### 3. Test Your Changes
+### 3. Write Tests
+
+**All new code must include tests:**
+
+```bash
+# Run tests with race detection
+go test -race ./...
+
+# Check coverage
+go test -coverprofile=coverage.out ./...
+go tool cover -func=coverage.out
+```
+
+**Test Requirements:**
+- ✅ Test public functions
+- ✅ Include edge cases
+- ✅ Use table-driven tests where appropriate
+- ✅ Run with `-race` flag to detect data races
+
+### 4. Format and Lint Your Code
+
+```bash
+# Auto-format code
+go fmt ./...
+
+# Run linter (install golangci-lint first)
+golangci-lint run
+```
+
+### 5. Commit Your Changes
+
+Follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+```bash
+git add .
+git commit -m "feat: add new feature"
+# or
+git commit -m "fix: resolve bug in component"
+# or
+git commit -m "test: add test coverage for X"
+```
+
+**Commit Types:**
+- `feat`: New feature
+- `fix`: Bug fix
+- `docs`: Documentation changes
+- `test`: Test additions/modifications
+- `refactor`: Code refactoring
+- `chore`: Maintenance tasks
+
+### 6. Push and Create Pull Request
+
+```bash
+git push origin feature/your-feature-name
+```
+
+Then create a PR on GitHub with:
+- Clear title describing the change
+- Description of what and why
+- Reference to related issues (if any)
+- Test results showing all tests pass
+
+## Code Style Guide
+
+### General Principles
+
+1. **Idiomatic Go**: Follow [Effective Go](https://golang.org/doc/effective_go.html)
+2. **Readability**: Prioritize clear, understandable code over cleverness
+3. **Consistency**: Match existing code style in the file/package
+
+### Specific Guidelines
+
+**File Organization:**
+- One package per directory (with exceptions for internal packages)
+- Files organized by functionality
+- Test files: `*_test.go` with same base name as source
+
+**Naming Conventions:**
+- Exported identifiers: PascalCase (`MyFunction`)
+- Unexported identifiers: camelCase (`myFunction`)
+- Constants: MixedCaps (`MaxConnections`)
+- Structs: PascalCase (`UserProfile`)
+- Test functions: `TestFeatureName_Subcase`
+
+**Error Handling:**
+- Return errors, don't panic (except in tests/init)
+- Wrap errors with context using `fmt.Errorf("%w", err)`
+- Document error conditions in function comments
+
+**Documentation:**
+```go
+// MyFunction does something useful. It takes input and returns output.
+//
+// Example:
+//
+//      result, err := MyFunction("input")
+func MyFunction(input string) (string, error) {
+    // implementation
+}
+```
+
+## Testing Guidelines
+
+### Writing Good Tests
+
+1. **Test Name Structure**: `Test{Feature}_{Behavior}_{Condition}`
+   ```go
+   func TestVictronParse_DecodeSuccess_StandardDevice(t *testing.T) {}
+   ```
+
+2. **Table-Driven Tests** for multiple cases:
+   ```go
+   func TestFunctionName(t *testing.T) {
+       tests := []struct {
+           name     string
+           input    InputType
+           want     OutputType
+           wantErr  bool
+       }{
+           {"valid case", validInput, expectedOutput, false},
+           {"invalid case", invalidInput, zeroOutput, true},
+       }
+       
+       for _, tt := range tests {
+           t.Run(tt.name, func(t *testing.T) {
+               got, err := FunctionName(tt.input)
+               // assertions...
+           })
+       }
+   }
+   ```
+
+3. **Setup and Teardown**:
+   - Use `t.Cleanup()` for resource cleanup
+   - Use subtests for independent test cases
+   - Mock external dependencies
+
+4. **Coverage Requirements**:
+   - Minimum 80% coverage for new code
+   - All public functions must have tests
+   - Edge cases and error paths tested
+
+### Running Tests
 
 ```bash
 # Run all tests
 go test ./...
 
-# Run with coverage
-go test -cover ./...
+# Run with race detector
+go test -race ./...
 
-# Generate coverage report
-go test -coverprofile=coverage.out ./...
-go tool cover -html=coverage.out -o coverage.html
-```
+# Run specific package
+go test ./victron
 
-### 4. Commit and Push
+# Verbosity + timing
+go test -v -count=1 ./...
 
-```bash
-# Stage changes
-git add .
-
-# Commit with descriptive message
-git commit -m "feat: add your feature description"
-
-# Push to your fork
-git push origin feature/your-feature-name
-```
-
-### 5. Submit Pull Request
-
-- Go to the original repository on GitHub
-- Click "Pull Requests" and then "New Pull Request"
-- Select your branch and submit
-- Wait for review and feedback
-
-## Code Style Guidelines
-
-### General Principles
-
-- Follow standard Go idioms and conventions
-- Use `gofmt` for formatting (no manual formatting)
-- Keep functions focused and reasonably sized (< 100 lines when possible)
-- Name variables and functions descriptively
-- Prefer clarity over cleverness
-
-### File Organization
-
-```
-yolo/
-├── agent.go           # Core agent logic
-├── tools_*.go         # Tool implementations
-├── *_test.go          # Test files (same prefix as implementation)
-├── email/             # Email-related code
-├── victron/           # Victron BLE integration
-└── DOCS/              # Documentation files
-```
-
-### Error Handling
-
-- Return errors, don't panic (except in main for fatal errors)
-- Use descriptive error messages that help debugging
-- Chain errors with `fmt.Errorf("context: %w", err)` when adding context
-- Document expected errors in function comments
-
-Example:
-```go
-func ReadFile(path string) ([]byte, error) {
-    if path == "" {
-        return nil, fmt.Errorf("path cannot be empty")
-    }
-    
-    data, err := os.ReadFile(path)
-    if err != nil {
-        return nil, fmt.Errorf("failed to read file %s: %w", path, err)
-    }
-    
-    return data, nil
-}
-```
-
-## Testing Requirements
-
-### Test Safety (Critical!)
-
-**All tests must be safe and non-destructive.** This is a core requirement for CI/CD compatibility.
-
-#### DO:
-- ✅ Use isolated temp directories for file operations
-- ✅ Check file existence without creating/modifying files in working directory
-- ✅ Handle missing hardware gracefully (e.g., no Bluetooth = test passes with message)
-- ✅ Mock external dependencies where possible
-- ✅ Clean up after tests using `defer os.RemoveAll(tempDir)`
-
-#### DON'T:
-- ❌ Create files or directories in the project's working directory
-- ❌ Perform actual git operations that modify `.git` directory
-- ❌ Make real network requests without mocking options
-- ❌ Leave artifacts after test execution
-- ❌ Assume hardware is present (Bluetooth, email server, etc.)
-
-### Test Structure
-
-```go
-func TestExample(t *testing.T) {
-    // Arrange: Set up test fixtures
-    tempDir := t.TempDir()
-    testFile := filepath.Join(tempDir, "test.txt")
-    
-    // Act: Execute the code being tested
-    result, err := FunctionUnderTest(testFile)
-    
-    // Assert: Verify the outcome
-    if err != nil {
-        t.Errorf("Expected no error, got %v", err)
-    }
-    
-    if result != expected {
-        t.Errorf("Expected %v, got %v", expected, result)
-    }
-}
-```
-
-### Coverage Requirements
-
-- New features: Minimum 80% test coverage
-- Critical paths (security, email handling): Aim for 90%+ coverage
-- Use `go test -cover` to check coverage before submitting
-
-## Documentation Standards
-
-### Code Comments
-
-- Every exported function/type must have a comment
-- Explain WHY, not just WHAT (code shows what)
-- Include examples for complex functions
-
-```go
-// ToolExecutor handles dispatch of tool calls to concrete implementations.
-// It supports 40+ tools across categories: file operations, agent management,
-// external services, version control, and hardware integration.
-//
-// Example:
-//   executor := NewToolExecutor(config)
-//   result, err := executor.Execute("read_file", args)
-type ToolExecutor struct {
-    // fields...
-}
-
-// Execute calls the specified tool with given arguments.
-func (e *ToolExecutor) Execute(name string, args map[string]string) (string, error) {
-    // implementation...
-}
-```
-
-### Markdown Documentation
-
-- Update README.md for user-facing changes
-- Add entries to CHANGELOG.md following the format
-- Document new tools in DOCS/tools.md
-- Keep documentation close to code when possible
-
-## Commit Message Format
-
-Follow conventional commits format:
-
-```
-<type>(<scope>): <subject>
-
-<body>
-
-<footer>
-```
-
-### Types:
-- `feat`: New feature
-- `fix`: Bug fix
-- `docs`: Documentation changes
-- `style`: Formatting, missing semicolons, etc.
-- `refactor`: Code restructuring without behavior change
-- `test`: Adding or fixing tests
-- `ci`: CI/CD configuration changes
-- `chore`: Maintenance tasks
-
-### Examples:
-
-```
-feat(victron): add support for SmartShunt battery monitors
-
-Implement SmartShunt device parsing and value extraction.
-Supports voltage, current, and charge/discharge tracking.
-
-Closes #123
-```
-
-```
-test(email): make tests resilient to missing email server
-
-Tests now skip gracefully when postfix is not configured.
-No side effects or file creation in working directory.
-```
-
-```
-ci: add GitHub Actions workflow for automated testing
-
-- Run tests on push and PR
-- Generate coverage reports with Codecov
-- Build for multiple platforms
+# Coverage report
+go test -coverprofile=c.out ./... && go tool cover -html=c.out
 ```
 
 ## Pull Request Process
 
 ### Before Submitting
 
-1. ✅ All tests pass locally (`go test ./...`)
-2. ✅ Code is formatted (`go fmt ./...`)
-3. ✅ No linting errors (`golangci-lint run`)
-4. ✅ Tests follow safety guidelines (no side effects)
-5. ✅ Documentation updated if needed
-6. ✅ CHANGELOG.md updated for user-visible changes
-7. ✅ Commit messages follow the format above
+- [ ] Code follows style guide
+- [ ] All tests pass (`go test -race ./...`)
+- [ ] New code has appropriate test coverage
+- [ ] Documentation updated (if applicable)
+- [ ] Code reviewed locally or with team member
+- [ ] No linting errors
+- [ ] Commit messages follow conventions
 
-### During Review
+### PR Template
 
-- Be responsive to reviewer feedback
-- Make requested changes promptly
-- Keep commits logical and atomic
-- Squash unnecessary commits before merging
-- Add tests if suggested by reviewers
+```markdown
+## Description
+Brief description of changes
 
-### After Approval
+## Type of Change
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Breaking change
+- [ ] Documentation update
 
-- Maintainer will merge your PR (typically via squash merge)
-- You'll be acknowledged in the CHANGELOG for significant contributions
-- Your work helps improve YOLO for everyone!
+## Testing Done
+- [ ] Added/updated tests
+- [ ] All existing tests pass
+- [ ] Race detection clean (`go test -race ./...`)
+- [ ] Coverage verified
 
-## Questions?
+## Related Issues
+Closes #XXX
 
-If you have questions about:
-- Implementation details: Check existing code and tests
-- Architecture: See README.md architecture section
-- Test safety: Review `TESTING.md` and audit reports
-- Something else: Open an issue or ask in your PR description
+## Additional Notes
+Any other context or information
+```
 
-## Thank You!
+## Code Review Guidelines
 
-Contributions make the YOLO community amazing. We appreciate your time and effort to make this project better! 🙏
+**Reviewers will check:**
+1. ✅ Logic correctness
+2. ✅ Error handling completeness
+3. ✅ Test coverage adequacy
+4. ✅ Code style compliance
+5. ✅ Performance considerations
+6. ✅ Security implications
+
+**Be prepared to:**
+- Address feedback promptly
+- Explain design decisions if questioned
+- Make requested changes or discuss alternatives
+- Update documentation as needed
+
+## Getting Help
+
+- **Questions**: Open a GitHub issue with "question" label
+- **Discussions**: Participate in existing issues/PRs
+- **Complex Features**: Discuss design before implementation (create issue)
+
+## Resources
+
+- [Go Documentation](https://golang.org/doc/)
+- [Effective Go](https://golang.org/doc/effective_go.html)
+- [Go Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments)
+- [Testing in Go](https://go.dev/doc/tutorial/tests)
+
+## License
+
+By contributing, you agree that your contributions will be licensed under the MIT License. See LICENSE file for details.
 
 ---
 
-*Note: The test safety requirements are particularly important as they enable CI/CD automation. Tests that create side effects cannot run reliably in automated environments.*
+**Thank you for contributing to YOLO!** 🎉
