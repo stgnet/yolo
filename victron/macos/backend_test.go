@@ -116,7 +116,7 @@ func TestScanForDevices_ContextCancelled(t *testing.T) {
 
 	// Start scan with longer duration than context timeout
 	devices, err := b.ScanForDevices(ctx, 5*time.Second)
-	
+
 	// Context should be cancelled first
 	if err == nil {
 		t.Error("ScanForDevices should return context error when cancelled")
@@ -174,8 +174,8 @@ func TestDiscoverCharacteristics_NotImplemented(t *testing.T) {
 	b, _ := New()
 	b.Initialize()
 
-	// Create a dummy service for the test
-	dummyService := &mockBLEService{}
+	// Create a dummy service for the test using victron.BLEService struct
+	dummyService := victron.BLEService{UUID: "test"}
 	characteristics, err := b.DiscoverCharacteristics(dummyService)
 	if err == nil {
 		t.Error("DiscoverCharacteristics should return error (not implemented)")
@@ -185,25 +185,25 @@ func TestDiscoverCharacteristics_NotImplemented(t *testing.T) {
 	}
 }
 
-// mockBLEService implements victron.BLEService for testing
+// mockBLEService implements victron.BLEService interface for testing if needed in future
 type mockBLEService struct{}
 
-func (m *mockBLEService) UUID() string { return "" }
-func (m *mockBLEService) StartHandle() uint16  { return 0 }
-func (m *mockBLEService) EndHandle() uint16    { return 0 }
+func (m *mockBLEService) UUID() string        { return "" }
+func (m *mockBLEService) StartHandle() uint16 { return 0 }
+func (m *mockBLEService) EndHandle() uint16   { return 0 }
 
-// mockBLECharacteristic implements victron.BLECharacteristic for testing
+// mockBLECharacteristic implements victron.BLECharacteristic interface for testing if needed in future
 type mockBLECharacteristic struct{}
 
-func (m *mockBLECharacteristic) UUID() string        { return "" }
-func (m *mockBLECharacteristic) Handle() uint16      { return 0 }
-func (m *mockBLECharacteristic) Properties() uint8   { return 0 }
-func (m *mockBLECharacteristic) Value() []byte       { return nil }
+func (m *mockBLECharacteristic) UUID() string                { return "" }
+func (m *mockBLECharacteristic) Handle() uint16              { return 0 }
+func (m *mockBLECharacteristic) Properties() uint8           { return 0 }
+func (m *mockBLECharacteristic) Value() []byte               { return nil }
 func (m *mockBLECharacteristic) DescriptorHandles() []uint16 { return nil }
 
 func TestBLEConnection_Address(t *testing.T) {
 	conn := &BLEConnection{address: "AA:BB:CC:DD:EE:FF"}
-	
+
 	addr := conn.Address()
 	if addr != "AA:BB:CC:DD:EE:FF" {
 		t.Errorf("Address() returned %s, expected AA:BB:CC:DD:EE:FF", addr)
@@ -212,7 +212,7 @@ func TestBLEConnection_Address(t *testing.T) {
 
 func TestBLEConnection_UUID(t *testing.T) {
 	conn := &BLEConnection{}
-	
+
 	uuid := conn.UUID()
 	if uuid != "" {
 		t.Errorf("UUID() returned %s, expected empty string", uuid)
@@ -221,11 +221,11 @@ func TestBLEConnection_UUID(t *testing.T) {
 
 func TestBLEConnection_IsConnected(t *testing.T) {
 	conn := &BLEConnection{connected: true}
-	
+
 	if !conn.IsConnected() {
 		t.Error("IsConnected() should return true")
 	}
-	
+
 	conn.connected = false
 	if conn.IsConnected() {
 		t.Error("IsConnected() should return false")
@@ -234,7 +234,7 @@ func TestBLEConnection_IsConnected(t *testing.T) {
 
 func TestBLEConnection_Close(t *testing.T) {
 	conn := &BLEConnection{connected: true}
-	
+
 	err := conn.Close()
 	if err != nil {
 		t.Fatalf("Close() returned error: %v", err)
@@ -246,8 +246,9 @@ func TestBLEConnection_Close(t *testing.T) {
 
 func TestBLEConnection_ReadValue_NotImplemented(t *testing.T) {
 	conn := &BLEConnection{}
-	
-	dummyChar := &mockBLECharacteristic{}
+
+	// Use victron.BLECharacteristic struct instead of mock
+	dummyChar := victron.BLECharacteristic{UUID: "test"}
 	data, err := conn.ReadValue(dummyChar)
 	if err == nil {
 		t.Error("ReadValue should return error (not implemented)")
@@ -259,8 +260,8 @@ func TestBLEConnection_ReadValue_NotImplemented(t *testing.T) {
 
 func TestBLEConnection_WriteValue_NotImplemented(t *testing.T) {
 	conn := &BLEConnection{}
-	
-	dummyChar := &mockBLECharacteristic{}
+
+	dummyChar := victron.BLECharacteristic{UUID: "test"}
 	err := conn.WriteValue(dummyChar, []byte{0x01, 0x02})
 	if err == nil {
 		t.Error("WriteValue should return error (not implemented)")
@@ -269,8 +270,8 @@ func TestBLEConnection_WriteValue_NotImplemented(t *testing.T) {
 
 func TestBLEConnection_SubscribeToNotifications_NotImplemented(t *testing.T) {
 	conn := &BLEConnection{}
-	
-	dummyChar := &mockBLECharacteristic{}
+
+	dummyChar := victron.BLECharacteristic{UUID: "test"}
 	ch, err := conn.SubscribeToNotifications(dummyChar)
 	if err == nil {
 		t.Error("SubscribeToNotifications should return error (not implemented)")
@@ -282,8 +283,8 @@ func TestBLEConnection_SubscribeToNotifications_NotImplemented(t *testing.T) {
 
 func TestBLEConnection_UnsubscribeFromNotifications_NotImplemented(t *testing.T) {
 	conn := &BLEConnection{}
-	
-	dummyChar := &mockBLECharacteristic{}
+
+	dummyChar := victron.BLECharacteristic{UUID: "test"}
 	err := conn.UnsubscribeFromNotifications(dummyChar)
 	if err == nil {
 		t.Error("UnsubscribeFromNotifications should return error (not implemented)")

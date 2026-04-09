@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/scottstg/yolo/victron"
@@ -11,10 +13,11 @@ import (
 // ─── Victron Tool Implementation ────────
 
 type victronScanResult struct {
-	Address   string `json:"address"`
-	Name      string `json:"name"`
-	RSSI      int    `json:"rssi"`
-	IsVictron bool   `json:"is_victron"`
+	Address    string `json:"address"`
+	Name       string `json:"name"`
+	RSSI       int    `json:"rssi"`
+	IsVictron  bool   `json:"is_victron"`
+	DeviceType string `json:"device_type,omitempty"`
 }
 
 type victronValue struct {
@@ -24,6 +27,30 @@ type victronValue struct {
 	Timestamp  string  `json:"timestamp"`
 	Name       string  `json:"name,omitempty"`
 	Unit       string  `json:"unit,omitempty"`
+}
+
+// Value key metadata for human-readable output
+var victronKeyMetadata = map[string]struct {
+	Name string
+	Unit string
+}{
+	"V":    {"System Voltage", "V"},
+	"A":    {"System Current", "A"},
+	"W":    {"System Power", "W"},
+	"P.V":  {"PV Input Voltage 1", "V"},
+	"P.A":  {"PV Input Current 1", "A"},
+	"P.W":  {"PV Input Power 1", "W"},
+	"Pi.V": {"PV Input Voltage 2", "V"},
+	"Pi.A": {"PV Input Current 2", "A"},
+	"Pi.W": {"PV Input Power 2", "W"},
+	"SoC":  {"State of Charge", "%"},
+	"T":    {"Temperature", "°C"},
+	"B.V":  {"Battery Voltage", "V"},
+	"B.A":  {"Battery Current", "A"},
+	"B.Eh": {"Yield Total (History)", "Ah"},
+	"B.En": {"Energy Yield Today", "Ah"},
+	"B.Fn": {"Battery Current (Float)", "A"},
+	"R":    {"Bulk/Absorb Voltage", "V"},
 }
 
 type victronDeviceInfo struct {
@@ -96,11 +123,13 @@ func (t *ToolExecutor) victronScan(args map[string]any) string {
 
 	devices := make([]victronScanResult, len(results))
 	for i, d := range results {
+		deviceType := inferDeviceType(d.Name)
 		devices[i] = victronScanResult{
-			Address:   d.Address,
-			Name:      d.Name,
-			RSSI:      d.RSSI,
-			IsVictron: d.IsVictron,
+			Address:    d.Address,
+			Name:       d.Name,
+			RSSI:       d.RSSI,
+			IsVictron:  d.IsVictron,
+			DeviceType: deviceType,
 		}
 	}
 
@@ -116,6 +145,24 @@ func (t *ToolExecutor) victronScan(args map[string]any) string {
 	return formatJSON(resp)
 }
 
+// inferDeviceType determines device type from name string
+func inferDeviceType(name string) string {
+	nameLower := strings.ToLower(name)
+	if strings.Contains(nameLower, "smartsolar") || strings.Contains(nameLower, "mppt") {
+		return "SmartSolar"
+	}
+	if strings.Contains(nameLower, "smartshunt") {
+		return "SmartShunt"
+	}
+	if strings.Contains(nameLower, "ve.direct") || strings.Contains(nameLower, "vedirect") {
+		return "VEDirectAdapter"
+	}
+	if strings.Contains(nameLower, "victron") {
+		return "UnknownVictron"
+	}
+	return "Unknown"
+}
+
 func (t *ToolExecutor) victronConnect(args map[string]any) string {
 	ensureVictronClient()
 
@@ -124,15 +171,40 @@ func (t *ToolExecutor) victronConnect(args map[string]any) string {
 		return fmt.Sprintf(`{"status":"error","message":"'address' parameter is required for connect action. Use 'scan' first to find devices."}`)
 	}
 
+	// Parse timeout parameter
+	timeoutStr := getStringArg(args, "timeout", "10")
+	timeoutSec, err := time.ParseDuration(timeoutStr + "s")
+	if err != nil {
+		timeoutSec = 10 * time.Second
+	}
+	if timeoutSec > 30*time.Second {
+		timeoutSec = 30 * time.Second
+	}
+
 	// Create device and connect
 	device, err := victronClient.Connect(address)
 	if err != nil {
 		return fmt.Sprintf(`{"status":"error","message":"could not prepare connection: %v"}`, err)
 	}
 
-	err = device.Connect()
-	if err != nil {
-		return fmt.Sprintf(`{"status":"error","message":"connection failed: %v"}`, err)
+	// Use WaitForConnection with timeout instead of direct Connect
+	ctx, cancel := context.WithTimeout(context.Background(), timeoutSec)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		err := device.Connect()
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			return fmt.Sprintf(`{"status":"error","message":"connection failed: %v"}`, err)
+		}
+	case <-ctx.Done():
+		device.Disconnect()
+		return fmt.Sprintf(`{"status":"error","message":"connection timed out after %v"}`, timeoutSec)
 	}
 
 	// Store the connected device
@@ -206,7 +278,7 @@ func (t *ToolExecutor) victronGetValues(args map[string]any) string {
 				FloatValue: val.FloatValue,
 				Timestamp:  val.Timestamp.Format(time.RFC3339),
 			}
-			values = append(values, victronVal)
+			values = append(values, enrichValue(victronVal))
 		case <-done:
 			if len(values) == 0 {
 				return fmt.Sprintf(`{"status":"success","message":"No values received within timeout"}`)
@@ -247,7 +319,7 @@ func (t *ToolExecutor) victronSubscribe(args map[string]any) string {
 				FloatValue: val.FloatValue,
 				Timestamp:  val.Timestamp.Format(time.RFC3339),
 			}
-			values = append(values, victronVal)
+			values = append(values, enrichValue(victronVal))
 			count++
 		case <-done:
 			resp := map[string]any{
@@ -289,4 +361,18 @@ func formatJSON(v any) string {
 		return fmt.Sprintf(`{"status":"error","message":"failed to format JSON: %v"}`, err)
 	}
 	return string(b)
+}
+
+// enrichValue adds name and unit information from metadata
+func enrichValue(val victronValue) victronValue {
+	if meta, ok := victronKeyMetadata[val.Key]; ok {
+		val.Name = meta.Name
+		val.Unit = meta.Unit
+	}
+	return val
+}
+
+// getAvailableKeys returns a list of all supported value keys with descriptions
+func getAvailableKeys() map[string]struct{ Name, Unit string } {
+	return victronKeyMetadata
 }

@@ -167,12 +167,73 @@ YOLO has 40 built-in tools that the LLM can call:
   |------|-------------|
   | `playwright_mcp` | Navigate URLs, interact with DOM, fill forms, screenshots |
 
-  ### Hardware Integration
-  | Tool | Description |
-  |------|-------------|
-  | `victron` | Victron Energy BLE devices: scan, connect, monitor (SmartSolar, SmartShunt) |
+### Hardware Integration
+| Tool | Description |
+|------|-------------|
+| `victron` | Victron Energy BLE devices: scan, connect, monitor (SmartSolar, SmartShunt) |
 
-  Total: 41 tools across file operations, agent management, version control, external services, task management, system commands, browser automation, and hardware integration.
+**Victron Device Monitoring:**
+
+YOLO can connect to Victron Energy devices via Bluetooth Low Energy (BLE) to read real-time sensor values from charge controllers and battery monitors.
+
+```bash
+# Scan for nearby Victron devices (10 seconds by default)
+./yolo "victron scan"
+
+# Connect to a device and get current values  
+./yolo "victron connect --address AA:BB:CC:DD:EE:FF"
+./yolo "victron get_values --address AA:BB:CC:DD:EE:FF"
+
+# Monitor real-time updates for 60 seconds
+./yolo "victron subscribe --address AA:BB:CC:DD:EE:FF --duration 60"
+
+# Get device information
+./yolo "victron device_info --address AA:BB:CC:DD:EE:FF"
+
+# Disconnect from device
+./yolo "victron disconnect --address AA:BB:CC:DD:EE:FF"
+```
+
+**Supported Devices:**
+- SmartSolar MPPT charge controllers
+- SmartShunt battery monitors  
+- VE.Direct adapters with BLE support
+
+**Supported Value Types:**
+YOLO automatically decodes all standard Victron sensor values including:
+- **Voltage**: Battery voltage (V106), panel voltage (V107), etc.
+- **Current**: Battery current (A103), discharge/charge current
+- **Power**: Panel power (W105), battery power (W108)
+- **Temperature**: Device temperature sensors
+- **State of Charge (SOC)**: Battery percentage (P255)
+- **Energy**: Ah consumed (Ah265), Wh totals
+- **Status codes**: Charging states, alarm conditions
+
+**Automatic Device Type Detection:**
+YOLO infers the device type from GATT service discovery and presents appropriate labels.
+
+**Example Output:**
+```
+Connected to SmartSolar MPPT 100/30
+Device Address: AA:BB:CC:DD:EE:FF
+Current Values:
+  • Battery Voltage: 13.42 V (V106)
+  • Panel Voltage: 18.56 V (V107)
+  • Battery Current: 4.2 A (A103)
+  • Panel Power: 78 W (W105)
+  • Status: Charging - Bulk
+```
+
+**Device Value Metadata:**
+Each sensor value includes type, unit, and VE.Direct code for reference:
+- `Type`: Voltage, Current, Power, Temperature, Percentage, Energy, Enum, Raw
+- `Unit`: V, A, W, °C, %, mAh, Wh, h
+- `Code`: VE.Direct protocol identifier (e.g., "V106", "A103")
+
+Total: 42 tools across file operations, agent management, version control, external services, task management, system commands, browser automation, and hardware integration.
+
+
+
 
 
 

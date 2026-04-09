@@ -152,3 +152,100 @@ func TestVictronToolDisconnect(t *testing.T) {
 		t.Errorf("Expected status field in disconnect result, got: %s", result)
 	}
 }
+
+func TestVictronToolInferDeviceType(t *testing.T) {
+	tests := []struct {
+		name     string
+		expected string
+	}{
+		{"SmartSolar MPPT 100/30", "SmartSolar"},
+		{"MPPT 75/15", "SmartSolar"},
+		{"SmartShunt Bluetooth", "SmartShunt"},
+		{"VE.Direct Adapter", "VEDirectAdapter"},
+		{"victron bluetooth", "UnknownVictron"},
+		{"Unknown Device", "Unknown"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := inferDeviceType(tt.name)
+			if result != tt.expected {
+				t.Errorf("Expected device type %s for '%s', got %s", tt.expected, tt.name, result)
+			}
+		})
+	}
+}
+
+func TestVictronToolEnrichValue(t *testing.T) {
+	val := victronValue{
+		Key:        "V",
+		RawValue:   "13.85",
+		FloatValue: 13.85,
+		Timestamp:  "2024-01-01T00:00:00Z",
+	}
+
+	enriched := enrichValue(val)
+
+	if enriched.Name != "System Voltage" {
+		t.Errorf("Expected name 'System Voltage', got '%s'", enriched.Name)
+	}
+	if enriched.Unit != "V" {
+		t.Errorf("Expected unit 'V', got '%s'", enriched.Unit)
+	}
+
+	// Test unknown key - should not modify
+	val2 := victronValue{
+		Key:        "UnknownKey",
+		RawValue:   "100",
+		FloatValue: 100,
+		Timestamp:  "2024-01-01T00:00:00Z",
+	}
+
+	enriched2 := enrichValue(val2)
+	if enriched2.Name != "" {
+		t.Errorf("Expected empty name for unknown key, got '%s'", enriched2.Name)
+	}
+	if enriched2.Unit != "" {
+		t.Errorf("Expected empty unit for unknown key, got '%s'", enriched2.Unit)
+	}
+}
+
+func TestVictronToolScanWithMockData(t *testing.T) {
+	tool := &ToolExecutor{baseDir: "."}
+
+	result := tool.victron(map[string]any{
+		"action":   "scan",
+		"duration": "1",
+	})
+
+	// Should have proper JSON structure
+	if !contains(result, `"status"`) {
+		t.Errorf("Expected status field in scan result, got: %s", result)
+	}
+
+	// Either success with empty devices or error message about no devices
+	if contains(result, `"devices"`) {
+		if !contains(result, `"address"`) && !contains(result, `"device_type"`) {
+			t.Log("Scan returned devices array structure")
+		}
+	}
+}
+
+func TestVictronToolAllValueKeys(t *testing.T) {
+	// Verify all documented value keys have metadata
+	expectedKeys := []string{"V", "A", "W", "P.V", "P.A", "P.W", "SoC", "T", "B.V", "B.A"}
+
+	for _, key := range expectedKeys {
+		meta, exists := victronKeyMetadata[key]
+		if !exists {
+			t.Errorf("Expected metadata for key '%s', not found", key)
+			continue
+		}
+		if meta.Name == "" {
+			t.Errorf("Expected name for key '%s', got empty", key)
+		}
+		if meta.Unit == "" {
+			t.Errorf("Expected unit for key '%s', got empty", key)
+		}
+	}
+}
