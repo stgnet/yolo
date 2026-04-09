@@ -11,10 +11,10 @@ import (
 // ─── Victron Tool Implementation ────────
 
 type victronScanResult struct {
-	Address  string `json:"address"`
-	Name     string `json:"name"`
-	RSSI     int    `json:"rssi"`
-	IsVictron bool  `json:"is_victron"`
+	Address   string `json:"address"`
+	Name      string `json:"name"`
+	RSSI      int    `json:"rssi"`
+	IsVictron bool   `json:"is_victron"`
 }
 
 type victronValue struct {
@@ -68,11 +68,11 @@ var (
 func ensureVictronClient() {
 	if !clientInitDone || victronClient == nil {
 		victronClient = victron.NewClient()
-		
+
 		// Initialize the platform-specific BLE backend
 		// This is done lazily to avoid errors on non-supported systems
 		victron.InitializeBackend()
-		
+
 		clientInitDone = true
 	}
 }
@@ -154,7 +154,7 @@ func (t *ToolExecutor) victronConnect(args map[string]any) string {
 
 func (t *ToolExecutor) victronDisconnect(args map[string]any) string {
 	address := getStringArg(args, "address", "")
-	
+
 	if address != "" && connectedDevices[address] != nil {
 		device := connectedDevices[address]
 		device.Disconnect()
@@ -173,7 +173,7 @@ func (t *ToolExecutor) victronDisconnect(args map[string]any) string {
 		delete(connectedDevices, addr)
 		count++
 	}
-	
+
 	resp := map[string]any{
 		"status":  "success",
 		"message": fmt.Sprintf("Disconnected from %d device(s)", count),
@@ -183,7 +183,7 @@ func (t *ToolExecutor) victronDisconnect(args map[string]any) string {
 
 func (t *ToolExecutor) victronGetValues(args map[string]any) string {
 	address := getStringArg(args, "address", "")
-	
+
 	device, connected := connectedDevices[address]
 	if !connected || address == "" {
 		return fmt.Sprintf(`{"status":"error","message":"device is not connected. Use 'connect' action first with the device address."}`)
@@ -193,10 +193,10 @@ func (t *ToolExecutor) victronGetValues(args map[string]any) string {
 
 	timeoutStr := getStringArg(args, "timeout", "5")
 	timeoutSec, _ := time.ParseDuration(timeoutStr + "s")
-	
+
 	var values []victronValue
 	done := time.After(timeoutSec)
-	
+
 	for {
 		select {
 		case val := <-valuesCh:
@@ -223,7 +223,7 @@ func (t *ToolExecutor) victronGetValues(args map[string]any) string {
 
 func (t *ToolExecutor) victronSubscribe(args map[string]any) string {
 	address := getStringArg(args, "address", "")
-	
+
 	device, connected := connectedDevices[address]
 	if !connected || address == "" {
 		return fmt.Sprintf(`{"status":"error","message":"device is not connected. Use 'connect' action first with the device address."}`)
@@ -233,11 +233,11 @@ func (t *ToolExecutor) victronSubscribe(args map[string]any) string {
 
 	timeoutStr := getStringArg(args, "timeout", "10")
 	timeoutSec, _ := time.ParseDuration(timeoutStr + "s")
-	
+
 	var values []victronValue
 	done := time.After(timeoutSec)
 	count := 0
-	
+
 	for {
 		select {
 		case val := <-valuesCh:
@@ -251,10 +251,10 @@ func (t *ToolExecutor) victronSubscribe(args map[string]any) string {
 			count++
 		case <-done:
 			resp := map[string]any{
-				"status":   "success",
-				"message":  fmt.Sprintf("Monitored %s for %v, received %d value(s)", address, timeoutSec, count),
+				"status":    "success",
+				"message":   fmt.Sprintf("Monitored %s for %v, received %d value(s)", address, timeoutSec, count),
 				"device_id": address,
-				"values":   values,
+				"values":    values,
 			}
 			return formatJSON(resp)
 		}
@@ -263,7 +263,7 @@ func (t *ToolExecutor) victronSubscribe(args map[string]any) string {
 
 func (t *ToolExecutor) victronDeviceInfo(args map[string]any) string {
 	address := getStringArg(args, "address", "")
-	
+
 	device, connected := connectedDevices[address]
 	if !connected || address == "" {
 		return fmt.Sprintf(`{"status":"error","message":"device is not connected. Use 'connect' action first with the device address."}`)

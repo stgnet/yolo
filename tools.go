@@ -128,10 +128,10 @@ var ollamaTools = []ToolDef{
 		}, []string{"action"}),
 	toolDef("victron", "Connect to and read values from Victron Energy devices via Bluetooth Low Energy (BLE). Supports SmartSolar MPPT charge controllers, SmartShunt battery monitors, and VE.Direct adapters.",
 		map[string]ToolParam{
-			"action":  {Type: "string", Description: "Action: 'scan' (find nearby devices), 'connect' (establish connection), 'disconnect' (close connection), 'get_values' (read current values), 'subscribe' (monitor real-time updates), 'device_info' (get device details)"},
-			"address": {Type: "string", Description: "Device MAC address - required for 'connect', 'disconnect', 'get_values', 'subscribe', 'device_info' actions"},
-			"duration":{Type: "string", Description: "Scan duration in seconds (default: 10, max: 60)"},
-			"timeout": {Type: "string", Description: "Operation timeout in seconds (default varies by action)"},
+			"action":   {Type: "string", Description: "Action: 'scan' (find nearby devices), 'connect' (establish connection), 'disconnect' (close connection), 'get_values' (read current values), 'subscribe' (monitor real-time updates), 'device_info' (get device details)"},
+			"address":  {Type: "string", Description: "Device MAC address - required for 'connect', 'disconnect', 'get_values', 'subscribe', 'device_info' actions"},
+			"duration": {Type: "string", Description: "Scan duration in seconds (default: 10, max: 60)"},
+			"timeout":  {Type: "string", Description: "Operation timeout in seconds (default varies by action)"},
 		}, []string{"action"}),
 	toolDef("gog", "Google CLI tool for Gmail, Calendar, Drive, Docs, Sheets, Slides, Contacts, Tasks, People, Chat, Classroom. Use 'command' parameter to pass gog subcommands (e.g., 'gmail search inbox:unread', 'calendar list events', 'drive list'). Output is JSON by default.",
 		map[string]ToolParam{
@@ -308,10 +308,10 @@ var ollamaTools = []ToolDef{
 		}, nil),
 	toolDef("victron", "Connect to and read values from Victron Energy devices via Bluetooth Low Energy. Supports SmartSolar MPPT charge controllers, SmartShunt battery monitors, and VE.Direct adapters.",
 		map[string]ToolParam{
-			"action":  {Type: "string", Description: "Action: 'scan' (find nearby devices), 'connect' (establish connection), 'disconnect' (close connection), 'get_values' (read current values), 'subscribe' (monitor real-time updates), 'device_info' (get device details)"},
-			"address": {Type: "string", Description: "Device MAC address - required for 'connect', 'disconnect', 'get_values', 'subscribe', 'device_info' actions"},
-			"duration":{Type: "string", Description: "Scan duration in seconds (default: 10, max: 60)"},
-			"timeout": {Type: "string", Description: "Operation timeout in seconds (default varies by action)"},
+			"action":   {Type: "string", Description: "Action: 'scan' (find nearby devices), 'connect' (establish connection), 'disconnect' (close connection), 'get_values' (read current values), 'subscribe' (monitor real-time updates), 'device_info' (get device details)"},
+			"address":  {Type: "string", Description: "Device MAC address - required for 'connect', 'disconnect', 'get_values', 'subscribe', 'device_info' actions"},
+			"duration": {Type: "string", Description: "Scan duration in seconds (default: 10, max: 60)"},
+			"timeout":  {Type: "string", Description: "Operation timeout in seconds (default varies by action)"},
 		}, []string{"action"}),
 }
 

@@ -8,15 +8,15 @@ import (
 
 // MockBackend implements BLEBackend for testing without real hardware
 type MockBackend struct {
-	initialized   bool
-	devices       []BLEDevice
-	connections   map[string]BLEConnection
+	initialized bool
+	devices     []BLEDevice
+	connections map[string]BLEConnection
 }
 
 // NewMockBackend creates a new mock backend for testing
 func NewMockBackend() *MockBackend {
 	return &MockBackend{
-		devices:   make([]BLEDevice, 0),
+		devices:     make([]BLEDevice, 0),
 		connections: make(map[string]BLEConnection),
 	}
 }
@@ -56,18 +56,18 @@ func (m *MockBackend) ScanForDevices(ctx context.Context, duration time.Duration
 			},
 		}
 	}
-	
+
 	// Simulate scan duration with context
 	start := time.Now()
 	ticker := time.NewTicker(duration / 10)
 	defer ticker.Stop()
-	
+
 	for {
 		elapsed := time.Since(start)
 		if elapsed >= duration {
 			break
 		}
-		
+
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -77,16 +77,16 @@ func (m *MockBackend) ScanForDevices(ctx context.Context, duration time.Duration
 			break
 		}
 	}
-	
+
 	return m.devices, nil
 }
 
 // Connect implements BLEBackend.Connect
 func (m *MockBackend) Connect(address string) (BLEConnection, error) {
 	conn := &MockConnection{
-		address:       address,
-		connected:     true,
-		valueChan:     make(chan []byte, 10),
+		address:   address,
+		connected: true,
+		valueChan: make(chan []byte, 10),
 	}
 	m.connections[address] = conn
 	return conn, nil
@@ -108,21 +108,21 @@ func (m *MockBackend) DiscoverServices(conn BLEConnection) ([]BLEService, error)
 func (m *MockBackend) DiscoverCharacteristics(service BLEService) ([]BLECharacteristic, error) {
 	return []BLECharacteristic{
 		{
-			UUID:         VEDirectDataCharacteristic,
-			Handle:       5,
-			ValueHandle:  6,
-			Properties:   PropNotify | PropRead,
-			Description:  "VE.Direct Data",
+			UUID:        VEDirectDataCharacteristic,
+			Handle:      5,
+			ValueHandle: 6,
+			Properties:  PropNotify | PropRead,
+			Description: "VE.Direct Data",
 		},
 	}, nil
 }
 
 // MockConnection implements BLEConnection for testing
 type MockConnection struct {
-	address     string
-	connected   bool
-	valueChan   chan []byte
-	closeChan   chan struct{}
+	address   string
+	connected bool
+	valueChan chan []byte
+	closeChan chan struct{}
 }
 
 // Address implements BLEConnection.Address
@@ -169,7 +169,7 @@ func (m *MockConnection) WriteValue(characteristic BLECharacteristic, data []byt
 // SubscribeToNotifications implements BLEConnection.SubscribeToNotifications
 func (m *MockConnection) SubscribeToNotifications(characteristic BLECharacteristic) (<-chan []byte, error) {
 	m.closeChan = make(chan struct{})
-	
+
 	// Simulate receiving some mock data
 	go func() {
 		data := []string{
@@ -178,7 +178,7 @@ func (m *MockConnection) SubscribeToNotifications(characteristic BLECharacterist
 			"/W(W=30.862)" + string(calculateChecksum([]byte("/W(W=30.862)"))),
 			"/SoC(SoC=85.500)" + string(calculateChecksum([]byte("/SoC(SoC=85.500)"))),
 		}
-		
+
 		for _, d := range data {
 			select {
 			case m.valueChan <- []byte(d):
@@ -188,7 +188,7 @@ func (m *MockConnection) SubscribeToNotifications(characteristic BLECharacterist
 			}
 		}
 	}()
-	
+
 	return m.valueChan, nil
 }
 

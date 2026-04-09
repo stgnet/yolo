@@ -12,19 +12,19 @@ import (
 
 // VEDirectFrame represents a parsed VE.Direct message frame
 type VEDirectFrame struct {
-	RawMessage   string // Original raw message
-	DeviceType   string // Device identifier (/Dev, etc.)
-	DataKey      string // Data field key (V, A, P.W, etc.)
-	RawValue     string // Raw value as received
-	Value        float64 // Parsed numeric value if applicable
-	Checksum     byte   // Checksum byte from message
-	Valid        bool   // Whether checksum is valid
+	RawMessage string  // Original raw message
+	DeviceType string  // Device identifier (/Dev, etc.)
+	DataKey    string  // Data field key (V, A, P.W, etc.)
+	RawValue   string  // Raw value as received
+	Value      float64 // Parsed numeric value if applicable
+	Checksum   byte    // Checksum byte from message
+	Valid      bool    // Whether checksum is valid
 }
 
 // VE DIRECT Protocol format:
 // Format: [device][field(value)checksum
 // Example: /V(V=12.345)A  (voltage = 12.345V)
-// 
+//
 // Components:
 // - First character after [/] indicates device type or message type
 //   - / = VE.Direct data frame
@@ -69,7 +69,7 @@ func ParseVEDirectMessage(msg string) (*VEDirectFrame, error) {
 func parseDataFrame(msg string, frame *VEDirectFrame) (*VEDirectFrame, error) {
 	// Format: /[field(value)checksum
 	// Example: /V(V=12.5)A
-	
+
 	if len(msg) < 4 {
 		frame.Valid = false
 		return frame, fmt.Errorf("message too short")
@@ -90,7 +90,7 @@ func parseDataFrame(msg string, frame *VEDirectFrame) (*VEDirectFrame, error) {
 
 	// Extract value (inside parentheses)
 	valueStr := msg[startParen+1 : endParen]
-	
+
 	// Value might be "key=value" or just "value"
 	parts := strings.SplitN(valueStr, "=", 2)
 	if len(parts) == 2 {
@@ -119,7 +119,7 @@ func parseDataFrame(msg string, frame *VEDirectFrame) (*VEDirectFrame, error) {
 	checksumPos := endParen + 1
 	if checksumPos < len(msg) {
 		frame.Checksum = msg[checksumPos]
-		
+
 		// Validate checksum (XOR of all bytes from start to end paren)
 		expectedChecksum := calculateChecksum([]byte(msg[:endParen+1]))
 		if frame.Checksum != expectedChecksum {
@@ -136,7 +136,7 @@ func parseDataFrame(msg string, frame *VEDirectFrame) (*VEDirectFrame, error) {
 func parseAddressFrame(msg string, frame *VEDirectFrame) (*VEDirectFrame, error) {
 	// Format: /[field(value)checksum
 	// Used for device identification, firmware version, etc.
-	
+
 	// Similar parsing to data frame but different interpretation
 	startParen := strings.Index(msg, "(")
 	endParen := strings.Index(msg, ")")
@@ -147,7 +147,7 @@ func parseAddressFrame(msg string, frame *VEDirectFrame) (*VEDirectFrame, error)
 
 	field := msg[1:startParen]
 	frame.DataKey = field
-	
+
 	valueStr := msg[startParen+1 : endParen]
 	parts := strings.SplitN(valueStr, "=", 2)
 	if len(parts) == 2 {
@@ -165,7 +165,7 @@ func calculateChecksum(data []byte) byte {
 	if len(data) == 0 {
 		return 0
 	}
-	
+
 	checksum := byte(0)
 	for _, b := range data {
 		checksum ^= b
@@ -179,10 +179,10 @@ func ValidateVEDirectMessage(msg string) bool {
 	if endParen == -1 || endParen >= len(msg)-1 {
 		return false
 	}
-	
+
 	expectedChecksum := calculateChecksum([]byte(msg[:endParen+1]))
 	actualChecksum := msg[endParen+1]
-	
+
 	return expectedChecksum == actualChecksum
 }
 
@@ -191,76 +191,76 @@ func ParseVEDirectStream(data string) ([]*VEDirectFrame, error) {
 	// Split by newline or carriage return
 	lines := strings.Split(data, "\n")
 	var frames []*VEDirectFrame
-	
+
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if len(line) == 0 {
 			continue
 		}
-		
+
 		// Remove carriage return if present
 		line = strings.TrimRight(line, "\r")
-		
+
 		frame, err := ParseVEDirectMessage(line)
 		if err != nil && frame != nil && !frame.Valid {
 			// Log or handle invalid frame
 			continue
 		}
-		
+
 		if frame != nil {
 			frames = append(frames, frame)
 		}
 	}
-	
+
 	return frames, nil
 }
 
 // VEDirectValueTypes defines known VE.Direct data keys and their properties
 var VEDirectValueTypes = map[string]ValueTypeInfo{
 	// Voltage values (in volts, sometimes scaled by 1000)
-	KeySystemVoltage:       {Name: "System Voltage", Unit: "V", Scale: 1},
-	KeyBatteryVoltage:      {Name: "Battery Voltage", Unit: "V", Scale: 1},
-	KeyPVInputVoltage1:     {Name: "PV Input Voltage 1", Unit: "V", Scale: 1},
-	KeyPVInputVoltage2:     {Name: "PV Input Voltage 2", Unit: "V", Scale: 1},
-	
+	KeySystemVoltage:   {Name: "System Voltage", Unit: "V", Scale: 1},
+	KeyBatteryVoltage:  {Name: "Battery Voltage", Unit: "V", Scale: 1},
+	KeyPVInputVoltage1: {Name: "PV Input Voltage 1", Unit: "V", Scale: 1},
+	KeyPVInputVoltage2: {Name: "PV Input Voltage 2", Unit: "V", Scale: 1},
+
 	// Current values (in amps, sometimes scaled by 1000)
-	KeySystemCurrent:       {Name: "System Current", Unit: "A", Scale: 1},
-	KeyBatteryCurrent:      {Name: "Battery Current", Unit: "A", Scale: 1},
-	KeyPVInputCurrent1:     {Name: "PV Input Current 1", Unit: "A", Scale: 1},
-	KeyPVInputCurrent2:     {Name: "PV Input Current 2", Unit: "A", Scale: 1},
-	
+	KeySystemCurrent:   {Name: "System Current", Unit: "A", Scale: 1},
+	KeyBatteryCurrent:  {Name: "Battery Current", Unit: "A", Scale: 1},
+	KeyPVInputCurrent1: {Name: "PV Input Current 1", Unit: "A", Scale: 1},
+	KeyPVInputCurrent2: {Name: "PV Input Current 2", Unit: "A", Scale: 1},
+
 	// Power values (in watts)
-	KeySystemPower:         {Name: "System Power", Unit: "W", Scale: 1},
-	KeyPVInputPower1:       {Name: "PV Input Power 1", Unit: "W", Scale: 1},
-	KeyPVInputPower2:       {Name: "PV Input Power 2", Unit: "W", Scale: 1},
-	
+	KeySystemPower:   {Name: "System Power", Unit: "W", Scale: 1},
+	KeyPVInputPower1: {Name: "PV Input Power 1", Unit: "W", Scale: 1},
+	KeyPVInputPower2: {Name: "PV Input Power 2", Unit: "W", Scale: 1},
+
 	// State of charge (percentage)
-	KeyStateOfCharge:       {Name: "State of Charge", Unit: "%", Scale: 1},
-	
+	KeyStateOfCharge: {Name: "State of Charge", Unit: "%", Scale: 1},
+
 	// Energy values
-	KeyEnergyYieldToday:    {Name: "Energy Yield Today", Unit: "Ah", Scale: 1},
-	KeyEnergyWhToday:       {Name: "Energy Yield Today", Unit: "Wh", Scale: 1},
-	
+	KeyEnergyYieldToday: {Name: "Energy Yield Today", Unit: "Ah", Scale: 1},
+	KeyEnergyWhToday:    {Name: "Energy Yield Today", Unit: "Wh", Scale: 1},
+
 	// Temperature (in Celsius)
-	KeyTemperature:         {Name: "Device Temperature", Unit: "°C", Scale: 1},
-	
+	KeyTemperature: {Name: "Device Temperature", Unit: "°C", Scale: 1},
+
 	// Algorithm/State values
-	KeyAlgorithmState:      {Name: "Charging Algorithm State", Unit: "", Scale: 0},
-	KeyStage:               {Name: "Stage", Unit: "", Scale: 0},
-	
+	KeyAlgorithmState: {Name: "Charging Algorithm State", Unit: "", Scale: 0},
+	KeyStage:          {Name: "Stage", Unit: "", Scale: 0},
+
 	// Error codes
-	KeyErrorCode:           {Name: "Error Code", Unit: "", Scale: 0},
-	
+	KeyErrorCode: {Name: "Error Code", Unit: "", Scale: 0},
+
 	// Device identification
-	KeyDeviceVersion:       {Name: "Device Version", Unit: "", Scale: 0, StringType: true},
-	KeyDeviceRevision:      {Name: "Device Revision", Unit: "", Scale: 0, StringType: true},
-	KeySerialNumber:        {Name: "Serial Number", Unit: "", Scale: 0, StringType: true},
+	KeyDeviceVersion:  {Name: "Device Version", Unit: "", Scale: 0, StringType: true},
+	KeyDeviceRevision: {Name: "Device Revision", Unit: "", Scale: 0, StringType: true},
+	KeySerialNumber:   {Name: "Serial Number", Unit: "", Scale: 0, StringType: true},
 }
 
 // ValueTypeInfo describes a known VE.Direct value type
 type ValueTypeInfo struct {
-	Name       string // Human-readable name
-	Unit       string // Unit of measurement
+	Name       string  // Human-readable name
+	Unit       string  // Unit of measurement
 	Scale      float64 // Scaling factor (multiply by this)
 	StringType bool    // Whether this is a string value, not numeric
 }
@@ -278,12 +278,12 @@ func FormatValue(frame *VEDirectFrame) string {
 	if frame == nil || frame.DataKey == "" {
 		return ""
 	}
-	
+
 	info := GetValueType(frame.DataKey)
 	if info != nil && !info.StringType {
 		return fmt.Sprintf("%s: %.3f %s", info.Name, frame.Value*info.Scale, info.Unit)
 	}
-	
+
 	return fmt.Sprintf("%s: %s", frame.DataKey, frame.RawValue)
 }
 

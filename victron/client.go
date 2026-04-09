@@ -30,13 +30,13 @@ func NewClient() *Client {
 func (c *Client) Scan(duration time.Duration) ([]DiscoverableDevice, error) {
 	c.scanMutex.Lock()
 	defer c.scanMutex.Unlock()
-	
+
 	c.scanning = true
 	defer func() { c.scanning = false }()
-	
+
 	// Clear previous results
 	c.scanResults = make([]DiscoverableDevice, 0)
-	
+
 	// Check if we have a backend available
 	backend := GetBackend()
 	if backend == nil {
@@ -46,22 +46,22 @@ func (c *Client) Scan(duration time.Duration) ([]DiscoverableDevice, error) {
 		}
 		backend = GetBackend()
 	}
-	
+
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), duration)
 	defer cancel()
-	
+
 	// Scan for devices using the backend
 	devices, err := backend.ScanForDevices(ctx, duration)
 	if err != nil {
 		return c.scanResults, fmt.Errorf("scan failed: %w", err)
 	}
-	
+
 	// Convert BLEDevice to DiscoverableDevice
 	for _, device := range devices {
 		// Check if this appears to be a Victron device using existing helper
 		isVictron := ParseAdvertisement(device.Name, nil)
-		
+
 		c.scanResults = append(c.scanResults, DiscoverableDevice{
 			Address:          device.Address,
 			Name:             device.Name,
@@ -70,7 +70,7 @@ func (c *Client) Scan(duration time.Duration) ([]DiscoverableDevice, error) {
 			IsVictron:        isVictron,
 		})
 	}
-	
+
 	return c.scanResults, nil
 }
 
@@ -85,14 +85,14 @@ func (c *Client) StopScan() {
 func (c *Client) Connect(address string) (*Device, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	// Check if already connected
 	if device, exists := c.connectedDevices[address]; exists {
 		if device.connected {
 			return device, nil
 		}
 	}
-	
+
 	// Create new device connection
 	device := &Device{
 		Address:      address,
@@ -101,12 +101,12 @@ func (c *Client) Connect(address string) (*Device, error) {
 		valueUpdates: make(chan map[string]Value, 10),
 		stopChan:     make(chan struct{}),
 	}
-	
+
 	// Actual BLE connection logic would go here
 	// This is where we'd use a library like github.com/go-bluetooth/bt
-	
+
 	c.connectedDevices[address] = device
-	
+
 	return device, nil
 }
 
@@ -114,12 +114,12 @@ func (c *Client) Connect(address string) (*Device, error) {
 func (c *Client) Disconnect(address string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	if device, exists := c.connectedDevices[address]; exists {
 		device.disconnectInternal()
 		delete(c.connectedDevices, address)
 	}
-	
+
 	return nil
 }
 
@@ -127,7 +127,7 @@ func (c *Client) Disconnect(address string) error {
 func (c *Client) GetAllConnected() []*Device {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	
+
 	devices := make([]*Device, 0, len(c.connectedDevices))
 	for _, device := range c.connectedDevices {
 		if device.connected {
@@ -141,7 +141,7 @@ func (c *Client) GetAllConnected() []*Device {
 func (c *Client) GetDevice(address string) (*Device, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	
+
 	device, exists := c.connectedDevices[address]
 	if !exists || !device.connected {
 		return nil, false
@@ -156,7 +156,7 @@ func (c *Client) Discover() (*Device, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Filter for Victron devices
 	var victronDevices []DiscoverableDevice
 	for _, result := range results {
@@ -164,11 +164,11 @@ func (c *Client) Discover() (*Device, error) {
 			victronDevices = append(victronDevices, result)
 		}
 	}
-	
+
 	if len(victronDevices) == 0 {
 		return nil, &NotFoundError{Query: "victron device"}
 	}
-	
+
 	// Connect to the strongest signal
 	bestDevice := victronDevices[0]
 	for _, dev := range victronDevices[1:] {
@@ -176,7 +176,7 @@ func (c *Client) Discover() (*Device, error) {
 			bestDevice = dev
 		}
 	}
-	
+
 	return c.Connect(bestDevice.Address)
 }
 
@@ -186,20 +186,20 @@ func (c *Client) Discover() (*Device, error) {
 func (d *Device) Connect() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	
+
 	if d.connected {
 		return nil // Already connected
 	}
-	
+
 	// BLE connection logic here
 	// After connecting, discover services and characteristics
 	// Subscribe to notifications
-	
+
 	d.connected = true
-	
+
 	// Start goroutine to process incoming values
 	go d.processIncomingValues()
-	
+
 	return nil
 }
 
@@ -214,9 +214,9 @@ func (d *Device) disconnectInternal() {
 	if !d.connected {
 		return
 	}
-	
+
 	d.connected = false
-	
+
 	// Stop receiving updates
 	select {
 	case <-d.stopChan:
@@ -236,7 +236,7 @@ func (d *Device) processIncomingValues() {
 			d.valuesMutex.Lock()
 			d.values[val.Key] = val
 			d.valuesMutex.Unlock()
-			
+
 			// Send batched update
 			select {
 			case d.valueUpdates <- d.getValuesCopy():
@@ -250,7 +250,7 @@ func (d *Device) processIncomingValues() {
 func (d *Device) getValuesCopy() map[string]Value {
 	d.valuesMutex.RLock()
 	defer d.valuesMutex.RUnlock()
-	
+
 	copy := make(map[string]Value, len(d.values))
 	for k, v := range d.values {
 		copy[k] = v
@@ -262,7 +262,7 @@ func (d *Device) getValuesCopy() map[string]Value {
 func (d *Device) GetValue(key string) (Value, bool) {
 	d.valuesMutex.RLock()
 	defer d.valuesMutex.RUnlock()
-	
+
 	value, exists := d.values[key]
 	return value, exists
 }
@@ -317,19 +317,19 @@ func (dt DeviceType) GetSupportedKeys() []string {
 func (c *Client) ScanWithFilter(filter ScanFilter, timeout time.Duration) ([]DiscoverableDevice, error) {
 	c.scanMutex.Lock()
 	defer c.scanMutex.Unlock()
-	
+
 	c.scanning = true
 	defer func() { c.scanning = false }()
-	
+
 	// Filter results based on criteria
 	var filtered []DiscoverableDevice
-	
+
 	for _, result := range c.scanResults {
 		if matchesFilter(result, filter) {
 			filtered = append(filtered, result)
 		}
 	}
-	
+
 	return filtered, nil
 }
 
@@ -343,17 +343,17 @@ func matchesFilter(device DiscoverableDevice, filter ScanFilter) bool {
 // WaitForConnection waits for a device to become connected with timeout
 func (d *Device) WaitForConnection(timeout time.Duration) error {
 	start := time.Now()
-	
+
 	for {
 		if d.IsConnected() {
 			return nil
 		}
-		
+
 		elapsed := time.Since(start)
 		if elapsed >= timeout {
 			return &TimeoutError{Operation: "connect", Duration: timeout}
 		}
-		
+
 		time.Sleep(100 * time.Millisecond)
 	}
 }

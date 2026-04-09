@@ -9,7 +9,7 @@ import (
 func TestNewTodoList(t *testing.T) {
 	tmpDir := t.TempDir()
 	todoFile := tmpDir + "/test_todos.json"
-	
+
 	list := NewTodoList(todoFile)
 	if list == nil {
 		t.Fatal("NewTodoList returned nil")
@@ -23,7 +23,7 @@ func TestTodoList_Add(t *testing.T) {
 	tmpDir := t.TempDir()
 	todoFile := tmpDir + "/test_todos.json"
 	list := NewTodoList(todoFile)
-	
+
 	// Test adding a valid todo
 	todo, err := list.Add("Test task")
 	if err != nil {
@@ -38,7 +38,7 @@ func TestTodoList_Add(t *testing.T) {
 	if todo.Completed {
 		t.Error("Expected Completed to be false for new todo")
 	}
-	
+
 	// Verify todos slice has the item
 	if len(list.todos) != 1 {
 		t.Errorf("Expected 1 todo, got %d", len(list.todos))
@@ -49,13 +49,13 @@ func TestTodoList_Add_EmptyTitle(t *testing.T) {
 	tmpDir := t.TempDir()
 	todoFile := tmpDir + "/test_todos.json"
 	list := NewTodoList(todoFile)
-	
+
 	// Test adding with empty title should fail
 	_, err := list.Add("")
 	if err == nil {
 		t.Error("Expected error for empty title")
 	}
-	
+
 	// Test adding with whitespace only title should fail
 	_, err = list.Add("   ")
 	if err == nil {
@@ -67,9 +67,9 @@ func TestTodoList_Complete(t *testing.T) {
 	tmpDir := t.TempDir()
 	todoFile := tmpDir + "/test_todos.json"
 	list := NewTodoList(todoFile)
-	
+
 	todo, _ := list.Add("Test task to complete")
-	
+
 	// Complete the todo - returns (bool, error)
 	found, err := list.Complete(todo.Title)
 	if err != nil {
@@ -78,7 +78,7 @@ func TestTodoList_Complete(t *testing.T) {
 	if !found {
 		t.Error("Expected found=true for valid completion")
 	}
-	
+
 	// Verify todo is marked as completed
 	if len(list.todos) != 1 {
 		t.Fatalf("Expected 1 todo, got %d", len(list.todos))
@@ -92,7 +92,7 @@ func TestTodoList_Complete_NonExistent(t *testing.T) {
 	tmpDir := t.TempDir()
 	todoFile := tmpDir + "/test_todos.json"
 	list := NewTodoList(todoFile)
-	
+
 	found, err := list.Complete("Non-existent task")
 	if found {
 		t.Error("Expected found=false for non-existent todo")
@@ -106,11 +106,11 @@ func TestTodoList_Complete_AlreadyCompleted(t *testing.T) {
 	tmpDir := t.TempDir()
 	todoFile := tmpDir + "/test_todos.json"
 	list := NewTodoList(todoFile)
-	
+
 	todo, _ := list.Add("Task to complete twice")
 	// Complete once
 	list.Complete(todo.Title)
-	
+
 	// Try to complete again - should return error
 	found, err := list.Complete(todo.Title)
 	if found {
@@ -125,13 +125,13 @@ func TestTodoList_Delete(t *testing.T) {
 	tmpDir := t.TempDir()
 	todoFile := tmpDir + "/test_todos.json"
 	list := NewTodoList(todoFile)
-	
+
 	// Add a todo first
 	todo, _ := list.Add("Task to delete")
 	if len(list.todos) != 1 {
 		t.Fatalf("Expected 1 todo before delete, got %d", len(list.todos))
 	}
-	
+
 	// Delete the todo - returns (bool, error)
 	found, err := list.Delete(todo.Title)
 	if err != nil {
@@ -140,7 +140,7 @@ func TestTodoList_Delete(t *testing.T) {
 	if !found {
 		t.Error("Expected found=true for valid deletion")
 	}
-	
+
 	// Verify todo was removed
 	if len(list.todos) != 0 {
 		t.Errorf("Expected 0 todos after delete, got %d", len(list.todos))
@@ -151,7 +151,7 @@ func TestTodoList_Delete_NonExistent(t *testing.T) {
 	tmpDir := t.TempDir()
 	todoFile := tmpDir + "/test_todos.json"
 	list := NewTodoList(todoFile)
-	
+
 	found, err := list.Delete("Non-existent task")
 	if found {
 		t.Error("Expected found=false for non-existent todo")
@@ -165,18 +165,18 @@ func TestTodoList_FormatAllTodos(t *testing.T) {
 	tmpDir := t.TempDir()
 	todoFile := tmpDir + "/test_todos.json"
 	list := NewTodoList(todoFile)
-	
+
 	// Test empty list
 	result := list.FormatAllTodos()
 	if result != "No todos found." {
 		t.Errorf("Expected 'No todos found.', got '%s'", result)
 	}
-	
+
 	// Add some todos
 	list.Add("Task 1")
 	list.Add("Task 2")
 	list.Complete("Task 2")
-	
+
 	result = list.FormatAllTodos()
 	if !strings.Contains(result, "=== TODO LIST ===") {
 		t.Error("Result should contain header")
@@ -193,18 +193,18 @@ func TestTodoList_FormatPendingTodos(t *testing.T) {
 	tmpDir := t.TempDir()
 	todoFile := tmpDir + "/test_todos.json"
 	list := NewTodoList(todoFile)
-	
+
 	// Test empty list
 	result := list.FormatPendingTodos()
 	if result != "No pending todos." {
 		t.Errorf("Expected 'No pending todos.', got '%s'", result)
 	}
-	
+
 	// Add some todos
 	list.Add("Task 1")
 	list.Add("Task 2")
 	list.Complete("Task 2")
-	
+
 	result = list.FormatPendingTodos()
 	if !strings.Contains(result, "=== PENDING TODOS ===") {
 		t.Error("Result should contain header")
@@ -221,18 +221,18 @@ func TestTodoList_GetStats(t *testing.T) {
 	tmpDir := t.TempDir()
 	todoFile := tmpDir + "/test_todos.json"
 	list := NewTodoList(todoFile)
-	
+
 	// Test empty list
 	total, pending, completed := list.GetStats()
 	if total != 0 || pending != 0 || completed != 0 {
 		t.Errorf("Expected all zeros for empty list, got (%d, %d, %d)", total, pending, completed)
 	}
-	
+
 	// Add some todos
 	list.Add("Task 1")
 	list.Add("Task 2")
 	list.Complete("Task 2")
-	
+
 	total, pending, completed = list.GetStats()
 	if total != 2 || pending != 1 || completed != 1 {
 		t.Errorf("Expected (2, 1, 1), got (%d, %d, %d)", total, pending, completed)
@@ -242,15 +242,15 @@ func TestTodoList_GetStats(t *testing.T) {
 func TestTodoList_Persist(t *testing.T) {
 	tmpDir := t.TempDir()
 	todoFile := tmpDir + "/test_todos.json"
-	
+
 	// Create list and add todos
 	list1 := NewTodoList(todoFile)
 	list1.Add("Task to persist")
 	list1.Add("Another task")
-	
+
 	// Simulate loading fresh (like a new process)
 	list2 := NewTodoList(todoFile)
-	
+
 	if len(list2.todos) != 2 {
 		t.Errorf("Expected 2 persisted todos, got %d", len(list2.todos))
 	}
@@ -263,15 +263,15 @@ func TestTodoList_GetAllTodos(t *testing.T) {
 	tmpDir := t.TempDir()
 	todoFile := tmpDir + "/test_todos.json"
 	list := NewTodoList(todoFile)
-	
+
 	list.Add("Task 1")
 	list.Add("Task 2")
-	
+
 	all := list.GetAllTodos()
 	if len(all) != 2 {
 		t.Errorf("Expected 2 todos, got %d", len(all))
 	}
-	
+
 	// Modify the returned slice should not affect internal state
 	all[0].Title = "Modified"
 	internal := list.GetAllTodos()
@@ -284,18 +284,18 @@ func TestTodoList_SortByCreation(t *testing.T) {
 	tmpDir := t.TempDir()
 	todoFile := tmpDir + "/test_todos.json"
 	list := NewTodoList(todoFile)
-	
+
 	now := time.Now()
-	
+
 	// Manually set todos out of order (simulating a corrupted file or manual insertion)
 	list.todos = []Todo{
 		{Title: "Third", CreatedAt: now.Add(10 * time.Minute)},
 		{Title: "First", CreatedAt: now},
 		{Title: "Second", CreatedAt: now.Add(5 * time.Minute)},
 	}
-	
+
 	list.SortByCreation()
-	
+
 	if list.todos[0].Title != "First" || list.todos[1].Title != "Second" || list.todos[2].Title != "Third" {
 		t.Errorf("Todos should be sorted by creation time")
 	}

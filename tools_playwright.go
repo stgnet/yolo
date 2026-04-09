@@ -269,9 +269,9 @@ func escapeJS(s string) string {
 	s = strings.ReplaceAll(s, "'", "\\'")
 	s = strings.ReplaceAll(s, "\"", "\\\"")
 	// Escape additional control characters that could break JavaScript strings
-	s = strings.ReplaceAll(s, "\x0b", "\\u000b")  // vertical tab
-	s = strings.ReplaceAll(s, "\x0c", "\\u000c")  // form feed
-	s = strings.ReplaceAll(s, "\x00", "\\u0000")  // null byte
+	s = strings.ReplaceAll(s, "\x0b", "\\u000b") // vertical tab
+	s = strings.ReplaceAll(s, "\x0c", "\\u000c") // form feed
+	s = strings.ReplaceAll(s, "\x00", "\\u0000") // null byte
 	return s
 }
 

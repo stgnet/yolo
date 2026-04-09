@@ -10,15 +10,15 @@ import (
 const (
 	// Main Victron Service UUID - custom service for VE.Direct data
 	VictronServiceUUID = "fdcd" // Standard format would be 0xfdcd or full UUID
-	
+
 	// Full 128-bit UUIDs (if needed)
-	VictronServiceUUID128     = "0000fdcd-0000-1000-8000-00805f9b34fb"
-	VEDirectDataServiceUUID   = "0000ffe0-0000-1000-8000-00805f9b34fb" // Often used for custom services
-	
+	VictronServiceUUID128   = "0000fdcd-0000-1000-8000-00805f9b34fb"
+	VEDirectDataServiceUUID = "0000ffe0-0000-1000-8000-00805f9b34fb" // Often used for custom services
+
 	// Characteristic UUIDs
-	VEDirectDataCharacteristic   = "0000ffe1-0000-1000-8000-00805f9b34fb" // Notification characteristic
+	VEDirectDataCharacteristic    = "0000ffe1-0000-1000-8000-00805f9b34fb" // Notification characteristic
 	VEDirectControlCharacteristic = "0000ffe2-0000-1000-8000-00805f9b34fb" // Write characteristic (optional)
-	
+
 	// Alternative UUIDs that some Victron devices may use
 	SmartDeviceServiceUUID = "0000ffd0-0000-1000-8000-00805f9b34fb"
 )
@@ -26,17 +26,17 @@ const (
 // Advertisement data patterns for identifying Victron devices
 var VictronAdvertisementPatterns = []string{
 	"VE.Direct",
-	"SmartSolar", 
+	"SmartSolar",
 	"SmartShunt",
 	"Victron",
 }
 
 // GATTService represents a discovered GATT service
 type GATTService struct {
-	UUID        string
-	StartHandle uint16
-	EndHandle   uint16
-	Primary     bool
+	UUID            string
+	StartHandle     uint16
+	EndHandle       uint16
+	Primary         bool
 	Characteristics []*GATTCharacteristic
 }
 
@@ -50,14 +50,14 @@ type GATTCharacteristic struct {
 
 // CharacteristicPropertyFlags standard BLE property bits
 const (
-	PropBroadcast         = 0x01
-	PropRead              = 0x02
-	PropWriteWithoutResp  = 0x04
-	PropWrite             = 0x08
-	PropNotify            = 0x10
-	PropIndicate          = 0x20
-	PropSignedWrite       = 0x40
-	PropExtendedProps     = 0x80
+	PropBroadcast        = 0x01
+	PropRead             = 0x02
+	PropWriteWithoutResp = 0x04
+	PropWrite            = 0x08
+	PropNotify           = 0x10
+	PropIndicate         = 0x20
+	PropSignedWrite      = 0x40
+	PropExtendedProps    = 0x80
 )
 
 // ScanFilter is used to filter BLE advertisements during scanning
@@ -69,12 +69,12 @@ type ScanFilter struct {
 
 // DiscoverableDevice represents a device found during BLE scan
 type DiscoverableDevice struct {
-	Address      string  // MAC address
-	Name         string  // Advertised name
-	RSSI         int     // Signal strength (negative dBm)
+	Address          string // MAC address
+	Name             string // Advertised name
+	RSSI             int    // Signal strength (negative dBm)
 	ManufacturerData map[uint16][]byte
-	ServiceData    map[string][]byte
-	IsVictron      bool  // Whether this appears to be a Victron device
+	ServiceData      map[string][]byte
+	IsVictron        bool // Whether this appears to be a Victron device
 }
 
 // ParseAdvertisement determines if an advertisement is from a Victron device
@@ -85,24 +85,24 @@ func ParseAdvertisement(name string, serviceUUIDs []string) bool {
 			return true
 		}
 	}
-	
+
 	// Check by service UUID in advertisement
 	for _, uuid := range serviceUUIDs {
-		if containsIgnoreCase(uuid, "fdcd") || 
-		   containsIgnoreCase(uuid, "ffe0") ||
-		   containsIgnoreCase(uuid, VictronServiceUUID) {
+		if containsIgnoreCase(uuid, "fdcd") ||
+			containsIgnoreCase(uuid, "ffe0") ||
+			containsIgnoreCase(uuid, VictronServiceUUID) {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
 func containsIgnoreCase(s, substr string) bool {
 	sLower := toLowerSimple(s)
 	subLower := toLowerSimple(substr)
-	return len(sLower) >= len(subLower) && 
-		   (sLower == subLower || findSubstring(sLower, subLower))
+	return len(sLower) >= len(subLower) &&
+		(sLower == subLower || findSubstring(sLower, subLower))
 }
 
 func toLowerSimple(s string) string {
@@ -136,7 +136,7 @@ func findSubstring(s, substr string) bool {
 // NewScanFilter creates a scan filter for finding Victron devices
 func NewScanFilter(deviceType DeviceType) ScanFilter {
 	filter := ScanFilter{}
-	
+
 	switch deviceType {
 	case DeviceTypeSmartSolar:
 		filter.Name = "SmartSolar"
@@ -145,7 +145,7 @@ func NewScanFilter(deviceType DeviceType) ScanFilter {
 	case DeviceTypeVEDirectAdapter:
 		filter.Name = "VE.Direct"
 	}
-	
+
 	return filter
 }
 
@@ -153,17 +153,17 @@ func NewScanFilter(deviceType DeviceType) ScanFilter {
 func FormatServiceUUID(uuid string) string {
 	// Remove hyphens if present for comparison
 	uuid = removeHyphens(uuid)
-	
+
 	// If it's a 16-bit UUID (4 hex chars), return as-is or format properly
 	if len(uuid) == 4 {
 		return uuid
 	}
-	
+
 	// If it's already 32 chars (128-bit without hyphens), use that
 	if len(uuid) == 32 {
 		return uuid
 	}
-	
+
 	// Default to main Victron service
 	return VictronServiceUUID
 }
@@ -196,7 +196,7 @@ func DescribeCharacteristicProperties(props uint8) string {
 	if props&PropIndicate != 0 {
 		parts = append(parts, "indicate")
 	}
-	
+
 	result := ""
 	for i, p := range parts {
 		if i > 0 {
@@ -212,11 +212,11 @@ func ValidateCharacteristic(char *GATTCharacteristic, requireNotify bool) error 
 	if char == nil {
 		return &NotFoundError{Query: "characteristic"}
 	}
-	
+
 	if requireNotify && (char.Properties&PropNotify == 0) && (char.Properties&PropIndicate == 0) {
 		return fmt.Errorf("characteristic %s does not support notifications", char.UUID)
 	}
-	
+
 	return nil
 }
 
@@ -225,12 +225,12 @@ func FindNotificationCharacteristic(service *GATTService) (*GATTCharacteristic, 
 	if service == nil {
 		return nil, &NotFoundError{Query: "service"}
 	}
-	
+
 	for _, char := range service.Characteristics {
 		if char.Properties&(PropNotify|PropIndicate) != 0 {
 			return char, nil
 		}
 	}
-	
+
 	return nil, fmt.Errorf("no notification characteristic found in service %s", service.UUID)
 }

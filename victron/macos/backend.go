@@ -14,17 +14,17 @@ import (
 )
 
 // Backend implements victron.BLEBackend for macOS.
-// 
+//
 // CURRENT STATUS: Basic stub implementation with proper interface compliance.
 // Limitations: ScanForDevices returns empty results, GATT discovery methods are unimplemented.
-// 
+//
 // TODO: Full macOS BLE implementation requires:
-//   1. Integration with CoreBluetooth framework (via cgo bindings or Objective-C bridge)
-//   2. Proper Bluetooth permission handling in Info.plist
-//   3. GATT service/characteristic scanning and connection management
-//   4. Notification subscription mechanism for real-time data streaming
-//   5. Testing with actual Victron devices (SmartSolar, SmartShunt, VE.Direct adapters)
-// 
+//  1. Integration with CoreBluetooth framework (via cgo bindings or Objective-C bridge)
+//  2. Proper Bluetooth permission handling in Info.plist
+//  3. GATT service/characteristic scanning and connection management
+//  4. Notification subscription mechanism for real-time data streaming
+//  5. Testing with actual Victron devices (SmartSolar, SmartShunt, VE.Direct adapters)
+//
 // Reference: See victron/bluez/backend.go for complete Linux implementation example.
 type Backend struct {
 	initialized bool
@@ -64,7 +64,7 @@ func (b *Backend) ScanForDevices(ctx context.Context, duration time.Duration) ([
 	}
 
 	fmt.Printf("[DEBUG] Starting Bluetooth scan for %v\n", duration)
-	
+
 	// Wait for the scan duration to simulate real behavior
 	select {
 	case <-ctx.Done():
@@ -74,7 +74,7 @@ func (b *Backend) ScanForDevices(ctx context.Context, duration time.Duration) ([
 	}
 
 	fmt.Println("[DEBUG] Scan completed. Note: macOS BLE scanning requires full implementation.")
-	
+
 	// Return empty list - real implementation would scan for devices
 	return []victron.BLEDevice{}, nil
 }
@@ -110,7 +110,7 @@ func (b *Backend) DiscoverCharacteristics(service victron.BLEService) ([]victron
 
 // BLEConnection implements the victron.BLEConnection interface for macOS.
 type BLEConnection struct {
-	address  string
+	address   string
 	connected bool
 }
 

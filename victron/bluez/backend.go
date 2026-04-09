@@ -2,13 +2,15 @@
 
 // Package bluez provides a BLE backend implementation using BlueZ on Linux.
 // Requires: BlueZ 5.43+ installed and proper permissions.
-// 
+//
 // Installation:
-//   sudo apt-get install bluez libbluetooth-dev
-//   
+//
+//	sudo apt-get install bluez libbluetooth-dev
+//
 // Permissions (may require udev rules or running as root):
-//   The D-Bus Bluetooth service needs to be accessible.
-//   Run with sudo or configure polkit/udev rules for D-Bus access.
+//
+//	The D-Bus Bluetooth service needs to be accessible.
+//	Run with sudo or configure polkit/udev rules for D-Bus access.
 package bluez
 
 import (
@@ -25,19 +27,19 @@ import (
 
 // Victron GATT UUIDs (from Victron documentation)
 const (
-	VictronServiceUUID     = "0000fff0-0000-1000-8000-00805f9b34fb" // VE.Direct Service
-	VictronCharUUID        = "0000fff1-0000-1000-8000-00805f9b34fb" // VE.Direct Characteristic
-	VictronDescriptorUUID  = "0000fff2-0000-1000-8000-00805f9b34fb" // Client Characteristic Configuration
+	VictronServiceUUID    = "0000fff0-0000-1000-8000-00805f9b34fb" // VE.Direct Service
+	VictronCharUUID       = "0000fff1-0000-1000-8000-00805f9b34fb" // VE.Direct Characteristic
+	VictronDescriptorUUID = "0000fff2-0000-1000-8000-00805f9b34fb" // Client Characteristic Configuration
 )
 
 // Backend implements victron.BLEBackend using BlueZ.
 type Backend struct {
-	adapter    *adapter.Adapter1
-	device     *api.Device
-	service    *gatt.GattService1
+	adapter        *adapter.Adapter1
+	device         *api.Device
+	service        *gatt.GattService1
 	characteristic *gatt.GattCharacteristic1
-	notify     chan []byte
-	done       chan struct{} // For cleanup
+	notify         chan []byte
+	done           chan struct{} // For cleanup
 }
 
 // New creates a new BlueZ backend.
@@ -102,7 +104,7 @@ func (b *Backend) Scan(timeout int64) ([]victron.BLEDevice, error) {
 					deviceAddr = a
 				}
 			}
-			
+
 			if deviceAddr == "" {
 				continue
 			}
@@ -152,7 +154,6 @@ func containsVictronPrefix(name string) bool {
 	return false
 }
 
-
 // Connect establishes a connection to the device and discovers GATT services.
 func (b *Backend) Connect(device victron.BLEDevice) error {
 	// Create device from address path
@@ -193,18 +194,18 @@ func (b *Backend) Connect(device victron.BLEDevice) error {
 		if err != nil {
 			continue
 		}
-		
+
 		uuid, err := service.GetUUID()
 		if err != nil {
 			continue
 		}
-		
+
 		if strings.EqualFold(uuid, VictronServiceUUID) {
 			b.service = service
 			break
 		}
 	}
-	
+
 	if b.service == nil {
 		return errors.New("VE.Direct service not found")
 	}
@@ -220,21 +221,21 @@ func (b *Backend) Connect(device victron.BLEDevice) error {
 		if err != nil {
 			continue
 		}
-		
+
 		uuid, err := char.GetUUID()
 		if err != nil {
 			continue
 		}
-		
+
 		if strings.EqualFold(uuid, VictronCharUUID) {
 			b.characteristic = char
-			
+
 			// Enable notifications on the characteristic
 			err = b.enableNotifications()
 			if err != nil {
 				return fmt.Errorf("failed to enable notifications: %w", err)
 			}
-			
+
 			break
 		}
 	}
@@ -257,7 +258,7 @@ func (b *Backend) enableNotifications() error {
 	// Write to Client Characteristic Configuration descriptor
 	// Notification value: 0x01
 	notificationValue := []byte{0x01, 0x00} // MTU length
-	
+
 	props := b.characteristic.Properties
 	if props == nil {
 		return errors.New("characteristic properties not available")
@@ -275,7 +276,7 @@ func (b *Backend) enableNotifications() error {
 func (b *Backend) listenForNotifications() {
 	// Subscribe to characteristic value changes
 	// The go-bluetooth library provides a Value property that gets updated
-	
+
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -287,20 +288,20 @@ func (b *Backend) listenForNotifications() {
 			if b.characteristic == nil {
 				continue
 			}
-			
+
 			props, err := b.characteristic.GetProperties()
 			if err != nil {
 				continue
 			}
-			
+
 			valueVariant := props.GetValue("Value")
 			if valueVariant == nil {
 				continue
 			}
-			
+
 			// Value is typically []byte or [][]uint8
 			var data []byte
-			
+
 			switch v := valueVariant.(type) {
 			case []byte:
 				data = v
@@ -312,11 +313,11 @@ func (b *Backend) listenForNotifications() {
 			default:
 				continue
 			}
-			
+
 			if len(data) == 0 {
 				continue
 			}
-			
+
 			// Send to notify channel (non-blocking)
 			select {
 			case b.notify <- data:
@@ -330,14 +331,14 @@ func (b *Backend) listenForNotifications() {
 // Disconnect closes the connection.
 func (b *Backend) Disconnect() error {
 	close(b.done)
-	
+
 	if b.characteristic != nil {
 		// Disable notifications by writing 0x00 to descriptor
 		disableValue := []byte{0x00, 0x00}
 		_, _ = b.characteristic.WriteValue(disableValue)
 		b.characteristic = nil
 	}
-	
+
 	if b.device != nil {
 		err := b.device.Disconnect()
 		b.device = nil
@@ -364,16 +365,16 @@ func (b *Backend) GetValues() (map[string]string, error) {
 func parseVedirectData(data []byte) map[string]string {
 	// Parse VE.Direct protocol messages from binary data
 	// VE.Direct format: /V(V=12.5&A=3.2&SoC=85)\r\n followed by checksum byte
-	
+
 	result := make(map[string]string)
-	
+
 	if len(data) == 0 {
 		return result
 	}
 
 	// Convert to string and parse VE.Direct messages
 	message := string(data)
-	
+
 	// VE.Direct messages start with '/'
 	if !strings.HasPrefix(message, "/") {
 		return result
@@ -388,7 +389,7 @@ func parseVedirectData(data []byte) map[string]string {
 	// Parse the message using the victron parser
 	// For now, return raw data as-is
 	result["raw"] = content
-	
+
 	return result
 }
 
