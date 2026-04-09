@@ -15,7 +15,7 @@ YOLO is a **self-evolving AI agent** for autonomous software development. It ope
 - 📧 **Email-enabled**: Full email processing with auto-responses at `yolo@example.com`
 - 🌐 **Web-connected**: DuckDuckGo search, Reddit API, Google Workspace integration
 - ⚡ **Autonomous mode**: Works independently without human intervention
-- 🔧 **Developer tools**: 40 built-in tools for file operations, version control, command execution, and browser automation
+- 🔧 **Developer tools**: 63 built-in tools for file operations, version control, command execution, browser automation, and hardware integration
 
 ## Quick Start
 
@@ -96,7 +96,7 @@ YOLO consists of several key components that work together:
 
 ## Tools Reference
 
-YOLO has 40 built-in tools that the LLM can call:
+YOLO has 63 built-in tools that the LLM can call:
 
 ### File Operations
 | Tool | Description |
@@ -230,7 +230,7 @@ Each sensor value includes type, unit, and VE.Direct code for reference:
 - `Unit`: V, A, W, °C, %, mAh, Wh, h
 - `Code`: VE.Direct protocol identifier (e.g., "V106", "A103")
 
-Total: 42 tools across file operations, agent management, version control, external services, task management, system commands, browser automation, and hardware integration.
+Total: 63 tools across file operations, agent management, version control, external services, task management, system commands, browser automation, memory/context management, scheduling, and hardware integration.
 
 
 
