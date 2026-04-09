@@ -63,6 +63,7 @@ type BLEDevice struct {
 	RSSI             int
 	ServiceUUIDs     []string
 	ManufacturerData map[uint16][]byte
+	IsVictron        bool // Flag to identify Victron devices
 }
 
 // BLEService represents a GATT service

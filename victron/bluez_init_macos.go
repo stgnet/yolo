@@ -1,16 +1,18 @@
 //go:build darwin
 
-// macOS BLE backend initialization
+// macOS BLE backend initialization - currently a placeholder
+// 
+// NOTE: Full macOS BLE implementation exists in victron/macos/backend.go but cannot be 
+// automatically integrated due to Go's import cycle restrictions. The macos package uses 
+// types from the parent victron package, making it impossible for victron to import macos
+// without creating a circular dependency.
 //
-// Status: Stub implementation - full BLE support requires CoreBluetooth integration
+// To enable macOS BLE support, one of these approaches is needed:
+// 1. Move shared interface definitions (BLEBackend, BLEDevice, etc.) to a separate 'victron/ble' package
+// 2. Use code generation to generate the init file at build time
+// 3. Manually invoke macos backend from tools_victron.go with build constraints
 //
-// To implement macOS BLE support, you need to:
-// 1. Create CGO bindings or use a Go-to-CoreBluetooth bridge library
-// 2. Handle Bluetooth permissions in the app bundle's Info.plist
-// 3. Implement GATT service/characteristic discovery and connection management
-// 4. Add notification subscription for real-time VE.Direct data streaming
-//
-// See victron/bluez/backend.go for a complete Linux implementation reference.
+// See victron/macos/backend.go for the complete CoreBluetooth implementation.
 package victron
 
 import (
@@ -19,6 +21,6 @@ import (
 
 func init() {
 	SetBackendCreator(func() (BLEBackend, error) {
-		return nil, errors.New("macOS BLE support not implemented - see victron/macos/backend.go for stub and implementation notes")
+		return nil, errors.New("macOS BLE not auto-integrated due to import cycle - see victron/macos/backend.go for implementation")
 	})
 }
