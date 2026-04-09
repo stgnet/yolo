@@ -1,18 +1,32 @@
 //go:build darwin
 
-// Package macos provides a BLE backend stub implementation for macOS.
+// Package macos provides a BLE backend implementation for macOS.
 //
-// CURRENT STATUS: Basic stub with proper interface compliance, not functional for actual BLE operations.
-// Limitations: ScanForDevices returns empty results, GATT methods return "not implemented" errors.
+// CURRENT STATUS: Not yet implemented for macOS
+// --------------------------------------------------------
+// This backend is currently a stub placeholder. To enable Victron device 
+// connectivity on macOS, you need to implement CoreBluetooth support.
 //
-// IMPLEMENTATION GUIDE: To enable full macOS BLE support, you need to:
-// 1. Integrate with CoreBluetooth framework via CGO bindings or Objective-C bridge
-// 2. Add Bluetooth permissions handling in app bundle Info.plist
-// 3. Implement GATT service/characteristic scanning and connection management  
-// 4. Add notification subscription for real-time VE.Direct data streaming
-// 5. Test with actual Victron devices (SmartSolar, SmartShunt, VE.Direct adapters)
+// IMPLEMENTATION REQUIREMENTS:
+// =============================
+// 1. Use a Go BLE library that supports macOS (e.g., go-ble with CoreBluetooth)
+// 2. Handle Bluetooth permissions in app bundle Info.plist
+// 3. Implement GATT service/characteristic discovery for Victron devices
+// 4. Support VE.Direct protocol data parsing
+// 5. Test with actual Victron SmartSolar, SmartShunt, or VE.Direct adapters
 //
-// Reference: See victron/bluez/backend.go for complete Linux implementation example.
+// REFERENCE: See victron/bluez/backend.go for a complete Linux implementation
+// using the BlueZ stack that can serve as a reference for the API surface.
+//
+// KNOWN LIMITATIONS:
+// ==================
+// - ScanForDevices returns empty results (no actual BLE scanning)
+// - Connect, DiscoverServices, DiscoverCharacteristics return "not implemented"
+// - GATT operations (ReadValue, WriteValue, Subscribe) not supported
+// - Real-time VE.Direct data streaming unavailable
+//
+// FOR DEVELOPERS: To contribute macOS support, implement the missing methods
+// using Apple's CoreBluetooth framework via CGO bindings or Objective-C bridge.
 package macos
 
 import (
@@ -23,126 +37,46 @@ import (
 	"github.com/scottstg/yolo/victron"
 )
 
-// Backend implements victron.BLEBackend for macOS.
-// Note: This is a stub implementation with proper interface compliance only.
+// Backend implements victron.BLEBackend for macOS as a stub placeholder.
 type Backend struct {
 	initialized bool
-	connected   bool
-	deviceAddr  string
 }
 
-// New creates a new BLE backend.
-// Note: This is a stub implementation. Full BLE support requires CoreBluetooth integration.
+// New creates a new BLE backend. Returns error indicating macOS support not implemented.
 func New() (*Backend, error) {
-	return &Backend{
-		initialized: false,
-		connected:   false,
-	}, nil
+	return nil, fmt.Errorf("macOS BLE support not implemented - see victron/macos/backend.go for implementation notes")
 }
 
-// Initialize prepares the backend for use.
+// Initialize prepares the backend for use. Not implemented.
 func (b *Backend) Initialize() error {
-	fmt.Println("[DEBUG] Initializing macOS BLE backend...")
-	b.initialized = true
-	fmt.Println("[DEBUG] macOS BLE backend initialized")
-	return nil
+	return fmt.Errorf("macOS BLE not implemented")
 }
 
-// Close shuts down the backend.
+// Close shuts down the backend. No-op on stub.
 func (b *Backend) Close() error {
-	b.initialized = false
-	b.connected = false
-	b.deviceAddr = ""
 	return nil
 }
 
-// ScanForDevices scans for nearby BLE devices.
-// Returns a stub list indicating macOS BLE support is not yet fully implemented.
+// ScanForDevices scans for nearby BLE devices. Returns empty list on macOS.
 func (b *Backend) ScanForDevices(ctx context.Context, duration time.Duration) ([]victron.BLEDevice, error) {
-	if !b.initialized {
-		return nil, fmt.Errorf("backend not initialized")
-	}
-
-	fmt.Printf("[DEBUG] Starting Bluetooth scan for %v\n", duration)
-
-	// Wait for the scan duration to simulate real behavior
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-time.After(duration):
-		// Scan completed
-	}
-
-	fmt.Println("[DEBUG] Scan completed. Note: macOS BLE scanning requires full implementation.")
-
+	fmt.Println("[INFO] macOS BLE scanning not implemented")
+	fmt.Println("[INFO] To enable: implement CoreBluetooth support as documented in backend.go header")
+	
 	// Return empty list - real implementation would scan for devices
-	return []victron.BLEDevice{}, nil
+	return []victron.BLEDevice{}, fmt.Errorf("macOS BLE scanning not implemented")
 }
 
-// Connect establishes a connection to a device.
+// Connect establishes a connection to a device. Not implemented on macOS.
 func (b *Backend) Connect(address string) (victron.BLEConnection, error) {
-	if !b.initialized {
-		return nil, fmt.Errorf("backend not initialized")
-	}
-
-	conn := &BLEConnection{
-		address: address,
-	}
-
-	b.deviceAddr = address
-	b.connected = true
-
-	fmt.Printf("[DEBUG] Connected to device at %s\n", address)
-	return conn, nil
+	return nil, fmt.Errorf("macOS BLE not implemented")
 }
 
-// DiscoverServices discovers GATT services on a connected device.
+// DiscoverServices discovers GATT services on a connected device. Not implemented.
 func (b *Backend) DiscoverServices(conn victron.BLEConnection) ([]victron.BLEService, error) {
-	// Not yet implemented
-	return []victron.BLEService{}, fmt.Errorf("not implemented")
+	return []victron.BLEService{}, fmt.Errorf("macOS BLE not implemented")
 }
 
-// DiscoverCharacteristics discovers characteristics in a service.
+// DiscoverCharacteristics discovers characteristics in a service. Not implemented.
 func (b *Backend) DiscoverCharacteristics(service victron.BLEService) ([]victron.BLECharacteristic, error) {
-	// Not yet implemented
-	return []victron.BLECharacteristic{}, fmt.Errorf("not implemented")
-}
-
-// BLEConnection implements the victron.BLEConnection interface for macOS.
-type BLEConnection struct {
-	address   string
-	connected bool
-}
-
-func (c *BLEConnection) Address() string {
-	return c.address
-}
-
-func (c *BLEConnection) UUID() string {
-	return ""
-}
-
-func (c *BLEConnection) IsConnected() bool {
-	return c.connected
-}
-
-func (c *BLEConnection) Close() error {
-	c.connected = false
-	return nil
-}
-
-func (c *BLEConnection) ReadValue(characteristic victron.BLECharacteristic) ([]byte, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-
-func (c *BLEConnection) WriteValue(characteristic victron.BLECharacteristic, data []byte) error {
-	return fmt.Errorf("not implemented")
-}
-
-func (c *BLEConnection) SubscribeToNotifications(characteristic victron.BLECharacteristic) (<-chan []byte, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-
-func (c *BLEConnection) UnsubscribeFromNotifications(characteristic victron.BLECharacteristic) error {
-	return fmt.Errorf("not implemented")
+	return []victron.BLECharacteristic{}, fmt.Errorf("macOS BLE not implemented")
 }
