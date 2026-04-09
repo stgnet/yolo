@@ -1,7 +1,10 @@
 package victron
 
 import (
+	"context"
+	"fmt"
 	"testing"
+	"time"
 )
 
 // Test containsIgnoreCase
@@ -437,3 +440,102 @@ func Test_FindNotificationCharacteristic(t *testing.T) {
 		})
 	}
 }
+
+// Test InitializeBackend
+func Test_InitializeBackend(t *testing.T) {
+	tests := []struct {
+		name          string
+		setupFunc     func()
+		cleanupFunc   func()
+		expectError   bool
+		errorContains string
+	}{
+		{
+			name: "backend already initialized",
+			setupFunc: func() {
+				DefaultBackend = NewMockBackend()
+			},
+			cleanupFunc: func() {
+				DefaultBackend = nil
+			},
+			expectError: false,
+		},
+		{
+			name: "no backend creator available",
+			setupFunc: func() {
+				DefaultBackend = nil
+				backendCreator = nil
+			},
+			cleanupFunc: func() {
+				DefaultBackend = nil
+				backendCreator = func() (BLEBackend, error) { return NewMockBackend(), nil }
+			},
+			expectError:   true,
+			errorContains: "no BLE backend available",
+		},
+		{
+			name: "backend creation fails",
+			setupFunc: func() {
+				DefaultBackend = nil
+				backendCreator = func() (BLEBackend, error) { return nil, fmt.Errorf("creation failed") }
+			},
+			cleanupFunc: func() {
+				DefaultBackend = nil
+				backendCreator = func() (BLEBackend, error) { return NewMockBackend(), nil }
+			},
+			expectError:   true,
+			errorContains: "failed to create BLE backend",
+		},
+		{
+			name: "backend initialization fails",
+			setupFunc: func() {
+				DefaultBackend = nil
+				backendCreator = func() (BLEBackend, error) { return &failingBackend{}, nil }
+			},
+			cleanupFunc: func() {
+				DefaultBackend = nil
+				backendCreator = func() (BLEBackend, error) { return NewMockBackend(), nil }
+			},
+			expectError:   true,
+			errorContains: "failed to initialize BLE backend",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.setupFunc()
+			defer tt.cleanupFunc()
+
+			err := InitializeBackend()
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("InitializeBackend() expected error, got nil")
+					return
+				}
+				if !containsIgnoreCase(err.Error(), tt.errorContains) {
+					t.Errorf("InitializeBackend() error = %v, want to contain %q", err, tt.errorContains)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("InitializeBackend() unexpected error = %v", err)
+				}
+				if DefaultBackend == nil {
+					t.Errorf("InitializeBackend() expected backend to be set, got nil")
+				}
+			}
+		})
+	}
+}
+
+// failingBackend is a mock backend that fails on Initialize
+type failingBackend struct{}
+
+func (f *failingBackend) Initialize() error {
+	return fmt.Errorf("initialization failed")
+}
+
+func (f *failingBackend) Close() error                             { return nil }
+func (f *failingBackend) ScanForDevices(ctx context.Context, duration time.Duration) ([]BLEDevice, error) { return nil, nil }
+func (f *failingBackend) Connect(address string) (BLEConnection, error)                                        { return nil, nil }
+func (f *failingBackend) DiscoverServices(conn BLEConnection) ([]BLEService, error)                           { return nil, nil }
+func (f *failingBackend) DiscoverCharacteristics(service BLEService) ([]BLECharacteristic, error)              { return nil, nil }

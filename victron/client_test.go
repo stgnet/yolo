@@ -1,6 +1,7 @@
 package victron
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -804,5 +805,362 @@ func TestClient_Discover_EqualRSSI(t *testing.T) {
 	// Should pick the first one (AA:BB:CC:DD:EE:01) when all have equal RSSI
 	if bestDevice.Address != "AA:BB:CC:DD:EE:01" {
 		t.Errorf("Expected to pick first device with equal RSSI, got %s", bestDevice.Address)
+	}
+}
+
+// newTestDevice creates a properly initialized Device for testing
+func newTestDevice() *Device {
+	return &Device{
+		Address:      "AA:BB:CC:DD:EE:FF",
+		values:       make(map[string]Value),
+		valueChan:    make(chan Value, 100),
+		valueUpdates: make(chan map[string]Value, 10),
+		stopChan:     make(chan struct{}),
+	}
+}
+
+// TestDevice_IsConnected checks connection status before and after Connect
+func TestDevice_IsConnected(t *testing.T) {
+	device := newTestDevice()
+
+	// Should not be connected initially
+	if device.IsConnected() {
+		t.Error("Expected device to be disconnected initially")
+	}
+
+	// Connect the device
+	err := device.Connect()
+	if err != nil {
+		t.Fatalf("Connect() returned error: %v", err)
+	}
+
+	// Should now be connected
+	if !device.IsConnected() {
+		t.Error("Expected device to be connected after Connect()")
+	}
+
+	// Disconnect
+	device.Disconnect()
+
+	// Should not be connected anymore
+	if device.IsConnected() {
+		t.Error("Expected device to be disconnected after Disconnect()")
+	}
+}
+
+// TestDevice_GetValue tests retrieving individual values
+func TestDevice_GetValue(t *testing.T) {
+	device := newTestDevice()
+
+	// Connect the device
+	device.Connect()
+	defer device.Disconnect()
+
+	// Initially no values should exist
+	_, exists := device.GetValue("key1")
+	if exists {
+		t.Error("Expected GetValue to return false for non-existent key")
+	}
+
+	// Simulate a value being received
+	testValue := Value{
+		Key:        "systemvoltage",
+		RawValue:   "24.5",
+		Timestamp:  time.Now(),
+		FloatValue: 24.5,
+	}
+	device.valueChan <- testValue
+
+	// Give the processor time to handle it
+	time.Sleep(10 * time.Millisecond)
+
+	// Now the value should exist
+	retrieved, exists := device.GetValue("systemvoltage")
+	if !exists {
+		t.Error("Expected GetValue to return true for existing key")
+	}
+
+	if retrieved.Key != "systemvoltage" {
+		t.Errorf("Expected key 'systemvoltage', got '%s'", retrieved.Key)
+	}
+
+	if retrieved.RawValue != "24.5" {
+		t.Errorf("Expected RawValue '24.5', got '%s'", retrieved.RawValue)
+	}
+}
+
+// TestDevice_GetAllValues tests retrieving all values at once
+func TestDevice_GetAllValues(t *testing.T) {
+	device := newTestDevice()
+
+	// Connect the device
+	device.Connect()
+	defer device.Disconnect()
+
+	// Initially should be empty
+	allValues := device.GetAllValues()
+	if len(allValues) != 0 {
+		t.Errorf("Expected GetAllValues to return empty map, got %d values", len(allValues))
+	}
+
+	// Simulate receiving multiple values
+	testValues := []Value{
+		{Key: "systemvoltage", RawValue: "24.5", FloatValue: 24.5},
+		{Key: "systemcurrent", RawValue: "5.2", FloatValue: 5.2},
+		{Key: "pv1voltage", RawValue: "38.0", FloatValue: 38.0},
+	}
+
+	for _, tv := range testValues {
+		device.valueChan <- tv
+	}
+
+	// Give the processor time to handle them
+	time.Sleep(20 * time.Millisecond)
+
+	// Now should have all values
+	allValues = device.GetAllValues()
+	if len(allValues) != 3 {
+		t.Errorf("Expected GetAllValues to return 3 values, got %d", len(allValues))
+	}
+
+	// Verify specific values
+	if v, ok := allValues["systemvoltage"]; !ok || v.RawValue != "24.5" {
+		t.Error("Expected systemvoltage value")
+	}
+
+	// Test that returning a copy prevents modification of internal state
+	allValues["testkey"] = Value{Key: "testkey", RawValue: "test"}
+
+	if _, exists := device.GetValue("testkey"); exists {
+		t.Error("Expected GetAllValues to return a copy, not the internal map")
+	}
+}
+
+// TestDevice_Subscribe tests setting up a value subscription channel
+func TestDevice_Subscribe(t *testing.T) {
+	device := newTestDevice()
+
+	// Connect the device
+	device.Connect()
+	defer device.Disconnect()
+
+	// Subscribe to receive updates
+	subscription := device.Subscribe()
+
+	if subscription == nil {
+		t.Error("Expected Subscribe to return a non-nil channel")
+	}
+
+	// Send a test value
+	testValue := Value{
+		Key:        "testkey",
+		RawValue:   "123",
+		Timestamp:  time.Now(),
+		FloatValue: 123.0,
+	}
+	device.valueChan <- testValue
+
+	// Try to receive it from the subscription
+	select {
+	case received := <-subscription:
+		if received.Key != "testkey" {
+			t.Errorf("Expected key 'testkey', got '%s'", received.Key)
+		}
+		if received.RawValue != "123" {
+			t.Errorf("Expected RawValue '123', got '%s'", received.RawValue)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Timed out waiting for value from subscription")
+	}
+
+	// Multiple subscriptions should all work (they're the same channel)
+	subscription2 := device.Subscribe()
+	if subscription != subscription2 {
+		t.Error("Subscribe should return the same channel")
+	}
+}
+
+// TestDevice_SubscribeBatched tests batched update subscription
+func TestDevice_SubscribeBatched(t *testing.T) {
+	device := newTestDevice()
+
+	// Connect the device (starts the processor goroutine)
+	device.Connect()
+	defer device.Disconnect()
+
+	// Subscribe to batched updates
+	batchedSub := device.SubscribeBatched()
+
+	if batchedSub == nil {
+		t.Error("Expected SubscribeBatched to return a non-nil channel")
+	}
+
+	// Send multiple values
+	testValues := []Value{
+		{Key: "key1", RawValue: "100", FloatValue: 100.0},
+		{Key: "key2", RawValue: "200", FloatValue: 200.0},
+		{Key: "key3", RawValue: "300", FloatValue: 300.0},
+	}
+
+	for _, tv := range testValues {
+		device.valueChan <- tv
+	}
+
+	// Give the processor time to send updates
+	time.Sleep(20 * time.Millisecond)
+
+	// Collect all batched updates (each value triggers a separate update)
+	allBatches := make([]map[string]Value, 0)
+	for {
+		select {
+		case batch := <-batchedSub:
+			allBatches = append(allBatches, batch)
+		default:
+			// No more batches available immediately
+			goto doneCollecting
+		}
+	}
+doneCollecting:
+
+	if len(allBatches) == 0 {
+		t.Error("Expected to receive at least one batched update")
+	}
+
+	// The last batch should contain all values that were processed
+	lastBatch := allBatches[len(allBatches)-1]
+
+	if v, ok := lastBatch["key1"]; !ok || v.RawValue != "100" {
+		t.Error("Expected key1 in batches")
+	}
+	if v, ok := lastBatch["key2"]; !ok || v.RawValue != "200" {
+		t.Error("Expected key2 in batches")
+	}
+	if v, ok := lastBatch["key3"]; !ok || v.RawValue != "300" {
+		t.Error("Expected key3 in batches")
+	}
+}
+
+// TestDevice_WaitForConnection tests connection timeout handling
+func TestDevice_WaitForConnection(t *testing.T) {
+	t.Run("device_already_connected", func(t *testing.T) {
+		device := newTestDevice()
+		// Manually set connected flag for this test case
+		device.mu.Lock()
+		device.connected = true
+		device.mu.Unlock()
+
+		err := device.WaitForConnection(500 * time.Millisecond)
+		if err != nil {
+			t.Errorf("Expected no error for already connected device, got %v", err)
+		}
+	})
+
+	t.Run("device_not_connected_timeout", func(t *testing.T) {
+		device := newTestDevice()
+
+		err := device.WaitForConnection(100 * time.Millisecond)
+		if err == nil {
+			t.Error("Expected timeout error for disconnected device")
+		}
+	})
+}
+
+// TestDevice_ConcurrentGetValue tests concurrent value access
+func TestDevice_ConcurrentGetValue(t *testing.T) {
+	device := newTestDevice()
+
+	device.Connect()
+	defer device.Disconnect()
+
+	// Simulate concurrent reads and writes
+	var wg sync.WaitGroup
+
+	// Writer goroutine
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			device.valueChan <- Value{
+				Key:        fmt.Sprintf("key%d", i),
+				RawValue:   fmt.Sprintf("%d", i),
+				FloatValue: float64(i),
+			}
+		}
+	}()
+
+	// Reader goroutines
+	for j := 0; j < 5; j++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			for k := 0; k < 20; k++ {
+				device.GetValue(fmt.Sprintf("key%d", k%100))
+			}
+		}(j)
+	}
+
+	wg.Wait()
+
+	// Should not panic due to race conditions
+	t.Log("Concurrent access test completed without errors")
+}
+
+// TestDevice_processIncomingValues tests the value processing goroutine
+func TestDevice_processIncomingValues(t *testing.T) {
+	device := newTestDevice()
+
+	// Connect starts the processor
+	device.Connect()
+	defer device.Disconnect()
+
+	// Send multiple values with same key to test overwriting
+	sameKeyValues := []string{"1.0", "2.0", "3.0"}
+	for _, val := range sameKeyValues {
+		device.valueChan <- Value{
+			Key:        "testkey",
+			RawValue:   val,
+			FloatValue: 1.0,
+		}
+	}
+
+	time.Sleep(10 * time.Millisecond)
+
+	// Should have the last value (3.0) since it overwrites
+	lastVal, exists := device.GetValue("testkey")
+	if !exists {
+		t.Error("Expected testkey to exist after processing")
+	}
+
+	if lastVal.RawValue != "3.0" {
+		t.Errorf("Expected RawValue '3.0' (last value), got '%s'", lastVal.RawValue)
+	}
+}
+
+// TestDevice_getValuesCopy tests that getValuesCopy returns a deep copy
+func TestDevice_getValuesCopy(t *testing.T) {
+	device := newTestDevice()
+
+	device.Connect()
+	defer device.Disconnect()
+
+	// Add a value
+	device.valueChan <- Value{Key: "key1", RawValue: "val1", FloatValue: 1}
+	time.Sleep(10 * time.Millisecond)
+
+	// Get copy
+	copy := device.getValuesCopy()
+
+	// Modify the copy (this should not affect internal state)
+	copy["key1"] = Value{Key: "key1", RawValue: "modified"}
+	copy["newkey"] = Value{Key: "newkey", RawValue: "newval"}
+
+	// Check that internal state is unchanged
+	internal, _ := device.GetValue("key1")
+	if internal.RawValue == "modified" {
+		t.Error("Expected internal value to be 'val1', not 'modified'")
+	}
+
+	if _, exists := device.GetValue("newkey"); exists {
+		t.Error("Expected newkey to not exist in internal state")
 	}
 }
