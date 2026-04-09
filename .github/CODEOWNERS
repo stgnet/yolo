@@ -1,0 +1,36 @@
+# Code Owners for YOLO Project
+
+# Define default code owner(s)
+* @scottstg
+
+# All Go source files
+*.go @scottstg
+
+# Test files - require special attention for test safety
+*_test.go @scottstg
+
+# Documentation
+DOCS/ @scottstg
+*.md @scottstg
+
+# Configuration files
+.github/workflows/* @scottstg
+config.json @scottstg
+go.* @scottstg
+
+# Victron BLE integration (specialized hardware code)
+victron/ @scottstg
+tools_victron.go @scottstg
+tools_victron_test.go @scottstg
+
+# Email handling (security-sensitive)
+email/ @scottstg
+tools_email.go @scottstg
+tools_inbox.go @scottstg
+*inbox*_test.go @scottstg
+
+# Browser automation (security-sensitive)
+tools_playwright.go @scottstg
+tools_playwright_test.go @scottstg
+tools_web_enhanced.go @scottstg
+tools_search.go @scottstg
