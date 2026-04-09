@@ -1,4 +1,4 @@
-//go:build linux
+//go:build linux && cgo
 
 // Platform-specific initialization for Linux BLE backend.
 package bluez

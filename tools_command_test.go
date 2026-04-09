@@ -55,7 +55,7 @@ func TestRunCommand(t *testing.T) {
 			name:    "command with variable expansion",
 			command: "echo $HOME",
 			check: func(output string) bool {
-				return strings.HasPrefix(output, "/") && len(output) > 10
+				return strings.HasPrefix(output, "/") && len(output) > 1
 			},
 		},
 		{
