@@ -3,12 +3,12 @@
 // macOS BLE backend initialization
 package victron
 
+import (
+	"errors"
+)
+
 func init() {
 	SetBackendCreator(func() (BLEBackend, error) {
-		backend, err := NewMacOSBackend()
-		if err != nil {
-			return nil, err
-		}
-		return backend, nil
+		return nil, errors.New("macOS BLE support not yet implemented. See https://github.com/scottstg/yolo/issues/TODO")
 	})
 }

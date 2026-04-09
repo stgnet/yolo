@@ -14,7 +14,18 @@ import (
 )
 
 // Backend implements victron.BLEBackend for macOS.
-// TODO: Implement using go-bluetooth or other BLE library with proper API support.
+// 
+// CURRENT STATUS: Basic stub implementation with proper interface compliance.
+// Limitations: ScanForDevices returns empty results, GATT discovery methods are unimplemented.
+// 
+// TODO: Full macOS BLE implementation requires:
+//   1. Integration with CoreBluetooth framework (via cgo bindings or Objective-C bridge)
+//   2. Proper Bluetooth permission handling in Info.plist
+//   3. GATT service/characteristic scanning and connection management
+//   4. Notification subscription mechanism for real-time data streaming
+//   5. Testing with actual Victron devices (SmartSolar, SmartShunt, VE.Direct adapters)
+// 
+// Reference: See victron/bluez/backend.go for complete Linux implementation example.
 type Backend struct {
 	initialized bool
 	connected   bool
