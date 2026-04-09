@@ -1,8 +1,18 @@
 //go:build darwin
 
-// Package macos provides a BLE backend implementation for macOS.
-// Note: This is currently a stub implementation. Full BLE support requires
-// additional dependencies and system permissions.
+// Package macos provides a BLE backend stub implementation for macOS.
+//
+// CURRENT STATUS: Basic stub with proper interface compliance, not functional for actual BLE operations.
+// Limitations: ScanForDevices returns empty results, GATT methods return "not implemented" errors.
+//
+// IMPLEMENTATION GUIDE: To enable full macOS BLE support, you need to:
+// 1. Integrate with CoreBluetooth framework via CGO bindings or Objective-C bridge
+// 2. Add Bluetooth permissions handling in app bundle Info.plist
+// 3. Implement GATT service/characteristic scanning and connection management  
+// 4. Add notification subscription for real-time VE.Direct data streaming
+// 5. Test with actual Victron devices (SmartSolar, SmartShunt, VE.Direct adapters)
+//
+// Reference: See victron/bluez/backend.go for complete Linux implementation example.
 package macos
 
 import (
@@ -14,18 +24,7 @@ import (
 )
 
 // Backend implements victron.BLEBackend for macOS.
-//
-// CURRENT STATUS: Basic stub implementation with proper interface compliance.
-// Limitations: ScanForDevices returns empty results, GATT discovery methods are unimplemented.
-//
-// TODO: Full macOS BLE implementation requires:
-//  1. Integration with CoreBluetooth framework (via cgo bindings or Objective-C bridge)
-//  2. Proper Bluetooth permission handling in Info.plist
-//  3. GATT service/characteristic scanning and connection management
-//  4. Notification subscription mechanism for real-time data streaming
-//  5. Testing with actual Victron devices (SmartSolar, SmartShunt, VE.Direct adapters)
-//
-// Reference: See victron/bluez/backend.go for complete Linux implementation example.
+// Note: This is a stub implementation with proper interface compliance only.
 type Backend struct {
 	initialized bool
 	connected   bool
@@ -33,6 +32,7 @@ type Backend struct {
 }
 
 // New creates a new BLE backend.
+// Note: This is a stub implementation. Full BLE support requires CoreBluetooth integration.
 func New() (*Backend, error) {
 	return &Backend{
 		initialized: false,
