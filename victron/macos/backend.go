@@ -104,7 +104,7 @@ func isVictronDevice(adv ble.Advertisement) bool {
 type bleConnection struct {
 	client  ble.Client
 	address string
-	uuid    string // Device UUID (macOS uses client UUID instead of MAC)
+	uuid    string                  // Device UUID (macOS uses client UUID instead of MAC)
 	svcMap  map[string]*ble.Service // Cache of discovered services by UUID
 }
 
@@ -240,8 +240,8 @@ func (b *Backend) Connect(address string) (victron.BLEConnection, error) {
 		for i := 0; i < 6; i++ {
 			fmt.Sscanf(cleanAddr[i*2:i*2+2], "%02x", &addrBytes[i])
 		}
-		addr = ble.NewAddr(fmt.Sprintf("%02X:%02X:%02X:%02X:%02X:%02X", 
-			addrBytes[0], addrBytes[1], addrBytes[2], 
+		addr = ble.NewAddr(fmt.Sprintf("%02X:%02X:%02X:%02X:%02X:%02X",
+			addrBytes[0], addrBytes[1], addrBytes[2],
 			addrBytes[3], addrBytes[4], addrBytes[5]))
 	} else {
 		return nil, fmt.Errorf("invalid MAC address format: %s", address)
@@ -255,10 +255,10 @@ func (b *Backend) Connect(address string) (victron.BLEConnection, error) {
 	fmt.Printf("[INFO] Connected to device %s\n", address)
 
 	conn := &bleConnection{
-		client:   client,
-		address:  address,
-		uuid:     client.Addr().String(),
-		svcMap:   make(map[string]*ble.Service),
+		client:  client,
+		address: address,
+		uuid:    client.Addr().String(),
+		svcMap:  make(map[string]*ble.Service),
 	}
 
 	return conn, nil
@@ -280,7 +280,7 @@ func (b *Backend) DiscoverServices(conn victron.BLEConnection) ([]victron.BLESer
 
 	for _, svc := range services {
 		svcUUID := string(svc.UUID)
-		
+
 		victronSvc := victron.BLEService{
 			UUID:    svcUUID,
 			Primary: true,

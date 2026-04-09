@@ -1,9 +1,9 @@
 //go:build darwin
 
 // macOS BLE backend initialization - currently a placeholder
-// 
-// NOTE: Full macOS BLE implementation exists in victron/macos/backend.go but cannot be 
-// automatically integrated due to Go's import cycle restrictions. The macos package uses 
+//
+// NOTE: Full macOS BLE implementation exists in victron/macos/backend.go but cannot be
+// automatically integrated due to Go's import cycle restrictions. The macos package uses
 // types from the parent victron package, making it impossible for victron to import macos
 // without creating a circular dependency.
 //

@@ -9,10 +9,10 @@ import (
 // TestParseAddressFrame tests parsing of VE.Direct address frames
 func TestParseAddressFrame(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
-		wantKey  string
-		wantErr  bool
+		name    string
+		input   string
+		wantKey string
+		wantErr bool
 	}{
 		{
 			name:    "valid address frame",
@@ -38,12 +38,12 @@ func TestParseAddressFrame(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			frame := &VEDirectFrame{}
 			result, err := parseAddressFrame(tt.input, frame)
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("parseAddressFrame() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			if result.DataKey != tt.wantKey {
 				t.Errorf("result.DataKey = %q, want %q", result.DataKey, tt.wantKey)
 			}
@@ -61,7 +61,7 @@ func TestValidateVEDirectMessage(t *testing.T) {
 		{
 			name:  "valid message with correct checksum",
 			input: "/V(V=12.345)", // Actual checksum byte needed after )
-			valid: false, // This needs proper checksum byte appended
+			valid: false,          // This needs proper checksum byte appended
 		},
 		{
 			name:  "message without parentheses",
@@ -93,7 +93,7 @@ func TestFormatValue(t *testing.T) {
 		check func(*VEDirectFrame, string) bool
 	}{
 		{
-			name: "nil frame returns empty string",
+			name:  "nil frame returns empty string",
 			input: nil,
 			check: func(frame *VEDirectFrame, result string) bool {
 				return result == ""
@@ -135,9 +135,9 @@ func TestFormatValue(t *testing.T) {
 // TestGetValueType tests lookup of VE.Direct value type information
 func TestGetValueType(t *testing.T) {
 	tests := []struct {
-		name     string
-		key      string
-		wantNil  bool
+		name    string
+		key     string
+		wantNil bool
 	}{
 		{
 			name:    "known key returns info",
@@ -168,7 +168,7 @@ func TestConvertToValue(t *testing.T) {
 		input *VEDirectFrame
 	}{
 		{
-			name: "empty frame",
+			name:  "empty frame",
 			input: &VEDirectFrame{},
 		},
 		{
@@ -202,7 +202,7 @@ func TestErrorTypes(t *testing.T) {
 		t.Error("ParseError.Error() returned empty string")
 	}
 
-	// Test ConnectionError  
+	// Test ConnectionError
 	connErr := &ConnectionError{Address: "AA:BB:CC:DD:EE:FF", Err: fmt.Errorf("connection failed")}
 	if connErr.Error() == "" {
 		t.Error("ConnectionError.Error() returned empty string")
@@ -224,7 +224,7 @@ func TestErrorTypes(t *testing.T) {
 	if DeviceTypeSmartSolar.String() != "SmartSolar" {
 		t.Error("DeviceTypeSmartSolar.String() returned unexpected value")
 	}
-	
+
 	if DeviceTypeUnknown.String() != "Unknown" {
 		t.Error("DeviceTypeUnknown.String() returned unexpected value")
 	}

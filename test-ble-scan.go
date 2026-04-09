@@ -1,3 +1,4 @@
+//go:build ignore
 // +build ignore
 
 // Test BLE scanning on macOS with proper initialization
@@ -26,17 +27,17 @@ func main() {
 	defer cancel()
 
 	fmt.Println("[INFO] Starting scan...")
-	
+
 	err = ble.Scan(ctx, false, func(adv ble.Advertisement) {
 		name := adv.LocalName()
 		if name == "" {
 			name = "(no name)"
 		}
-		fmt.Printf("Found: %s - %s\n", 
+		fmt.Printf("Found: %s - %s\n",
 			adv.Addr().String(),
 			name,
 		)
-		
+
 		// Check for Victron devices
 		lowerName := fmt.Sprintf("%s", name)
 		if contains(lowerName, "glow") || contains(lowerName, "victron") || contains(lowerName, "ve.direct") {

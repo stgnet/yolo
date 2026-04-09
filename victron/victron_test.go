@@ -275,28 +275,28 @@ func Test_calculateChecksum(t *testing.T) {
 // Test NewScanFilter
 func Test_NewScanFilter(t *testing.T) {
 	tests := []struct {
-		name       string
-		deviceType DeviceType
+		name         string
+		deviceType   DeviceType
 		expectedName string
 	}{
 		{
-			name:       "SmartSolar device type",
-			deviceType: DeviceTypeSmartSolar,
+			name:         "SmartSolar device type",
+			deviceType:   DeviceTypeSmartSolar,
 			expectedName: "SmartSolar",
 		},
 		{
-			name:       "SmartShunt device type",
-			deviceType: DeviceTypeSmartShunt,
+			name:         "SmartShunt device type",
+			deviceType:   DeviceTypeSmartShunt,
 			expectedName: "SmartShunt",
 		},
 		{
-			name:       "VEDirectAdapter device type",
-			deviceType: DeviceTypeVEDirectAdapter,
+			name:         "VEDirectAdapter device type",
+			deviceType:   DeviceTypeVEDirectAdapter,
 			expectedName: "VE.Direct",
 		},
 		{
-			name:       "Unknown device type returns empty filter",
-			deviceType: DeviceTypeUnknown,
+			name:         "Unknown device type returns empty filter",
+			deviceType:   DeviceTypeUnknown,
 			expectedName: "",
 		},
 	}
@@ -314,10 +314,10 @@ func Test_NewScanFilter(t *testing.T) {
 // Test ValidateCharacteristic
 func Test_ValidateCharacteristic(t *testing.T) {
 	tests := []struct {
-		name          string
+		name           string
 		characteristic *GATTCharacteristic
-		requireNotify bool
-		expectError   bool
+		requireNotify  bool
+		expectError    bool
 	}{
 		{
 			name: "valid notification characteristic with notify required",
@@ -347,7 +347,7 @@ func Test_ValidateCharacteristic(t *testing.T) {
 			expectError:   true,
 		},
 		{
-			name:          "nil characteristic returns error",
+			name:           "nil characteristic returns error",
 			characteristic: nil,
 			requireNotify:  false,
 			expectError:    true,
@@ -379,7 +379,7 @@ func Test_ValidateCharacteristic(t *testing.T) {
 // Test FindNotificationCharacteristic
 func Test_FindNotificationCharacteristic(t *testing.T) {
 	serviceWithNotify := &GATTService{
-		UUID:      "test-uuid",
+		UUID: "test-uuid",
 		Characteristics: []*GATTCharacteristic{
 			{UUID: "read-only", Properties: PropRead},
 			{UUID: VEDirectDataCharacteristic, Properties: PropNotify},
@@ -388,7 +388,7 @@ func Test_FindNotificationCharacteristic(t *testing.T) {
 	}
 
 	serviceWithoutNotify := &GATTService{
-		UUID:      "another-uuid",
+		UUID: "another-uuid",
 		Characteristics: []*GATTCharacteristic{
 			{UUID: "read-only", Properties: PropRead},
 			{UUID: "write-only", Properties: PropWrite},
@@ -420,7 +420,7 @@ func Test_FindNotificationCharacteristic(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := FindNotificationCharacteristic(tt.service)
-			
+
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("FindNotificationCharacteristic() = %v, nil, want error", result)
