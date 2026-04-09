@@ -1,167 +1,158 @@
 # Security Policy
 
-## Reporting Security Issues
+## Reporting a Vulnerability
 
-If you discover a security vulnerability in YOLO, please report it responsibly. We appreciate your efforts to improve the security of this project.
+We take the security of YOLO seriously. If you believe you've found a security vulnerability, please responsible disclosure by following these guidelines.
 
 ### How to Report
 
-- **Email**: security@example.com (replace with actual contact)
-- **GitHub Security Advisories**: Use the GitHub Security tab for private reporting
-- **Response Time**: We aim to acknowledge reports within 48 hours
-- **Updates**: You'll receive updates within 7 days of your report
+1. **Do NOT create a public GitHub issue** for security vulnerabilities
+2. Instead, report it privately via one of these methods:
+   - Email maintainers directly (see below)
+   - Use the private vulnerability reporting feature in GitHub
 
-### What to Include
+### What We Need
 
 Please include as much information as possible:
-- Description of the vulnerability
-- Steps to reproduce
-- Affected versions (if known)
-- Potential impact
-- Suggested mitigation (if any)
 
-## Security Practices in YOLO
+- **Description**: Clear description of the vulnerability
+- **Steps to Reproduce**: How to trigger the issue
+- **Impact**: Potential consequences if exploited  
+- **Proof of Concept**: Code or commands demonstrating the issue (if available)
+- **Suggested Fix**: Your recommended mitigation (optional)
+- **Environment**: Go version, OS, dependencies
 
-This document outlines the security measures implemented throughout the YOLO codebase.
+### Response Timeline
 
-### 1. Email Handling Security
+- **Initial Response**: Within 48 hours
+- **Acknowledgment**: We'll confirm receipt within 72 hours
+- **Assessment**: We'll evaluate and categorize within 5 business days
+- **Resolution**: Target timeframe depends on severity (see below)
 
-#### Input Validation
-- All email content is validated before processing
-- File attachments are scanned and sanitized
-- URLs in emails are verified before access
+### Severity Classification
 
-#### Buffer Protection
-- Fixed-size buffers prevent memory overflow attacks
-- Bounded string operations with length checks
-- Automatic buffer cleanup after use
+| Level | Description | Response Time |
+|-------|-------------|---------------|
+| **Critical** | Remote code execution, authentication bypass, data exposure | 24-48 hours |
+| **High** | Privilege escalation, information leakage | 3-5 business days |
+| **Medium** | Denial of service, minor security issues | 10 business days |
+| **Low** | Best practice violations, minimal impact | 30 business days |
 
-#### Sandbox Isolation
-- Email processing runs in isolated processes
-- No direct system command execution from email content
-- Network access restricted to configured domains only
+### What to Expect
 
-### 2. Bluetooth Low Energy (BLE) Security
+1. **Receipt Confirmation**: You'll receive acknowledgment of your report
+2. **Assessment Update**: We'll inform you of our findings and planned action
+3. **Regular Updates**: During investigation (every 5-7 days)
+4. **Resolution Notification**: When the issue is fixed
+5. **Credit**: Acknowledgment in release notes (with your permission)
 
-#### Connection Validation
-- MAC address verification before connection
-- Timeout protection against denial-of-service
-- Automatic disconnection after idle periods
+### What We Won't Do
 
-#### Data Integrity
-- VE.Direct protocol message validation
-- Checksum verification on all received packets
-- Reject malformed or unexpected data
+- Sue you or report to authorities for good-faith security research
+- Harass or retaliate against security researchers
+- Publicly disclose without your consent (unless legally required)
 
-#### Resource Protection
-- Maximum connection limits prevent resource exhaustion
-- Graceful degradation under load
-- Memory bounds checking on all allocations
+### Supported Versions
 
-### 3. File System Security
+We currently provide security updates for:
 
-#### Path Validation
-- All file paths are validated against allowed directories
-- No path traversal vulnerabilities (../ checks)
-- Symlink resolution before operations
+| Version | Supported |
+|---------|-----------|
+| Latest Release | ✅ Yes |
+| Previous Release | ⚠️ Critical only |
+| Older Releases | ❌ No |
 
-#### Permission Controls
-- Files created with minimal required permissions
-- No world-readable/writable configurations
-- Config files protected from external modification
+### Scope
 
-### 4. Network Security
+**In Scope:**
+- YOLO application vulnerabilities
+- VE.Direct protocol parser (victron package)
+- Configuration handling
+- File operations and permissions
 
-#### HTTP/HTTPS Connections
-- TLS verification enabled for all HTTPS connections
-- Certificate pinning for critical services
-- Timeout limits prevent hanging connections
+**Out of Scope:**
+- Third-party dependencies (report to their maintainers)
+- Denial of Service attacks
+- Physical security issues
+- Social engineering
+- Issues in user-configured code
 
-#### API Authentication
-- OAuth2 tokens never written to logs or temporary files
-- Token refresh handled securely with rotation
-- API keys stored only in encrypted configuration
+### Bug Bounty
 
-### 5. Memory Safety (Go-Specific)
+At this time, we do not offer monetary rewards for vulnerability reports. However, we:
 
-#### Goroutine Management
-- All goroutines properly awaited before shutdown
-- Channel closures prevent deadlocks
-- Context-based cancellation everywhere
+- Publicly acknowledge contributors who find significant issues
+- Provide early access to security updates
+- Offer to collaborate on the fix if desired
 
-#### Resource Cleanup
-- File handles explicitly closed with defer
-- Database connections pooled and recycled
-- Network sockets released promptly
+### Responsible Disclosure Agreement
 
-### 6. Tool Execution Security
+By reporting a vulnerability, you agree to:
 
-#### Command Injection Prevention
-- No shell expansion in user-provided arguments
-- All commands use argument arrays, not strings
-- Whitelist of allowed commands only
+1. Not exploit or test the vulnerability beyond proof of concept
+2. Give us reasonable time to fix before public disclosure (30 days minimum)
+3. Communicate responsibly with other researchers about your findings
 
-#### Subprocess Isolation
-- Child processes run with minimal environment
-- No inheritance of sensitive variables
-- Output captured and validated before display
+### Contact Information
 
-### 7. Configuration Security
+**Primary Method**: Email maintainers  
+- See LICENSE file for maintainer information
 
-#### Sensitive Data
-- API keys stored in encrypted config file
-- Environment variables for secrets (not committed)
-- No hardcoded credentials in source
-
-#### Validation
-- Config schema validation on startup
-- Type-safe configuration access
-- Default values for missing options
-
-## Security Testing
-
-### Automated Tests
-- All security-critical functions have unit tests
-- Fuzz testing for input parsers
-- Boundary condition coverage
-
-### Code Review
-- SECURITY.md changes require maintainer review
-- All PRs with security implications flagged
-- Regular dependency vulnerability scanning
-
-### Third-Party Dependencies
-- All dependencies listed in go.mod/go.sum
-- Regular audits for known vulnerabilities
-- Minimal dependency set reduces attack surface
-
-## Vulnerability History
-
-### Known Issues
-- None currently known
-
-### Past Resolutions
-- No public vulnerabilities disclosed yet
-
-## Security Resources
-
-### For Contributors
-- [OWASP Top 10](https://owasp.org/www-project-top-ten/) - Common web vulnerabilities
-- [Go Security](https://golang.org/s/security) - Go-specific security guidelines
-- [Security in the Wild](https://security-in-the-wild.com/) - Recent vulnerability analysis
-
-### For Users
-- Keep YOLO updated to latest version
-- Review configuration file permissions
-- Use strong passwords for email accounts
-- Enable 2FA where supported
-
-## Security Contacts
-
-- **Primary**: security@example.com
-- **Maintainers**: @yolo-maintainers (via GitHub)
+**GitHub Security Advisories**: Use the [Private Vulnerability Reporting](https://github.com/scottstg/yolo/security/advisories/new) feature
 
 ---
 
-**Last Updated**: December 19, 2024  
-**Version**: 1.0
+## Security Best Practices
+
+When using YOLO, follow these security guidelines:
+
+### Configuration Security
+```bash
+# Set appropriate file permissions on config.json
+chmod 600 ~/.yolo/config.json
+
+# Review sensitive data in configuration files
+# Avoid hardcoding credentials or tokens
+```
+
+### Dependency Management
+```bash
+# Regularly update dependencies
+go get -u
+
+# Audit for known vulnerabilities
+go install golang.org/x/vuln/cmd/govulncheck@latest
+govulncheck ./...
+```
+
+### Bluetooth Device Security
+```bash
+# Only connect to trusted Victron devices
+# Verify device MAC addresses in production environments
+# Use secure channels for sensitive operations
+```
+
+### Environment Variables
+```bash
+# Use environment variables for sensitive configuration
+export YOLO_API_KEY="your-secure-key"
+```
+
+## Incident Response
+
+In the event of a confirmed security incident:
+
+1. **Immediate Action**: We'll release an urgent patch if needed
+2. **Notification**: Users will be notified via release notes and issue tracker
+3. **Mitigation Guidance**: Documentation on protecting against the vulnerability
+4. **Timeline Disclosure**: When the issue was discovered, fixed, and disclosed
+
+## Security Audit History
+
+| Date | Issue | Severity | Status |
+|------|-------|----------|--------|
+| TBD | First security audit pending | - | Not started |
+
+---
+
+**Thank you for helping keep YOLO secure!** 🔒
