@@ -4,7 +4,7 @@
 //
 // CURRENT STATUS: Not yet implemented for macOS
 // --------------------------------------------------------
-// This backend is currently a stub placeholder. To enable Victron device 
+// This backend is currently a stub placeholder. To enable Victron device
 // connectivity on macOS, you need to implement CoreBluetooth support.
 //
 // IMPLEMENTATION REQUIREMENTS:
@@ -61,7 +61,7 @@ func (b *Backend) Close() error {
 func (b *Backend) ScanForDevices(ctx context.Context, duration time.Duration) ([]victron.BLEDevice, error) {
 	fmt.Println("[INFO] macOS BLE scanning not implemented")
 	fmt.Println("[INFO] To enable: implement CoreBluetooth support as documented in backend.go header")
-	
+
 	// Return empty list - real implementation would scan for devices
 	return []victron.BLEDevice{}, fmt.Errorf("macOS BLE scanning not implemented")
 }
