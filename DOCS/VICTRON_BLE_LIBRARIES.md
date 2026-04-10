@@ -201,14 +201,63 @@ go run examples/victron-ble-example.go
 3. Ensure no other device is connected to the Glow
 4. Reset the Glow device if possible
 
-#### Reading Measurements
-Once connected, you can read:
-- Battery voltage (via VE.Direct protocol)
-- State of charge indicators
-- Fault conditions
-- Charging status
+#### Reading Measurements from Victron Devices (Including Glow)
 
-Note: The Glow primarily provides **status information** via LED colors. For detailed measurements like exact voltage/current, you'd typically connect to a Victron SmartSolar or SmartShunt instead.
+Once connected to a Victron device, you can read various measurements via the VE.Direct protocol over BLE GATT notifications.
+
+**Supported Measurement Types:**
+
+| Category | Data Key | Description | Unit |
+|----------|----------|-------------|------|
+| **Voltage** | `V` | System voltage | Volts (V) |
+| | `B.V` | Battery voltage | Volts (V) |
+| | `P.V` | PV input voltage (panel 1) | Volts (V) |
+| | `P.V(2)` | PV input voltage (panel 2) | Volts (V) |
+
+| **Current** | `A` | System current (charging) | Amps (A) |
+| | `B.A` | Battery current | Amps (A) |
+| | `P.A` | PV input current (panel 1) | Amps (A) |
+| | `P.A(2)` | PV input current (panel 2) | Amps (A) |
+
+| **Power** | `W` | System power | Watts (W) |
+| | `P.W` | PV input power (panel 1) | Watts (W) |
+| | `P.W(2)` | PV input power (panel 2) | Watts (W) |
+
+| **State of Charge** | `SoC` | Battery state of charge | Percentage (%) |
+| | `V.Ar` | Energy yield today (Ah) | Amp-hours (Ah) |
+| | `V.Wh.ar` | Energy yield today (Wh) | Watt-hours (Wh) |
+
+| **Other** | `T` | Device temperature | Celsius (°C) |
+| | `Alg.S` | Charging algorithm state | Enum |
+| | `S` | Stage | Enum |
+| | `E` | Error code | Code |
+| | `/Dev` | Device type string | String |
+| | `/Rev` | Firmware revision | String |
+| | `/Sn` | Serial number | String |
+
+**How to Read Measurements:**
+
+1. **Connect to the device** using its BLE address
+2. **Discover GATT services** and find the Victron service (UUID: `0000fff0-...`)
+3. **Subscribe to notifications** on the characteristic (UUID: `0000fff1-...`)
+4. **Parse incoming VE.Direct frames** - each frame contains one data point
+5. **Build a complete picture** by collecting multiple frames over time
+
+**Example Flow:**
+```
+Frame 1: /V(V=12.650)A  → System Voltage = 12.650V
+Frame 2: /A(A=2.500)B   → System Current = 2.500A
+Frame 3: /P.V(P.V=38.100)C → PV Voltage Panel 1 = 38.100V
+Frame 4: /SoC(SoC=85)D  → State of Charge = 85%
+```
+
+**Note on Glow LED Indicator:**
+The Victron Glow device primarily provides **visual status indicators** via its LEDs. For detailed voltage/current measurements, you'll typically want to connect to:
+- **SmartSolar MPPT** - for solar charging data
+- **SmartShunt** - for battery monitoring data
+- **VE.Direct Bluetooth adapter** - to add BLE to any VE.Direct device
+
+The Glow can be connected but may provide more limited telemetry compared to dedicated monitoring devices.
 
 ---
 
