@@ -96,12 +96,12 @@ func TestCalculateDelay(t *testing.T) {
 		attempt  int
 		expected time.Duration
 	}{
-		{0, 1 * time.Second},   // initial delay
-		{1, 2 * time.Second},   // 1s * 2
-		{2, 4 * time.Second},   // 2s * 2
-		{3, 8 * time.Second},   // 4s * 2
-		{4, 10 * time.Second},  // capped at max
-		{5, 10 * time.Second},  // still capped
+		{0, 1 * time.Second},  // initial delay
+		{1, 2 * time.Second},  // 1s * 2
+		{2, 4 * time.Second},  // 2s * 2
+		{3, 8 * time.Second},  // 4s * 2
+		{4, 10 * time.Second}, // capped at max
+		{5, 10 * time.Second}, // still capped
 	}
 
 	for _, tt := range tests {

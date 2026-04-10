@@ -93,7 +93,7 @@ func TestDeduplicateToolCalls(t *testing.T) {
 			// For the "preserves order" test, verify first items are kept
 			if tt.name == "preserves order of first occurrences" {
 				if len(result) >= 3 && (result[0].Name != "first" || result[1].Name != "second" || result[2].Name != "third") {
-					t.Errorf("order not preserved: got %v, want [first, second, third]", 
+					t.Errorf("order not preserved: got %v, want [first, second, third]",
 						[]string{result[0].Name, result[1].Name, result[2].Name})
 				}
 			}
@@ -127,10 +127,10 @@ func TestToolDef(t *testing.T) {
 			funcName: "read_file",
 			desc:     "Read a file's contents",
 			props: map[string]ToolParam{
-				"path": {Type: "string", Description: "Path to file"},
+				"path":  {Type: "string", Description: "Path to file"},
 				"limit": {Type: "integer", Description: "Max lines"},
 			},
-			required: []string{"path"},
+			required:   []string{"path"},
 			wantType:   "function",
 			wantFunc:   "read_file",
 			wantParams: 2,
@@ -140,7 +140,7 @@ func TestToolDef(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := toolDef(tt.funcName, tt.desc, tt.props, tt.required)
-			
+
 			if result.Type != "function" {
 				t.Errorf("toolDef().Type = %q, want \"function\"", result.Type)
 			}
@@ -151,11 +151,11 @@ func TestToolDef(t *testing.T) {
 				t.Errorf("toolDef().Description = %q, want %q", result.Function.Description, tt.desc)
 			}
 			if len(result.Function.Parameters.Properties) != len(tt.props) {
-				t.Errorf("toolDef().Parameters.Properties count = %d, want %d", 
+				t.Errorf("toolDef().Parameters.Properties count = %d, want %d",
 					len(result.Function.Parameters.Properties), len(tt.props))
 			}
 			if len(result.Function.Parameters.Required) != len(tt.required) {
-				t.Errorf("toolDef().Required count = %d, want %d", 
+				t.Errorf("toolDef().Required count = %d, want %d",
 					len(result.Function.Parameters.Required), len(tt.required))
 			}
 		})
@@ -216,15 +216,15 @@ func TestOllamaTagsResponseJSON(t *testing.T) {
 // TestChatMessageJSON tests chat message JSON handling.
 func TestChatMessageJSON(t *testing.T) {
 	tests := []struct {
-		name   string
-		input  string
-		role   string
+		name    string
+		input   string
+		role    string
 		content string
 	}{
 		{
-			name: "user message",
-			input: `{"role":"user","content":"hello"}`,
-			role: "user",
+			name:    "user message",
+			input:   `{"role":"user","content":"hello"}`,
+			role:    "user",
 			content: "hello",
 		},
 		{
@@ -278,25 +278,25 @@ func TestToolCallJSON(t *testing.T) {
 	if call.Function.Name != "read_file" {
 		t.Errorf("call.Function.Name = %q, want %q", call.Function.Name, "read_file")
 	}
-	
+
 	// Verify arguments are present (it's a JSON string containing the args)
 	if len(call.Function.Arguments) == 0 {
 		t.Error("call.Function.Arguments should not be empty")
 	}
-	
+
 	// The RawMessage contains a JSON-encoded string, so we need to unmarshal twice
 	var argsJSONStr string
 	if err := json.Unmarshal(call.Function.Arguments, &argsJSONStr); err != nil {
 		t.Errorf("failed to unmarshal arguments as string: %v", err)
 		return
 	}
-	
+
 	// Now unmarshal the actual JSON object
 	var argsMap map[string]any
 	if err := json.Unmarshal([]byte(argsJSONStr), &argsMap); err != nil {
 		t.Errorf("failed to parse tool call arguments JSON: %v", err)
 	}
-	
+
 	if path, ok := argsMap["path"].(string); !ok || path != "test.txt" {
 		t.Errorf("args.path = %v, want \"test.txt\"", argsMap["path"])
 	}

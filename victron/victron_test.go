@@ -534,11 +534,15 @@ func (f *failingBackend) Initialize() error {
 	return fmt.Errorf("initialization failed")
 }
 
-func (f *failingBackend) Close() error                                  { return nil }
-func (f *failingBackend) ScanForDevices(ctx context.Context, duration time.Duration) ([]BLEDevice, error) { return nil, nil }
-func (f *failingBackend) Connect(address string) (BLEConnection, error)                                       { return nil, nil }
-func (f *failingBackend) DiscoverServices(conn BLEConnection) ([]BLEService, error)                          { return nil, nil }
-func (f *failingBackend) DiscoverCharacteristics(service BLEService) ([]BLECharacteristic, error)            { return nil, nil }
+func (f *failingBackend) Close() error { return nil }
+func (f *failingBackend) ScanForDevices(ctx context.Context, duration time.Duration) ([]BLEDevice, error) {
+	return nil, nil
+}
+func (f *failingBackend) Connect(address string) (BLEConnection, error)             { return nil, nil }
+func (f *failingBackend) DiscoverServices(conn BLEConnection) ([]BLEService, error) { return nil, nil }
+func (f *failingBackend) DiscoverCharacteristics(service BLEService) ([]BLECharacteristic, error) {
+	return nil, nil
+}
 
 // Test DeviceType.String() method
 func TestDeviceType_String(t *testing.T) {
@@ -593,4 +597,3 @@ func TestDeviceType_String(t *testing.T) {
 		})
 	}
 }
-

@@ -104,54 +104,54 @@ func TestIsVictronDevice(t *testing.T) {
 		expected   bool
 	}{
 		{
-			name:     "GLOW device",
+			name:       "GLOW device",
 			deviceName: "GLOW 50/15",
-			expected: true,
+			expected:   true,
 		},
 		{
-			name:     "SmartShunt device",
+			name:       "SmartShunt device",
 			deviceName: "SmartShunt 500A",
-			expected: true,
+			expected:   true,
 		},
 		{
-			name:     "SmartSolar device",
+			name:       "SmartSolar device",
 			deviceName: "SmartSolar MPPT 150/35",
-			expected: true,
+			expected:   true,
 		},
 		{
-			name:     "VE.Direct device",
+			name:       "VE.Direct device",
 			deviceName: "VE.Direct Adapter",
-			expected: true,
+			expected:   true,
 		},
 		{
-			name:     "victron lowercase",
+			name:       "victron lowercase",
 			deviceName: "victron energy",
-			expected: true,
+			expected:   true,
 		},
 		{
-			name:     "VICTRON uppercase",
+			name:       "VICTRON uppercase",
 			deviceName: "VICTRON BATTERY",
-			expected: true,
+			expected:   true,
 		},
 		{
-			name:     "Mixed case glow",
+			name:       "Mixed case glow",
 			deviceName: "My GLow Charger",
-			expected: true,
+			expected:   true,
 		},
 		{
-			name:     "Empty device name",
+			name:       "Empty device name",
 			deviceName: "",
-			expected: false,
+			expected:   false,
 		},
 		{
-			name:     "Non-Victron device",
+			name:       "Non-Victron device",
 			deviceName: "Apple Watch",
-			expected: false,
+			expected:   false,
 		},
 		{
-			name:     "Bluetooth speaker",
+			name:       "Bluetooth speaker",
 			deviceName: "JBL Speaker",
-			expected: false,
+			expected:   false,
 		},
 	}
 

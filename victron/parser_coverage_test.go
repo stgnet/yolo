@@ -29,7 +29,7 @@ func TestParseVEDirectMessageComplete(t *testing.T) {
 			name:      "data frame starts with /",
 			input:     "/V(12.345)",
 			wantValid: false, // Will be invalid due to missing checksum
-			wantErr:   true, // Missing checksum returns error
+			wantErr:   true,  // Missing checksum returns error
 			checkType: "data",
 		},
 		{
@@ -102,7 +102,7 @@ func TestParseDataFrameComplete(t *testing.T) {
 			wantKey:   "V",
 			wantValue: 12.345,
 			wantValid: false, // Missing checksum
-			wantErr:   true, // Returns error for missing checksum
+			wantErr:   true,  // Returns error for missing checksum
 		},
 		{
 			name:      "key=value format",
@@ -386,7 +386,7 @@ func TestConvertToValueCoverage(t *testing.T) {
 		frame *VEDirectFrame
 	}{
 		{
-			name: "empty frame",
+			name:  "empty frame",
 			frame: &VEDirectFrame{},
 		},
 		{
@@ -506,7 +506,7 @@ func TestParseDataFrameChecksumValidation(t *testing.T) {
 		{
 			name: "valid checksum passes",
 			input: func() string {
-				content := "/V(12.345)"  // Message including the closing paren
+				content := "/V(12.345)" // Message including the closing paren
 				checksum := calculateChecksum([]byte(content))
 				return content + string(rune(checksum))
 			}(),
@@ -515,13 +515,13 @@ func TestParseDataFrameChecksumValidation(t *testing.T) {
 		},
 		{
 			name:      "invalid checksum fails",
-			input:     "/V(12.345)" + string(rune(0xFF)),  // Message with ) then wrong checksum byte
+			input:     "/V(12.345)" + string(rune(0xFF)), // Message with ) then wrong checksum byte
 			wantValid: false,
 			wantErr:   false, // Returns frame with Valid=false, no error
 		},
 		{
 			name:      "missing checksum byte returns error",
-			input:     "/V(12.345)",  // Message with ) but NO checksum byte after it
+			input:     "/V(12.345)", // Message with ) but NO checksum byte after it
 			wantValid: false,
 			wantErr:   true,
 		},
@@ -673,7 +673,7 @@ func TestValidateVEDirectMessageEdgeCases(t *testing.T) {
 		{
 			name: "valid message with correct checksum",
 			input: func() string {
-				content := "/V(V=12.345)"  // Message including the closing paren
+				content := "/V(V=12.345)" // Message including the closing paren
 				checksum := calculateChecksum([]byte(content))
 				return content + string(rune(checksum))
 			}(),

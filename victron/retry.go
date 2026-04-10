@@ -9,21 +9,21 @@ import (
 
 // RetryConfig holds configuration for retry operations.
 type RetryConfig struct {
-	MaxRetries   int
-	BaseDelay    time.Duration
-	MaxDelay     time.Duration
-	Multiplier   float64
-	Jitter       bool
+	MaxRetries int
+	BaseDelay  time.Duration
+	MaxDelay   time.Duration
+	Multiplier float64
+	Jitter     bool
 }
 
 // DefaultRetryConfig returns a sensible default retry configuration.
 func DefaultRetryConfig() RetryConfig {
 	return RetryConfig{
-		MaxRetries:   3,
-		BaseDelay:    100 * time.Millisecond,
-		MaxDelay:     5 * time.Second,
-		Multiplier:   2.0,
-		Jitter:       true,
+		MaxRetries: 3,
+		BaseDelay:  100 * time.Millisecond,
+		MaxDelay:   5 * time.Second,
+		Multiplier: 2.0,
+		Jitter:     true,
 	}
 }
 
@@ -36,7 +36,7 @@ func Retry[T any](ctx context.Context, config RetryConfig, fn func() (T, error))
 	for attempt := 0; attempt <= config.MaxRetries; attempt++ {
 		if attempt > 0 {
 			delay := calculateDelay(attempt, config)
-			
+
 			// Check if context is cancelled before waiting
 			select {
 			case <-ctx.Done():
@@ -50,16 +50,16 @@ func Retry[T any](ctx context.Context, config RetryConfig, fn func() (T, error))
 		if err == nil {
 			return result, nil
 		}
-		
+
 		lastErr = err
-		
+
 		// Don't retry if this is the last attempt
 		if attempt == config.MaxRetries {
 			break
 		}
 	}
 
-	return result, fmt.Errorf("operation failed after %d attempts: %w", 
+	return result, fmt.Errorf("operation failed after %d attempts: %w",
 		config.MaxRetries+1, lastErr)
 }
 
@@ -67,18 +67,18 @@ func Retry[T any](ctx context.Context, config RetryConfig, fn func() (T, error))
 func calculateDelay(attempt int, config RetryConfig) time.Duration {
 	// Calculate exponential delay: baseDelay * (multiplier ^ (attempt - 1))
 	delay := float64(config.BaseDelay) * pow(config.Multiplier, float64(attempt-1))
-	
+
 	// Cap at max delay
 	if delay > float64(config.MaxDelay) {
 		delay = float64(config.MaxDelay)
 	}
-	
+
 	// Add jitter if enabled (±25% variation)
 	if config.Jitter {
 		variation := delay * 0.25
-		delay = delay + (variation*randFloat()) - variation
+		delay = delay + (variation * randFloat()) - variation
 	}
-	
+
 	return time.Duration(delay)
 }
 
@@ -96,7 +96,6 @@ func randFloat() float64 {
 	return rand.Float64()
 }
 
-
 // Test functions for coverage (used by retry_test.go)
 
 // RetryWithFixedResult is a test helper that creates a function returning fixed values.
@@ -108,9 +107,9 @@ func RetryWithFixedResult(result int, err error) func() (int, error) {
 
 // RetryWithCalls tracks the number of times a function is called.
 type RetryCallTracker struct {
-	Calls   int
-	Result  int
-	Error   error
+	Calls  int
+	Result int
+	Error  error
 }
 
 func NewRetryCallTracker(result int, err error) *RetryCallTracker {
