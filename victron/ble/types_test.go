@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestDevice_IsVictron(t *testing.T) {
+func TestDevice_DetectAsVictron(t *testing.T) {
 	tests := []struct {
 		name             string
 		deviceName       string
@@ -54,9 +54,9 @@ func TestDevice_IsVictron(t *testing.T) {
 				ManufacturerData: tt.manufacturerData,
 			}
 
-			if got := device.IsVictron(); got != tt.expected {
-				t.Errorf("Device.IsVictron() = %v, want %v", got, tt.expected)
-			}
+		if got := device.DetectAsVictron(); got != tt.expected {
+			t.Errorf("Device.DetectAsVictron() = %v, want %v", got, tt.expected)
+		}
 		})
 	}
 }
@@ -84,7 +84,7 @@ func TestCharacteristic_String(t *testing.T) {
 		Description: "Sensor Data",
 	}
 
-	expected := "Characteristic{UUID: 00002a00-98e4-11ea-9a03-0242ac120002, Handle: 0x0015, ValueHandle: 0x0016, Properties: 0x2a, Description: Sensor Data}"
+	expected := "Characteristic{UUID: 00002a00-98e4-11ea-9a03-0242ac120002, Handle: 0x0015, ValueHandle: 0x0016, Properties: 0x2A, Description: Sensor Data}"
 	if got := characteristic.String(); got != expected {
 		t.Errorf("Characteristic.String() = %q, want %q", got, expected)
 	}
