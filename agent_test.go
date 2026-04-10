@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -101,18 +102,123 @@ func TestCheckBinaryFreshness(t *testing.T) {
 	}
 }
 
-// TestCheckEmailInbox verifies email inbox checking
+// TestCheckEmailInbox verifies email inbox checking across various scenarios
 func TestCheckEmailInbox(t *testing.T) {
-	tmpDir := t.TempDir()
-	agent := &YoloAgent{
-		baseDir: tmpDir,
-		config:  newTestConfig(t, tmpDir),
+	tests := []struct {
+		name           string
+		setupScenario  func() (inboxPath string, cleanup func())
+		expectEmpty    bool
+		expectContains []string // substrings to check for in result
+	}{
+		{
+			name: "empty inbox path returns empty",
+			setupScenario: func() (string, func()) {
+				return "", func() {}
+			},
+			expectEmpty:    true,
+			expectContains: []string{},
+		},
+		{
+			name: "non-existent inbox directory returns empty",
+			setupScenario: func() (string, func()) {
+				tmpDir := t.TempDir()
+				inboxPath := filepath.Join(tmpDir, "nonexistent_inbox")
+				return inboxPath, func() {}
+			},
+			expectEmpty:    true,
+			expectContains: []string{},
+		},
+		{
+			name: "empty inbox directory returns empty",
+			setupScenario: func() (string, func()) {
+				tmpDir := t.TempDir()
+				inboxPath := filepath.Join(tmpDir, "empty_inbox")
+				os.Mkdir(inboxPath, 0755)
+				return inboxPath, func() {}
+			},
+			expectEmpty:    true,
+			expectContains: []string{},
+		},
+		{
+			name: "inbox with one new email",
+			setupScenario: func() (string, func()) {
+				tmpDir := t.TempDir()
+				inboxPath := filepath.Join(tmpDir, "inbox_with_email")
+				os.Mkdir(inboxPath, 0755)
+				emailFile := filepath.Join(inboxPath, "message1.eml")
+				os.WriteFile(emailFile, []byte("From: test@example.com\nSubject: Test"), 0644)
+				return inboxPath, func() {}
+			},
+			expectEmpty:    false,
+			expectContains: []string{"NEW EMAILS", "1 unread email"},
+		},
+		{
+			name: "inbox with multiple new emails",
+			setupScenario: func() (string, func()) {
+				tmpDir := t.TempDir()
+				inboxPath := filepath.Join(tmpDir, "inbox_with_emails")
+				os.Mkdir(inboxPath, 0755)
+				// Create 3 email files
+				for i := 1; i <= 3; i++ {
+					emailFile := filepath.Join(inboxPath, fmt.Sprintf("message%d.eml", i))
+					os.WriteFile(emailFile, []byte(fmt.Sprintf("From: test%d@example.com\nSubject: Test %d", i, i)), 0644)
+				}
+				return inboxPath, func() {}
+			},
+			expectEmpty:    false,
+			expectContains: []string{"NEW EMAILS", "3 unread email(s)"},
+		},
+		{
+			name: "inbox with directories and files only counts files",
+			setupScenario: func() (string, func()) {
+				tmpDir := t.TempDir()
+				inboxPath := filepath.Join(tmpDir, "inbox_mixed")
+				os.Mkdir(inboxPath, 0755)
+				// Create email file
+				emailFile := filepath.Join(inboxPath, "message1.eml")
+				os.WriteFile(emailFile, []byte("From: test@example.com\nSubject: Test"), 0644)
+				// Create subdirectory (should not be counted)
+				subDir := filepath.Join(inboxPath, "cur")
+				os.Mkdir(subDir, 0755)
+				return inboxPath, func() {}
+			},
+			expectEmpty:    false,
+			expectContains: []string{"NEW EMAILS", "1 unread email"},
+		},
 	}
 
-	result := agent.checkEmailInbox()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			inboxPath, cleanup := tt.setupScenario()
+			defer cleanup()
 
-	if result != "" {
-		t.Logf("Email inbox check found: %s", result)
+			tmpDir := t.TempDir()
+			config := newTestConfig(t, tmpDir)
+			if inboxPath != "" {
+				// Override inbox path in config
+				config.SetInboxPath(inboxPath)
+			}
+
+			agent := &YoloAgent{
+				baseDir: tmpDir,
+				config:  config,
+			}
+
+			result := agent.checkEmailInbox()
+
+			if tt.expectEmpty {
+				if result != "" {
+					t.Errorf("Expected empty result for %q, got: %q", tt.name, result)
+				}
+				return
+			}
+
+			for _, expected := range tt.expectContains {
+				if !strings.Contains(result, expected) {
+					t.Errorf("Expected result to contain %q for test %q, got: %q", expected, tt.name, result)
+				}
+			}
+		})
 	}
 }
 
