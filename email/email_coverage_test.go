@@ -288,3 +288,287 @@ func TestSendViaSendmailCommandArgs(t *testing.T) {
 
 	_ = client // Avoid unused variable warning
 }
+// TestGetEnvOrDefaultEmpty tests that empty env var returns default
+func TestGetEnvOrDefaultEmpty(t *testing.T) {
+	// Clear any existing value
+	os.Unsetenv("TEST_NONEXISTENT_VAR")
+	
+	result := getEnvOrDefault("TEST_NONEXISTENT_VAR", "default_value")
+	if result != "default_value" {
+		t.Errorf("Expected 'default_value', got '%s'", result)
+	}
+}
+
+// TestGetEnvOrDefaultWithValue tests that existing env var is returned
+func TestGetEnvOrDefaultWithValue(t *testing.T) {
+	original := os.Getenv("TEST_YOLO_VAR")
+	defer os.Setenv("TEST_YOLO_VAR", original)
+	
+	os.Setenv("TEST_YOLO_VAR", "custom_value")
+	result := getEnvOrDefault("TEST_YOLO_VAR", "default_value")
+	
+	if result != "custom_value" {
+		t.Errorf("Expected 'custom_value', got '%s'", result)
+	}
+}
+
+// TestGetEnvOrDefaultEmptyValue tests that empty string env var returns default
+func TestGetEnvOrDefaultEmptyValue(t *testing.T) {
+	original := os.Getenv("TEST_EMPTY_VAR")
+	defer os.Setenv("TEST_EMPTY_VAR", original)
+	
+	os.Setenv("TEST_EMPTY_VAR", "")
+	result := getEnvOrDefault("TEST_EMPTY_VAR", "default_value")
+	
+	if result != "default_value" {
+		t.Errorf("Expected 'default_value' for empty env var, got '%s'", result)
+	}
+}
+
+// TestGetEnvOrDefaultEmptyDefault tests that existing env var is returned even if default is empty
+func TestGetEnvOrDefaultEmptyDefault(t *testing.T) {
+	original := os.Getenv("TEST_YOLO_VAR2")
+	defer os.Setenv("TEST_YOLO_VAR2", original)
+	
+	os.Setenv("TEST_YOLO_VAR2", "actual_value")
+	result := getEnvOrDefault("TEST_YOLO_VAR2", "")
+	
+	if result != "actual_value" {
+		t.Errorf("Expected 'actual_value', got '%s'", result)
+	}
+}
+
+func TestBuildMultipartMessageNoAttachments(t *testing.T) {
+	cfg := &Config{
+		From: "sender@test.com",
+	}
+	client := New(cfg)
+
+	msg := &Message{
+		To:      []string{"recipient@example.com"},
+		Subject: "Test Subject",
+		Body:    "Test body content",
+	}
+
+	var buf bytes.Buffer
+	emailContent := client.buildMultipartMessage(msg)
+	buf = emailContent
+
+	contentStr := buf.String()
+
+	// Verify required headers are present
+	requiredHeaders := []string{
+		"From: sender@test.com",
+		"To: recipient@example.com",
+		"Subject: Test Subject",
+		"MIME-Version: 1.0",
+	}
+
+	for _, header := range requiredHeaders {
+		if !strings.Contains(contentStr, header) {
+			t.Errorf("Expected email to contain header: %s, got:\n%s", header, contentStr)
+		}
+	}
+
+	// Verify body is present
+	if !strings.Contains(contentStr, "Test body content") {
+		t.Error("Expected body content in email")
+	}
+}
+
+// TestBuildMultipartMessageWithAttachment tests multipart message with attachments
+func TestBuildMultipartMessageWithAttachment(t *testing.T) {
+	cfg := &Config{
+		From: "sender@test.com",
+	}
+	client := New(cfg)
+
+	// Create a temporary file for attachment
+	tmpFile, err := os.CreateTemp("", "test-attachment-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	content := []byte("Test attachment content")
+	if _, err := tmpFile.Write(content); err != nil {
+		t.Fatalf("Failed to write to temp file: %v", err)
+	}
+	tmpFile.Close()
+
+	msg := &Message{
+		To:      []string{"recipient@example.com"},
+		Subject: "Test Subject With Attachment",
+		Body:    "Test body with attachment",
+		Attachments: []Attachment{
+			{
+				Filename: tmpFile.Name(),
+				Content:  content,
+			},
+		},
+	}
+
+	emailContent := client.buildMultipartMessage(msg)
+	contentStr := emailContent.String()
+
+	// Verify required headers are present
+	requiredHeaders := []string{
+		"From: sender@test.com",
+		"To: recipient@example.com",
+		"Subject: Test Subject With Attachment",
+		"MIME-Version: 1.0",
+	}
+
+	for _, header := range requiredHeaders {
+		if !strings.Contains(contentStr, header) {
+			t.Errorf("Expected email to contain header: %s", header)
+		}
+	}
+
+	// Verify attachment is present with proper encoding
+	if !strings.Contains(contentStr, "Content-Disposition: attachment") {
+		t.Error("Expected attachment content disposition in multipart message")
+	}
+
+	if !strings.Contains(contentStr, "Content-Transfer-Encoding: base64") {
+		t.Error("Expected base64 encoding for attachment")
+	}
+
+	// Attachment filename should be present
+	if !strings.Contains(contentStr, tmpFile.Name()) {
+		t.Error("Expected attachment filename in multipart message")
+	}
+}
+
+// TestBuildMultipartMessageWithMultipleAttachments tests multiple attachments
+func TestBuildMultipartMessageWithMultipleAttachments(t *testing.T) {
+	cfg := &Config{
+		From: "sender@test.com",
+	}
+	client := New(cfg)
+
+	// Create temporary files for attachments
+	tmpFile1, _ := os.CreateTemp("", "test-attachment1-*")
+	defer os.Remove(tmpFile1.Name())
+	tmpFile2, _ := os.CreateTemp("", "test-attachment2-*")
+	defer os.Remove(tmpFile2.Name())
+
+	content1 := []byte("First attachment content")
+	content2 := []byte("Second attachment content")
+	tmpFile1.Write(content1)
+	tmpFile1.Close()
+	tmpFile2.Write(content2)
+	tmpFile2.Close()
+
+	msg := &Message{
+		To:      []string{"recipient@example.com"},
+		Subject: "Multiple Attachments Test",
+		Body:    "Body with multiple attachments",
+		Attachments: []Attachment{
+			{Filename: tmpFile1.Name(), Content: content1},
+			{Filename: tmpFile2.Name(), Content: content2},
+		},
+	}
+
+	emailContent := client.buildMultipartMessage(msg)
+	contentStr := emailContent.String()
+
+	// Verify both attachments have proper disposition headers
+	count := strings.Count(contentStr, "Content-Disposition: attachment")
+	if count != 2 {
+		t.Errorf("Expected 2 attachment dispositions, got %d", count)
+	}
+
+	// Should have base64 encoding for each attachment
+	base64Count := strings.Count(contentStr, "Content-Transfer-Encoding: base64")
+	if base64Count != 2 {
+		t.Errorf("Expected 2 base64 encodings, got %d", base64Count)
+	}
+
+	// Both filenames should be present
+	if !strings.Contains(contentStr, tmpFile1.Name()) {
+		t.Error("Expected first attachment filename in multipart message")
+	}
+	if !strings.Contains(contentStr, tmpFile2.Name()) {
+		t.Error("Expected second attachment filename in multipart message")
+	}
+}
+
+// TestBuildMultipartMessageWithMultipleRecipients tests multiple recipients
+func TestBuildMultipartMessageWithMultipleRecipients(t *testing.T) {
+	cfg := &Config{
+		From: "sender@test.com",
+	}
+	client := New(cfg)
+
+	msg := &Message{
+		To:      []string{"user1@example.com", "user2@example.com", "user3@example.com"},
+		Subject: "Multiple Recipients Test",
+		Body:    "Test body",
+	}
+
+	emailContent := client.buildMultipartMessage(msg)
+	contentStr := emailContent.String()
+
+	// Verify all recipients are in To header
+	recipients := []string{"user1@example.com", "user2@example.com", "user3@example.com"}
+	for _, recipient := range recipients {
+		if !strings.Contains(contentStr, recipient) {
+			t.Errorf("Expected recipient %s in To header", recipient)
+		}
+	}
+}
+
+// TestBuildMultipartMessageWithSpecialCharacters tests special characters handling
+func TestBuildMultipartMessageWithSpecialCharacters(t *testing.T) {
+	cfg := &Config{
+		From: "sender@test.com",
+	}
+	client := New(cfg)
+
+	msg := &Message{
+		To:      []string{"recipient@example.com"},
+		Subject: "Test: Special <Chars> & \"Symbols\"",
+		Body:    "Body with unicode: 日本語 🎉 and line breaks\n\nMultiple paragraphs",
+	}
+
+	emailContent := client.buildMultipartMessage(msg)
+	contentStr := emailContent.String()
+
+	// Verify special characters are preserved (may be encoded)
+	if !strings.Contains(contentStr, "Special") && !strings.Contains(contentStr, "special") {
+		t.Error("Expected 'Special' in subject content")
+	}
+
+	// Body content should be present
+	if !strings.Contains(contentStr, "Body with unicode") {
+		t.Error("Expected body content in multipart message")
+	}
+}
+
+// TestBuildMultipartMessageEmptySubject tests handling of empty subject
+func TestBuildMultipartMessageEmptySubject(t *testing.T) {
+	cfg := &Config{
+		From: "sender@test.com",
+	}
+	client := New(cfg)
+
+	msg := &Message{
+		To:      []string{"recipient@example.com"},
+		Subject: "",
+		Body:    "Test body",
+	}
+
+	emailContent := client.buildMultipartMessage(msg)
+	contentStr := emailContent.String()
+
+	// Should still include Subject header even if empty
+	if !strings.Contains(contentStr, "Subject:") {
+		t.Error("Expected Subject header even when empty")
+	}
+}
+
+// TestBuildMultipartMessageWithCC tests message with CC recipients
+func TestBuildMultipartMessageWithCC(t *testing.T) {
+	t.Skip("Skipped - Message struct does not have CC field")
+}
