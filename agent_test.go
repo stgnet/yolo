@@ -364,16 +364,178 @@ func TestIsFileMutationTool(t *testing.T) {
 
 // TestHandleCommand tests command handler
 func TestHandleCommand(t *testing.T) {
-	tmpDir := t.TempDir()
+	tests := []struct {
+		name          string
+		command       string
+		checkState    func(config *YoloConfig, history *HistoryDB) bool
+		expectPanic   bool
+	}{
+		{
+			name:    "help command",
+			command: "/help",
+			checkState: func(config *YoloConfig, history *HistoryDB) bool {
+				return true // Just shouldn't panic
+			},
+			expectPanic: false,
+		},
+		{
+			name:    "terminal toggle without arg",
+			command: "/terminal",
+			checkState: func(config *YoloConfig, history *HistoryDB) bool {
+				// Should toggle (initially off, so should be on now)
+				return config.GetTerminalMode()
+			},
+			expectPanic: false,
+		},
+		{
+			name:    "terminal on",
+			command: "/terminal on",
+			checkState: func(config *YoloConfig, history *HistoryDB) bool {
+				return config.GetTerminalMode()
+			},
+			expectPanic: false,
+		},
+		{
+			name:    "terminal off",
+			command: "/terminal off",
+			checkState: func(config *YoloConfig, history *HistoryDB) bool {
+				return !config.GetTerminalMode()
+			},
+			expectPanic: false,
+		},
+		{
+			name:    "debug on",
+			command: "/debug on",
+			checkState: func(config *YoloConfig, history *HistoryDB) bool {
+				return config.GetDebugMode()
+			},
+			expectPanic: false,
+		},
+		{
+			name:    "debug off",
+			command: "/debug off",
+			checkState: func(config *YoloConfig, history *HistoryDB) bool {
+				return !config.GetDebugMode()
+			},
+			expectPanic: false,
+		},
+		{
+			name:    "auto on",
+			command: "/auto on",
+			checkState: func(config *YoloConfig, history *HistoryDB) bool {
+				return config.GetAutoMode()
+			},
+			expectPanic: false,
+		},
+		{
+			name:    "auto off",
+			command: "/auto off",
+			checkState: func(config *YoloConfig, history *HistoryDB) bool {
+				return !config.GetAutoMode()
+			},
+			expectPanic: false,
+		},
+		{
+			name:    "model command",
+			command: "/model",
+			checkState: func(config *YoloConfig, history *HistoryDB) bool {
+				return true // Just shouldn't panic
+			},
+			expectPanic: false,
+		},
+		{
+			name:    "history command",
+			command: "/history",
+			checkState: func(config *YoloConfig, history *HistoryDB) bool {
+				return true // Just shouldn't panic
+			},
+			expectPanic: false,
+		},
+		{
+			name:    "status command",
+			command: "/status",
+			checkState: func(config *YoloConfig, history *HistoryDB) bool {
+				return true // Just shouldn't panic
+			},
+			expectPanic: false,
+		},
+		{
+			name:    "todo list command",
+			command: "/todo",
+			checkState: func(config *YoloConfig, history *HistoryDB) bool {
+				return true // Just shouldn't panic
+			},
+			expectPanic: false,
+		},
+		{
+			name:    "memory status command",
+			command: "/memory",
+			checkState: func(config *YoloConfig, history *HistoryDB) bool {
+				return true // Just shouldn't panic
+			},
+			expectPanic: false,
+		},
+		{
+			name:    "config show command",
+			command: "/config",
+			checkState: func(config *YoloConfig, history *HistoryDB) bool {
+				return true // Just shouldn't panic
+			},
+			expectPanic: false,
+		},
+		{
+			name:    "unknown command (should not panic)",
+			command: "/unknowncommand",
+			checkState: func(config *YoloConfig, history *HistoryDB) bool {
+				return true // Should handle gracefully
+			},
+			expectPanic: false,
+		},
+		{
+			name:    "empty command (should not panic)",
+			command: "",
+			checkState: func(config *YoloConfig, history *HistoryDB) bool {
+				return true // Should handle gracefully
+			},
+			expectPanic: false,
+		},
+	}
 
-	origDir, _ := os.Getwd()
-	defer os.Chdir(origDir)
-	os.Chdir(tmpDir)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			config := newTestConfig(t, tmpDir)
+			history := NewHistoryDB(tmpDir)
+			
+			agent := &YoloAgent{
+				baseDir: tmpDir,
+				config:  config,
+				history: history,
+			}
 
-	agent := NewYoloAgent()
+			if tt.expectPanic {
+				defer func() {
+					if r := recover(); r == nil {
+						t.Error("Expected panic but did not panic")
+					}
+				}()
+			} else {
+				defer func() {
+					if r := recover(); r != nil {
+						t.Errorf("Unexpected panic: %v", r)
+					}
+				}()
+			}
 
-	// Test help command - verify it doesn't crash
-	agent.handleCommand("help")
+			agent.handleCommand(tt.command)
+
+			if tt.checkState != nil {
+				if !tt.checkState(config, history) {
+					t.Error("checkState failed")
+				}
+			}
+		})
+	}
 }
 
 // TestParseTextToolCalls tests text tool call parsing
