@@ -183,6 +183,11 @@ func TestStripOrphanedCloseTags(t *testing.T) {
 		expected string
 	}{
 		{"no orphaned tags", "<b>hello</b>", "<b>hello</b>"},
+		{"orphaned close tag", "test </unknown>", "test "},
+		{"multiple orphaned tags", "</one>text</two> ", "text "},
+		{"nested with orphaned", "<outer><inner></outer></orphan>", "<outer><inner></outer>"},
+		{"self-closing preserved", "<br/><img src=\"x\"/>", "<br/><img src=\"x\"/>"},
+		{"empty input", "", ""},
 	}
 
 	for _, tt := range tests {
