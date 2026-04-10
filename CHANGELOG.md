@@ -9,6 +9,21 @@ and this project adheres to semantic versioning.
 
 ### Added
 
+#### Test Coverage Improvements (Latest Autonomous Session)
+- Created `retry_test.go` (350 lines, 6 test functions) for main yolo package retry utility
+  - Tests exponential backoff calculation at each retry level
+  - Validates success scenarios (immediate and eventual)
+  - Handles max attempts exhaustion and permanent failures
+  - Verifies jitter randomization prevents thundering herd problems
+- Created `victron/retry_test.go` (218 lines, 6 test functions) for victron package retry logic
+  - Comprehensive coverage of Retry function with exponential backoff
+  - Tests jitter addition for distributed retry timing
+  - Validates context cancellation integration
+- Added mock BLE backend (`victron/macos/backend_test.go`) enabling tests without real hardware
+  - MockAdvertiser and MockDevice implementations
+  - Simulates device discovery and characteristic reads
+  - Enables CI/CD testing on machines without Bluetooth
+
 #### Victron Energy BLE Support
 - Complete implementation of Victron Energy device support via Bluetooth Low Energy
 - Support for SmartSolar MPPT charge controllers and SmartShunt battery monitors
