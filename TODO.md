@@ -16,7 +16,7 @@
 ### Documentation
 
 - [x] Add architecture diagram showing YOLO agent components (ARCHITECTURE.md)
-- [ ] Document Ollama model requirements and prompts
+- [x] Document Ollama model requirements and prompts
 - [ ] Create troubleshooting guide for common issues
 
 ## 📋 Medium Priority
@@ -53,8 +53,14 @@
 |---------|----------|--------|--------|
 | yolo/victron | 87.1% | 90% | ✅ Near target |
 | yolo/email | 73.4% | 80% | ⚠️ Good progress |
-| yolo/main | 41.2% | 60% | 🔴 Needs work |
+| yolo/main | 45.7% | 60% | 🔴 Improved (was 41.2%) |
 | yolo/victron/macos | 10.6% | 50% | 🔴 Platform-specific |
+
+**Notable Improvements:**
+- `checkEmailInbox`: 94.1% coverage (from 17.6%)
+- `runAgentLoop`: 94.1% coverage (from 80%)
+- `showMemoryStatus`: 83.8% coverage (from 8.1%)
+- Email package: +29% overall improvement
 
 ## 🏗️ Technical Debt
 
@@ -77,4 +83,4 @@
 
 ---
 
-*Last updated: 2025*
+*Last updated: January 2025*

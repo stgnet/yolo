@@ -272,14 +272,113 @@ func TestIngestHandoffResults(t *testing.T) {
 		config:  newTestConfig(t, tmpDir),
 	}
 
-	beforeCount := len(agent.history.Data.Messages)
-	agent.ingestHandoffResults()
-	afterCount := len(agent.history.Data.Messages)
+	t.Run("no pending handoffs", func(t *testing.T) {
+		beforeCount := len(agent.history.Data.Messages)
+		count := agent.ingestHandoffResults()
+		afterCount := len(agent.history.Data.Messages)
 
-	if beforeCount != afterCount {
-		t.Error("Expected no messages added when there are no pending handoffs")
-	}
+		if count != 0 {
+			t.Errorf("Expected 0 ingested, got %d", count)
+		}
+		if beforeCount != afterCount {
+			t.Error("Expected no messages added when there are no pending handoffs")
+		}
+	})
+
+	t.Run("completed handoff", func(t *testing.T) {
+		done := make(chan struct{})
+		close(done) // Mark as complete immediately
+
+		result := &handoffResult{
+			ID:   1,
+			Done: done,
+			Results: []toolExecResult{
+				{Name: "test_tool", Args: map[string]any{"arg": "value"}, Result: "result1"},
+				{Name: "another_tool", Args: map[string]any{"num": 42}, Result: "result2"},
+			},
+		}
+
+		agent.pendingHandoffs = []*handoffResult{result}
+		beforeCount := len(agent.history.Data.Messages)
+
+		count := agent.ingestHandoffResults()
+
+		if count != 1 {
+			t.Errorf("Expected 1 ingested, got %d", count)
+		}
+		if len(agent.pendingHandoffs) != 0 {
+			t.Errorf("Expected no pending handoffs after ingestion, got %d", len(agent.pendingHandoffs))
+		}
+		afterCount := len(agent.history.Data.Messages)
+		if afterCount <= beforeCount {
+			t.Error("Expected a message to be added for completed handoff")
+		}
+	})
+
+	t.Run("pending handoff remains", func(t *testing.T) {
+		done := make(chan struct{})
+		// Don't close - still pending
+
+		result := &handoffResult{
+			ID:   2,
+			Done: done,
+			Results: []toolExecResult{
+				{Name: "pending_tool", Args: map[string]any{}, Result: ""},
+			},
+		}
+
+		agent.pendingHandoffs = []*handoffResult{result}
+		count := agent.ingestHandoffResults()
+
+		if count != 0 {
+			t.Errorf("Expected 0 ingested for pending handoff, got %d", count)
+		}
+		if len(agent.pendingHandoffs) != 1 {
+			t.Errorf("Expected pending handoff to remain, got %d", len(agent.pendingHandoffs))
+		}
+	})
+
+	t.Run("mixed completed and pending", func(t *testing.T) {
+		done1 := make(chan struct{})
+		close(done1) // Completed
+
+		done2 := make(chan struct{})
+		// Pending
+
+		result1 := &handoffResult{
+			ID:   3,
+			Done: done1,
+			Results: []toolExecResult{
+				{Name: "completed_tool", Args: map[string]any{}, Result: "done"},
+			},
+		}
+
+		result2 := &handoffResult{
+			ID:   4,
+			Done: done2,
+			Results: []toolExecResult{
+				{Name: "pending_tool", Args: map[string]any{}, Result: ""},
+			},
+		}
+
+		agent.pendingHandoffs = []*handoffResult{result1, result2}
+		beforeCount := len(agent.history.Data.Messages)
+
+		count := agent.ingestHandoffResults()
+
+		if count != 1 {
+			t.Errorf("Expected 1 ingested, got %d", count)
+		}
+		if len(agent.pendingHandoffs) != 1 {
+			t.Errorf("Expected 1 pending handoff to remain, got %d", len(agent.pendingHandoffs))
+		}
+		afterCount := len(agent.history.Data.Messages)
+		if afterCount <= beforeCount {
+			t.Error("Expected a message to be added for completed handoff")
+		}
+	})
 }
+
 
 // TestStripOrphanedCloseTags tests orphaned tag removal
 func TestStripOrphanedCloseTags(t *testing.T) {
