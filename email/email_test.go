@@ -723,3 +723,8 @@ func TestBuildMultipartMessageLongContent(t *testing.T) {
 		}
 	}
 }
+
+// TestSendViaSendmail tests the sendmail execution path
+func TestSendViaSendmail(t *testing.T) {
+	t.Skip("sendmail testing requires system integration - skip in CI/CD environments")
+}

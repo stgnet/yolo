@@ -946,3 +946,59 @@ func TestSetupFirstRun(t *testing.T) {
 	// 3. Set up initial configuration
 	// Skipping because it requires network connectivity and actual Ollama server
 }
+
+// TestNewYoloAgent verifies YoloAgent initialization
+func TestNewYoloAgent(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("YOLO_DIR", tmpDir)
+
+	agent := NewYoloAgent()
+
+	if agent == nil {
+		t.Fatal("expected non-nil agent")
+	}
+	if agent.config == nil {
+		t.Error("expected non-nil config")
+	}
+	if agent.ollama == nil {
+		t.Error("expected non-nil ollama client")
+	}
+	if agent.history == nil {
+		t.Error("expected non-nil history")
+	}
+	if agent.memory == nil {
+		t.Error("expected non-nil memory manager")
+	}
+	if agent.contextMgr == nil {
+		t.Error("expected non-nil context manager")
+	}
+	if agent.tools == nil {
+		t.Error("expected non-nil tool executor")
+	}
+	if !agent.running {
+		t.Error("expected agent to be running by default")
+	}
+}
+
+// TestNewYoloAgentWithSubagentCleanup verifies subagent result cleanup on init
+func TestNewYoloAgentWithSubagentCleanup(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("YOLO_DIR", tmpDir)
+
+	subagentDir := filepath.Join(tmpDir, "subagents")
+	os.MkdirAll(subagentDir, 0755)
+	// Create a stale subagent result file
+	staleFile := filepath.Join(subagentDir, "agent_42.json")
+	os.WriteFile(staleFile, []byte(`{"id": "42"}`), 0644)
+
+	agent := NewYoloAgent()
+
+	if agent == nil {
+		t.Fatal("expected non-nil agent")
+	}
+
+	// Verify stale file was cleaned up
+	if _, err := os.Stat(staleFile); !os.IsNotExist(err) {
+		t.Errorf("expected stale subagent result to be cleaned up, but file still exists: %s", staleFile)
+	}
+}
