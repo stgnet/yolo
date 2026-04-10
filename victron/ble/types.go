@@ -4,6 +4,7 @@ package ble
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -26,6 +27,24 @@ type Backend interface {
 
 	// DiscoverCharacteristics discovers characteristics in a service
 	DiscoverCharacteristics(service Service) ([]Characteristic, error)
+}
+
+// Service represents a GATT service discovered on a device
+type Service struct {
+	UUID        string
+	StartHandle uint16
+	EndHandle   uint16
+	Primary     bool
+}
+
+// Characteristic represents a GATT characteristic within a service
+type Characteristic struct {
+	UUID          string
+	Handle        uint16
+	ValueHandle   uint16
+	Properties    uint8
+	Description   string
+	ServiceUUID   string // Reference to parent service
 }
 
 // Connection represents an active BLE connection to a device
@@ -65,19 +84,57 @@ type Device struct {
 	IsVictron        bool // Flag to identify Victron devices
 }
 
-// Service represents a GATT service
-type Service struct {
-	UUID        string
-	StartHandle uint16
-	EndHandle   uint16
-	Primary     bool
+// DetectAsVictron checks if the device appears to be a Victron product based on name, services, or manufacturer data
+func (d Device) DetectAsVictron() bool {
+	nameLower := stringToASCII(stringToLower(d.Name))
+	return contains(nameLower, "victron") || 
+		   contains(nameLower, "glow") || 
+		   contains(nameLower, "smartsolar") ||
+		   contains(nameLower, "smartshunt") ||
+		   contains(nameLower, "cerbo") ||
+		   contains(nameLower, "venus") ||
+		   len(d.ServiceUUIDs) > 0 ||
+		   len(d.ManufacturerData) > 0
 }
 
-// Characteristic represents a GATT characteristic
-type Characteristic struct {
-	UUID        string
-	Handle      uint16
-	ValueHandle uint16
-	Properties  uint8
-	Description string
+// String returns a string representation of the service
+func (s Service) String() string {
+	return fmt.Sprintf("Service{UUID: %s, Handles: 0x%04X-0x%04X, Primary: %v}", 
+		s.UUID, s.StartHandle, s.EndHandle, s.Primary)
 }
+
+// String returns a string representation of the characteristic
+func (c Characteristic) String() string {
+	return fmt.Sprintf("Characteristic{UUID: %s, Handle: 0x%04X, ValueHandle: 0x%04X, Properties: 0x%02X, Description: %s}",
+		c.UUID, c.Handle, c.ValueHandle, c.Properties, c.Description)
+}
+
+// Helper functions for string operations (to avoid import cycle issues in tests)
+func stringToLower(s string) string {
+	result := make([]byte, len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		result[i] = c
+	}
+	return string(result)
+}
+
+func stringToASCII(s string) string {
+	return string([]byte(s))
+}
+
+func contains(s, substr string) bool {
+	if len(substr) == 0 {
+		return true
+	}
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
