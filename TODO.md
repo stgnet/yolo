@@ -15,7 +15,7 @@
 
 ### Documentation
 
-- [ ] Add architecture diagram showing YOLO agent components
+- [x] Add architecture diagram showing YOLO agent components (ARCHITECTURE.md)
 - [ ] Document Ollama model requirements and prompts
 - [ ] Create troubleshooting guide for common issues
 

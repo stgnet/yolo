@@ -1177,39 +1177,139 @@ func stripTextToolCalls(text string) string {
 	return strings.TrimSpace(text)
 }
 
-// stripOrphanedCloseTags removes closing XML tags (</parameter>, </function>,
-// </tool_call>) that appear without a corresponding open tag. These are
-// leftovers from tool calls split across thinking/content boundaries.
+// stripOrphanedCloseTags removes orphaned closing HTML/XML tags from text.
+// An orphaned closing tag is one without a matching opening tag earlier in the text.
+// Uses a stack-based approach to track open/close tag balance for any HTML tag.
 func stripOrphanedCloseTags(text string) string {
-	orphanedTags := []string{"</parameter>", "</function>", "</tool_call>", "[/tool activity]"}
-	for _, tag := range orphanedTags {
-		for strings.Contains(text, tag) {
-			idx := strings.Index(text, tag)
-			// Check if there's a matching open tag before this close tag
-			var openTag string
-			switch tag {
-			case "</parameter>":
-				openTag = "<parameter="
-			case "</function>":
-				openTag = "<function="
-			case "</tool_call>":
-				openTag = "<tool_call>"
-			case "[/tool activity]":
-				openTag = "[tool activity]"
+	if text == "" {
+		return ""
+	}
+
+	// Find all HTML tags with their positions and types
+	type htmlTag struct {
+		start int      // start position in text
+		end   int      // end position (after >)
+		name  string   // tag name (lowercase, no attributes)
+		isOpen bool    // true for <tag>, false for </tag>
+	}
+
+	var tags []htmlTag
+	
+	// Scan for all <...> constructs
+	i := 0
+	for i < len(text) {
+		if text[i] == '<' {
+			// Find closing >
+			end := strings.IndexByte(text[i:], '>')
+			if end == -1 {
+				break // No more complete tags
 			}
-			preceding := text[:idx]
-			openIdx := strings.LastIndex(preceding, openTag)
-			if openIdx < 0 {
-				// No matching open tag — this is orphaned, remove it
-				text = text[:idx] + text[idx+len(tag):]
+			end += i
+			
+			tagContent := text[i+1 : end]
+			
+			var name string
+			var isOpen bool
+			
+			if strings.HasPrefix(tagContent, "/") {
+				// Closing tag: </name> or </name ...>
+				name = getTagName(tagContent[1:])
+				isOpen = false
 			} else {
-				// Has a matching open tag — leave it alone, stop checking this tag
-				break
+				// Opening or self-closing tag
+				name = getTagName(tagContent)
+				isOpen = true
 			}
+			
+			if name != "" {
+				tags = append(tags, htmlTag{start: i, end: end + 1, name: name, isOpen: isOpen})
+			}
+			
+			i = end + 1
+		} else {
+			i++
 		}
 	}
-	return text
+
+	if len(tags) == 0 {
+		return text
+	}
+
+	// Build output with balanced tags using a stack
+	var result strings.Builder
+	stack := make([]string, 0) // Stack of open tag names
+	lastEnd := 0
+
+	for _, tg := range tags {
+		// Add text before this tag
+		if tg.start > lastEnd {
+			result.WriteString(text[lastEnd:tg.start])
+		}
+
+		if tg.isOpen {
+			// Opening tag: add to output and push to stack
+			result.WriteString(text[tg.start:tg.end])
+			stack = append(stack, tg.name)
+		} else {
+			// Closing tag: check if it has a matching opener
+			matched := false
+			for _, openName := range stack {
+				if openName == tg.name {
+					matched = true
+					break
+				}
+			}
+			
+			if matched {
+				// Has matching opener: add to output and remove from stack
+				result.WriteString(text[tg.start:tg.end])
+				// Remove the most recent matching entry from stack
+				for i := len(stack) - 1; i >= 0; i-- {
+					if stack[i] == tg.name {
+						stack = append(stack[:i], stack[i+1:]...)
+						break
+					}
+				}
+			}
+			// If no match, skip this orphaned closing tag (don't add to output)
+		}
+
+		lastEnd = tg.end
+	}
+
+	// Add any remaining text after the last tag
+	if lastEnd < len(text) {
+		result.WriteString(text[lastEnd:])
+	}
+
+	return result.String()
 }
+
+// getTagName extracts the tag name from a tag content string (without angle brackets).
+// Handles both opening and closing tags, strips attributes.
+func getTagName(content string) string {
+	content = strings.TrimSpace(content)
+	
+	// Remove leading / for closing tags
+	if strings.HasPrefix(content, "/") {
+		content = content[1:]
+	}
+	
+	// Get first word (tag name)
+	parts := strings.Fields(content)
+	if len(parts) == 0 {
+		return ""
+	}
+	
+	name := parts[0]
+	
+	// Remove trailing / for self-closing tags
+	name = strings.TrimRight(name, "/")
+	
+	// Convert to lowercase
+	return strings.ToLower(name)
+}
+
 
 // ── Model switching ──
 

@@ -372,12 +372,15 @@ go test -race ./...  # Run with race detector
 
 ## Architecture Deep Dive
 
-For detailed architecture information, see the code comments in `agent.go`, `tools.go`, and other source files covering:
+See [ARCHITECTURE.md](ARCHITECTURE.md) for comprehensive documentation including:
 
-- Data flow diagrams (user chat, autonomous thinking, sub-agents)
-- Component specifications
-- Concurrency patterns and thread safety
-- Design principles and safety mechanisms
+- System architecture diagrams and component overview
+- Tool system design and extension points
+- Data flow patterns (autonomous execution, email processing, Git integration)
+- Memory system architecture (curated facts + daily logs + history DB)
+- Victron BLE integration details
+- Security considerations and testing strategy
+- Performance optimization techniques
 
 ## Contributing
 

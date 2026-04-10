@@ -31,6 +31,27 @@ func (b *Backend) Initialize() error {
 		return nil
 	}
 	fmt.Println("[INFO] macOS BLE backend ready via CoreBluetooth")
+	
+	// Check if Bluetooth is available on this system
+	fmt.Println("[INFO] Testing BLE adapter status...")
+	testCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	
+	// Quick test scan to verify BLE is working
+	testCount := 0
+	go func() {
+		go_ble.Scan(testCtx, false, func(adv go_ble.Advertisement) {
+			testCount++
+		}, nil)
+	}()
+	
+	<-testCtx.Done()
+	if testCount == 0 {
+		fmt.Println("[WARNING] No BLE advertisements received - check Bluetooth is enabled")
+	} else {
+		fmt.Printf("[INFO] BLE adapter working (detected %d nearby advertisement(s))\n", testCount)
+	}
+	
 	b.initialized = true
 	return nil
 }
