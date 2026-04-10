@@ -39,12 +39,12 @@ type Service struct {
 
 // Characteristic represents a GATT characteristic within a service
 type Characteristic struct {
-	UUID          string
-	Handle        uint16
-	ValueHandle   uint16
-	Properties    uint8
-	Description   string
-	ServiceUUID   string // Reference to parent service
+	UUID        string
+	Handle      uint16
+	ValueHandle uint16
+	Properties  uint8
+	Description string
+	ServiceUUID string // Reference to parent service
 }
 
 // Connection represents an active BLE connection to a device
@@ -87,19 +87,19 @@ type Device struct {
 // DetectAsVictron checks if the device appears to be a Victron product based on name, services, or manufacturer data
 func (d Device) DetectAsVictron() bool {
 	nameLower := stringToASCII(stringToLower(d.Name))
-	return contains(nameLower, "victron") || 
-		   contains(nameLower, "glow") || 
-		   contains(nameLower, "smartsolar") ||
-		   contains(nameLower, "smartshunt") ||
-		   contains(nameLower, "cerbo") ||
-		   contains(nameLower, "venus") ||
-		   len(d.ServiceUUIDs) > 0 ||
-		   len(d.ManufacturerData) > 0
+	return contains(nameLower, "victron") ||
+		contains(nameLower, "glow") ||
+		contains(nameLower, "smartsolar") ||
+		contains(nameLower, "smartshunt") ||
+		contains(nameLower, "cerbo") ||
+		contains(nameLower, "venus") ||
+		len(d.ServiceUUIDs) > 0 ||
+		len(d.ManufacturerData) > 0
 }
 
 // String returns a string representation of the service
 func (s Service) String() string {
-	return fmt.Sprintf("Service{UUID: %s, Handles: 0x%04X-0x%04X, Primary: %v}", 
+	return fmt.Sprintf("Service{UUID: %s, Handles: 0x%04X-0x%04X, Primary: %v}",
 		s.UUID, s.StartHandle, s.EndHandle, s.Primary)
 }
 
@@ -137,4 +137,3 @@ func contains(s, substr string) bool {
 	}
 	return false
 }
-

@@ -48,7 +48,7 @@ func (b *Backend) ScanForDevices(ctx context.Context, duration time.Duration) ([
 	fmt.Printf("[INFO] Scanning for BLE devices for %v...\n", duration)
 	fmt.Println("[INFO] Note: Make sure Bluetooth is enabled and device is powered on")
 	fmt.Println("[INFO] Supported Victron devices: glow, SmartSolar, SmartShunt, VE.Direct adapters")
-	
+
 	var devices []ble.Device
 	devicesCh := make(chan ble.Device, 100)
 
@@ -115,8 +115,8 @@ func isVictronDevice(adv go_ble.Advertisement) bool {
 type bleConnection struct {
 	client  go_ble.Client
 	address string
-	uuid    string                       // Device UUID (macOS uses client UUID instead of MAC)
-	svcMap  map[string]*go_ble.Service   // Cache of discovered services by UUID
+	uuid    string                     // Device UUID (macOS uses client UUID instead of MAC)
+	svcMap  map[string]*go_ble.Service // Cache of discovered services by UUID
 }
 
 func (c *bleConnection) Address() string { return c.address }
@@ -211,10 +211,10 @@ func (c *bleConnection) SubscribeToNotifications(char ble.Characteristic) (<-cha
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Create notification channel
 	notifCh := make(chan []byte, 10)
-	
+
 	// Subscribe to notifications
 	err = c.client.Subscribe(charPtr, false, func(data []byte) {
 		notifCh <- data
@@ -222,7 +222,7 @@ func (c *bleConnection) SubscribeToNotifications(char ble.Characteristic) (<-cha
 	if err != nil {
 		return nil, fmt.Errorf("failed to subscribe: %w", err)
 	}
-	
+
 	return notifCh, nil
 }
 
@@ -245,10 +245,10 @@ func (b *Backend) Connect(address string) (ble.Connection, error) {
 	fmt.Printf("[INFO] Connecting to device %s...\n", address)
 
 	addr := go_ble.NewAddr(address)
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	
+
 	client, err := go_ble.Dial(ctx, addr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client: %w", err)

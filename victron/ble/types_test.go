@@ -54,9 +54,9 @@ func TestDevice_DetectAsVictron(t *testing.T) {
 				ManufacturerData: tt.manufacturerData,
 			}
 
-		if got := device.DetectAsVictron(); got != tt.expected {
-			t.Errorf("Device.DetectAsVictron() = %v, want %v", got, tt.expected)
-		}
+			if got := device.DetectAsVictron(); got != tt.expected {
+				t.Errorf("Device.DetectAsVictron() = %v, want %v", got, tt.expected)
+			}
 		})
 	}
 }
