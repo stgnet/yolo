@@ -788,14 +788,78 @@ func TestHandleListen(t *testing.T) {
 func TestShowMemoryStatus(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("YOLO_DIR", tmpDir)
-	agent := &YoloAgent{
-		baseDir: tmpDir,
-		history: NewHistoryDB(tmpDir),
-		config:  NewYoloConfig(),
+	
+	tests := []struct {
+		name  string
+		arg   string
+		setup func(agent *YoloAgent)
+	}{
+		{
+			name: "overview with nil memory manager",
+			arg:  "",
+			setup: func(agent *YoloAgent) {
+				agent.memory = nil
+			},
+		},
+		{
+			name: "show with existing memory",
+			arg:  "show",
+			setup: func(agent *YoloAgent) {
+				memPath := filepath.Join(tmpDir, "MEMORY.md")
+				os.WriteFile(memPath, []byte("Fact 1\nFact 2\nFact 3"), 0644)
+			},
+		},
+		{
+			name:  "show with empty memory",
+			arg:   "show",
+			setup: func(agent *YoloAgent) {}, // No MEMORY.md created
+		},
+		{
+			name:  "logs with no daily logs",
+			arg:   "logs",
+			setup: func(agent *YoloAgent) {},
+		},
+		{
+			name: "logs with daily logs present",
+			arg:  "logs",
+			setup: func(agent *YoloAgent) {
+				logPath := filepath.Join(tmpDir, "memory")
+				os.MkdirAll(logPath, 0755)
+				dailyLogPath := filepath.Join(logPath, "2024-01-15.md")
+				os.WriteFile(dailyLogPath, []byte("Log entry"), 0644)
+			},
+		},
+		{
+			name:  "today with no today's log",
+			arg:   "today",
+			setup: func(agent *YoloAgent) {},
+		},
+		{
+			name: "overview (default case)",
+			arg:  "",
+			setup: func(agent *YoloAgent) {
+				memPath := filepath.Join(tmpDir, "MEMORY.md")
+				os.WriteFile(memPath, []byte("Fact 1"), 0644)
+				logPath := filepath.Join(tmpDir, "memory")
+				os.MkdirAll(logPath, 0755)
+			},
+		},
 	}
 
-	// Should not panic
-	agent.showMemoryStatus("")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agent := &YoloAgent{
+				baseDir: tmpDir,
+				config:  newTestConfig(t, tmpDir),
+				memory:  NewMemoryManager(tmpDir),
+			}
+			
+			tt.setup(agent)
+
+			// Should not panic for any case
+			agent.showMemoryStatus(tt.arg)
+		})
+	}
 }
 
 // TestShowMCPStatus tests MCP status display
