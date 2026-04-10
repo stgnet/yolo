@@ -231,18 +231,52 @@ type (
 
 ## Testing
 
-Run the test suite:
+The library includes comprehensive tests covering parser functions, BLE operations, and retry logic:
 
 ```bash
+# Run all tests
 go test ./victron/... -v
-```
 
-Coverage report:
-
-```bash
+# Check coverage
 go test ./victron/... -coverprofile=coverage.out
-go tool cover -html=coverage.out
+go tool cover -html=coverage.out  # Open in browser
+go tool cover -func=coverage.out  # Print coverage by file
+
+# Run specific test groups
+go test ./victron -run "^TestParse"     # Parser tests
+go test ./victron -run "^TestRetry"     # Retry module tests
+go test ./victron/cmd/...               # Command integration tests
 ```
+
+### Coverage Targets
+
+- Core parser (`parser.go`): 95%+ coverage
+- Helper functions: 100% coverage  
+- Retry module (`retry.go`): 100% coverage
+- Overall package: 85%+ coverage
+
+## Retry Module
+
+For unreliable BLE operations, use the built-in retry logic with exponential backoff:
+
+```go
+import "github.com/scottstg/yolo/victron"
+
+// Use default retry configuration (3 retries, 100ms base delay)
+config := victron.DefaultRetryConfig()
+
+// Retry a potentially flaky operation
+result, err := victron.Retry(ctx, config, func() (string, error) {
+    return client.Connect(deviceAddress)
+})
+
+if err != nil {
+    // Error includes number of attempts
+    log.Printf("Failed after retries: %v", err)
+}
+```
+
+See [RETRY.md](RETRY.md) for detailed documentation on configuration and usage.
 
 ## Examples
 

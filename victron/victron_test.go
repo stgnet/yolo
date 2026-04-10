@@ -534,8 +534,63 @@ func (f *failingBackend) Initialize() error {
 	return fmt.Errorf("initialization failed")
 }
 
-func (f *failingBackend) Close() error                             { return nil }
+func (f *failingBackend) Close() error                                  { return nil }
 func (f *failingBackend) ScanForDevices(ctx context.Context, duration time.Duration) ([]BLEDevice, error) { return nil, nil }
-func (f *failingBackend) Connect(address string) (BLEConnection, error)                                        { return nil, nil }
-func (f *failingBackend) DiscoverServices(conn BLEConnection) ([]BLEService, error)                           { return nil, nil }
-func (f *failingBackend) DiscoverCharacteristics(service BLEService) ([]BLECharacteristic, error)              { return nil, nil }
+func (f *failingBackend) Connect(address string) (BLEConnection, error)                                       { return nil, nil }
+func (f *failingBackend) DiscoverServices(conn BLEConnection) ([]BLEService, error)                          { return nil, nil }
+func (f *failingBackend) DiscoverCharacteristics(service BLEService) ([]BLECharacteristic, error)            { return nil, nil }
+
+// Test DeviceType.String() method
+func TestDeviceType_String(t *testing.T) {
+	tests := []struct {
+		name     string
+		device   DeviceType
+		expected string
+	}{
+		{
+			name:     "SmartSolar",
+			device:   DeviceTypeSmartSolar,
+			expected: "SmartSolar",
+		},
+		{
+			name:     "SmartShunt",
+			device:   DeviceTypeSmartShunt,
+			expected: "SmartShunt",
+		},
+		{
+			name:     "VEDirectAdapter",
+			device:   DeviceTypeVEDirectAdapter,
+			expected: "VE.Direct Adapter",
+		},
+		{
+			name:     "PhoenixInverter",
+			device:   DeviceTypePhoenixInverter,
+			expected: "Phoenix Inverter",
+		},
+		{
+			name:     "MultiPlus",
+			device:   DeviceTypeMultiPlus,
+			expected: "MultiPlus",
+		},
+		{
+			name:     "Unknown",
+			device:   DeviceTypeUnknown,
+			expected: "Unknown",
+		},
+		{
+			name:     "InvalidDeviceType",
+			device:   999, // Invalid device type should return Unknown
+			expected: "Unknown",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.device.String()
+			if result != tt.expected {
+				t.Errorf("Expected %q, got %q", tt.expected, result)
+			}
+		})
+	}
+}
+
