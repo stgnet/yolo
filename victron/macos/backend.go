@@ -46,7 +46,9 @@ func (b *Backend) ScanForDevices(ctx context.Context, duration time.Duration) ([
 	}
 
 	fmt.Printf("[INFO] Scanning for BLE devices for %v...\n", duration)
-
+	fmt.Println("[INFO] Note: Make sure Bluetooth is enabled and device is powered on")
+	fmt.Println("[INFO] Supported Victron devices: glow, SmartSolar, SmartShunt, VE.Direct adapters")
+	
 	var devices []ble.Device
 	devicesCh := make(chan ble.Device, 100)
 
@@ -81,6 +83,15 @@ func (b *Backend) ScanForDevices(ctx context.Context, duration time.Duration) ([
 			}
 			fmt.Println()
 		case <-timeout:
+			if len(devices) == 0 {
+				fmt.Println("\n[WARNING] No devices found!")
+				fmt.Println("\nTroubleshooting:")
+				fmt.Println("  1. Check Bluetooth is enabled (System Settings > Bluetooth)")
+				fmt.Println("  2. Ensure device has Bluetooth permission (System Preferences > Privacy)")
+				fmt.Println("  3. Make sure the Victron device is powered on and in range (<10m)")
+				fmt.Println("  4. Glow devices may need to be woken up or actively transmitting")
+				fmt.Println("  5. Try a longer scan duration (e.g., --duration=60)")
+			}
 			fmt.Printf("[INFO] Scan timeout - found %d device(s)\n", len(devices))
 			return devices, nil
 		case <-ctx.Done():

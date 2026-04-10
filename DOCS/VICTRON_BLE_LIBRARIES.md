@@ -77,7 +77,7 @@ go get github.com/go-ble/ble
 ```
 
 ### Victron Use Case
-Alternative to muka/go-bluetooth for Linux. Less mature GATT implementation.
+Alternative to muka/go-bluetooth for Linux. Less mature GATT implementation. Used in YOLO's macOS backend.
 
 ### Limitations
 - macOS support not maintained
@@ -144,13 +144,81 @@ Victron devices expose VE.Direct data via a GATT characteristic:
 
 ---
 
+## Victron Glow LED Indicator Device
+
+### Overview
+The Victron Glow is a Bluetooth LE LED indicator module that displays battery system status through color-coded lights. It's designed to provide visual feedback about battery state of charge, faults, and charging status.
+
+### Features
+- **Bluetooth LE**: Advertises with name containing "glow" (case-insensitive)
+- **LED Colors**: 
+  - 🔴 Red: Low battery or fault conditions
+  - 🟡 Yellow/Orange: Charging or medium charge
+  - 🟢 Green: Full charge
+  - ⚪ White: Standby/idle
+- **Power Saving**: May enter sleep mode when not actively transmitting
+- **No Battery**: Powered directly from the system it monitors
+
+### Technical Specifications
+- **Protocol**: VE.Direct over BLE GATT
+- **Service UUID**: `0000fff0-0000-1000-8000-00805f9b34fb`
+- **Characteristic UUID**: `0000fff1-0000-1000-8000-00805f9b34fb`
+- **Discovery Name Pattern**: Contains "glow", "Glow", or "glow-" prefix
+
+### Connecting to Glow Device
+
+#### Prerequisites
+1. Ensure Bluetooth is enabled on macOS
+2. Make sure the Glow device is:
+   - Powered on (connected to battery system)
+   - Within ~10 meters range
+   - Not in deep sleep mode
+3. Grant Bluetooth permissions to the application
+
+#### Scanning for Devices
+```bash
+# Using the victron MCP tool
+victron scan --duration=20
+
+# Or programmatically using the example:
+go run examples/victron-ble-example.go
+```
+
+#### Common Issues
+
+**Problem**: No devices found during scan
+**Solutions**:
+1. Check if Glow device is powered (LED should be lit)
+2. Wake device by pressing button or triggering battery event
+3. Move closer to the device (< 5 meters)
+4. Ensure Bluetooth is enabled in macOS System Settings
+5. Check that YOLO has Bluetooth permissions (System Preferences > Privacy > Bluetooth)
+
+**Problem**: Device found but can't connect
+**Solutions**:
+1. Verify MAC address/UUID is correct
+2. Try scanning again - some devices advertise intermittently
+3. Ensure no other device is connected to the Glow
+4. Reset the Glow device if possible
+
+#### Reading Measurements
+Once connected, you can read:
+- Battery voltage (via VE.Direct protocol)
+- State of charge indicators
+- Fault conditions
+- Charging status
+
+Note: The Glow primarily provides **status information** via LED colors. For detailed measurements like exact voltage/current, you'd typically connect to a Victron SmartSolar or SmartShunt instead.
+
+---
+
 ## Current YOLO Victron Tool Status
 
 ✅ **Integrated into YOLO**: `tools_victron.go` fully implemented  
 ✅ **MCP Tool Registered**: Available with proper schema  
 ✅ **Mock Backend**: Works without hardware for testing  
 ⚠️ **Linux BlueZ**: Scanning works, GATT reading incomplete  
-❌ **macOS/Windows**: Not implemented  
+❌ **macOS/Windows**: Not fully implemented  
 
 ### How to Use Now
 ```bash
@@ -169,3 +237,21 @@ yolo victron --action get_values --address "XX:XX:XX:XX:XX:XX"
 **muka/go-bluetooth** is the best available option for Linux-based Victron support. The library is comprehensive, well-documented, and already in your dependencies. Complete the BlueZ backend implementation to enable real hardware support on Linux systems.
 
 For cross-platform support, significant work would be needed to implement platform-specific backends or find/wrap alternative libraries from other languages (Rust's SimpleBLE being the most promising).
+
+---
+
+## Example Usage with YOLO Victron Package
+
+See `victron/examples/victron-ble-example.go` for:
+1. Scanning for nearby Victron devices (including Glow)
+2. Connecting to discovered devices
+3. Discovering GATT services and characteristics
+4. Reading VE.Direct data from the device
+
+```bash
+# Run the example
+go run victron/examples/victron-ble-example.go
+
+# Or scan with a specific duration
+victron scan --duration=15
+```
