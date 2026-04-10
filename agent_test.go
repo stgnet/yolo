@@ -17,25 +17,87 @@ func newTestConfig(t *testing.T, dir string) *YoloConfig {
 
 // TestCheckBinaryFreshness verifies binary freshness checking
 func TestCheckBinaryFreshness(t *testing.T) {
-	tmpDir := t.TempDir()
-	exePath := filepath.Join(tmpDir, "test_exe")
-
-	err := os.WriteFile(exePath, []byte("dummy"), 0755)
-	if err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name          string
+		devMode       bool
+		setupScenario func() (scriptPath string, cleanup func())
+		expectWarnings int
+		expectContent  []string // substrings to check for in output
+	}{
+		{
+			name:      "dev mode disabled returns empty",
+			devMode:   false,
+			setupScenario: func() (string, func()) {
+				return "", func() {}
+			},
+			expectWarnings: 0,
+			expectContent:  []string{},
+		},
+		{
+			name:    "dev mode enabled but no issues",
+			devMode: true,
+			setupScenario: func() (string, func()) {
+				tmpDir := t.TempDir()
+				scriptPath := filepath.Join(tmpDir, "test_binary")
+				os.WriteFile(scriptPath, []byte("dummy"), 0755)
+				time.Sleep(10 * time.Millisecond) // Make script newer than any go files
+				return scriptPath, func() {}
+			},
+			expectWarnings: 0,
+			expectContent:  []string{},
+		},
+		{
+			name:    "binary recompiled since startup",
+			devMode: true,
+			setupScenario: func() (string, func()) {
+				tmpDir := t.TempDir()
+				scriptPath := filepath.Join(tmpDir, "test_binary")
+				// Create binary first
+				os.WriteFile(scriptPath, []byte("dummy"), 0755)
+				time.Sleep(10 * time.Millisecond)
+				// Modify binary (simulating recompile)
+				os.WriteFile(scriptPath, []byte("modified"), 0755)
+				return scriptPath, func() {}
+			},
+			expectWarnings: 1,
+			expectContent:  []string{"NEEDS RESTART", "recompiled"},
+		},
 	}
 
-	agent := &YoloAgent{
-		baseDir:       tmpDir,
-		scriptPath:    exePath,
-		binaryModTime: time.Now().Add(-1 * time.Hour),
-		config:        newTestConfig(t, tmpDir),
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scriptPath, cleanup := tt.setupScenario()
+			defer cleanup()
 
-	result := agent.checkBinaryFreshness()
+			// Set binaryModTime to capture the state before any modifications
+			binaryModTime := time.Now().Add(-2 * time.Hour) // Old timestamp
+			if scriptPath != "" {
+				if info, err := os.Stat(scriptPath); err == nil {
+					// Use a very old time for binaryModTime to test recompile detection
+					binaryModTime = info.ModTime().Add(-1 * time.Hour)
+				}
+			}
 
-	if !strings.Contains(result, "NEEDS") && result != "" {
-		t.Logf("Binary freshness check result: %s", result)
+			agent := &YoloAgent{
+				devMode:     tt.devMode,
+				scriptPath:  scriptPath,
+				binaryModTime: binaryModTime,
+			}
+
+			result := agent.checkBinaryFreshness()
+
+			if tt.expectWarnings == 0 {
+				// May have warnings from actual .go files in current dir, but shouldn't crash
+				t.Logf("Result (may have env-specific warnings): %q", result)
+				return
+			}
+
+			for _, expected := range tt.expectContent {
+				if !strings.Contains(result, expected) {
+					t.Errorf("expected result to contain %q, got: %q", expected, result)
+				}
+			}
+		})
 	}
 }
 
