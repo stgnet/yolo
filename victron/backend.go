@@ -63,3 +63,8 @@ var backendCreator func() (BLEBackend, error)
 func SetBackendCreator(creator func() (BLEBackend, error)) {
 	backendCreator = creator
 }
+
+// init initializes the appropriate backend for this platform
+func init() {
+	// Platform-specific initialization happens in _platform files
+}
