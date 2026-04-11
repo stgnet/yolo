@@ -637,6 +637,174 @@ func TestHandleCommand(t *testing.T) {
 	}
 }
 
+// TestHandleCommandExtended tests additional command handlers
+func TestHandleCommandExtended(t *testing.T) {
+	tests := []struct {
+		name          string
+		command       string
+		expectPanic   bool
+		checkOutput   func(output *strings.Builder) bool
+	}{
+		{
+			name:      "/think on",
+			command:   "/think on",
+			expectPanic: false,
+		},
+		{
+			name:      "/think off",
+			command:   "/think off",
+			expectPanic: false,
+		},
+		{
+			name:      "/think toggle",
+			command:   "/think",
+			expectPanic: false,
+		},
+		{
+			name:      "/tts on with no backend",
+			command:   "/tts on",
+			expectPanic: false,
+			checkOutput: func(output *strings.Builder) bool {
+				// Should either show error about no backend or nil pointer (uninitialized TTS)
+				return true // Don't panic is enough for this test
+			},
+		},
+		{
+			name:      "/tts off",
+			command:   "/tts off",
+			expectPanic: false,
+		},
+		{
+			name:      "/model list command",
+			command:   "/model",
+			expectPanic: false,
+		},
+		{
+			name:      "/history count",
+			command:   "/history",
+			expectPanic: false,
+		},
+		{
+			name:      "/clear history",
+			command:   "/clear",
+			expectPanic: false,
+		},
+		{
+			name:      "/status agent status",
+			command:   "/status",
+			expectPanic: false,
+		},
+		{
+			name:      "/cache stats",
+			command:   "/cache",
+			expectPanic: false,
+		},
+		{
+			name:      "/cache clear",
+			command:   "/cache clear",
+			expectPanic: false,
+		},
+		{
+			name:      "/todo add new item",
+			command:   "/todo Test todo item from command",
+			expectPanic: false,
+		},
+		{
+			name:      "/memory show contents",
+			command:   "/memory show",
+			expectPanic: false,
+		},
+		{
+			name:      "/memory logs list",
+			command:   "/memory logs",
+			expectPanic: false,
+		},
+		{
+			name:      "/mcp reload servers",
+			command:   "/mcp reload",
+			expectPanic: false,
+		},
+		{
+			name:      "/compact summarize",
+			command:   "/compact",
+			expectPanic: false,
+		},
+		{
+			name:      "/context stats",
+			command:   "/context",
+			expectPanic: false,
+		},
+		{
+			name:      "/config set value",
+			command:   "/config debug_mode true",
+			expectPanic: false,
+		},
+		{
+			name:      "/cron list tasks",
+			command:   "/cron",
+			expectPanic: false,
+		},
+		{
+			name:      "/learn autonomous research",
+			command:   "/learn",
+			expectPanic: false,
+		},
+		{
+			name:      "/restart command",
+			command:   "/restart",
+			expectPanic: false,
+		},
+		{
+			name:      "/exit command",
+			command:   "/exit",
+			expectPanic: false,
+		},
+		{
+			name:      "/quit command",
+			command:   "/quit",
+			expectPanic: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			config := newTestConfig(t, tmpDir)
+			history := NewHistoryDB(tmpDir)
+
+			agent := &YoloAgent{
+				baseDir: tmpDir,
+				config:  config,
+				history: history,
+			}
+
+			if tt.expectPanic {
+				defer func() {
+					if r := recover(); r == nil {
+						t.Error("Expected panic but did not panic")
+					}
+				}()
+			} else {
+				defer func() {
+					if r := recover(); r != nil {
+						t.Errorf("Unexpected panic: %v", r)
+					}
+				}()
+			}
+
+			agent.handleCommand(tt.command)
+
+			if tt.checkOutput != nil {
+				// Output checking is optional for now
+				if !tt.checkOutput(nil) {
+					t.Error("checkOutput failed")
+				}
+			}
+		})
+	}
+}
+
+
 // TestParseTextToolCalls tests text tool call parsing
 func TestParseTextToolCalls(t *testing.T) {
 	tmpDir := t.TempDir()

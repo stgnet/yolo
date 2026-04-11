@@ -1762,6 +1762,10 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		}
 
 	case "/tts":
+		if a.tts == nil {
+			cprint(Red, "  TTS not initialized")
+			break
+		}
 		lower := strings.ToLower(strings.TrimSpace(arg))
 		switch {
 		case lower == "on":
@@ -1827,6 +1831,10 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		}
 
 	case "/voice":
+		if a.tts == nil {
+			cprint(Red, "  TTS not initialized")
+			break
+		}
 		if arg == "" {
 			current := a.tts.GetVoice()
 			cprint(Cyan, fmt.Sprintf("  Current TTS voice: %s", current))
@@ -1842,9 +1850,17 @@ func (a *YoloAgent) handleCommand(cmd string) {
 		}
 
 	case "/listen":
+		if a.stt == nil {
+			cprint(Red, "  STT not initialized")
+			break
+		}
 		a.handleListen()
 
 	case "/stt":
+		if a.stt == nil {
+			cprint(Red, "  STT not initialized")
+			break
+		}
 		a.showSTTStatus(arg)
 
 	case "/todo":
