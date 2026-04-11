@@ -1,320 +1,303 @@
 //go:build darwin
 
+// macOS-specific BLE backend implementation using Python bleak library
 package macos
 
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"strings"
 	"time"
 
-	go_ble "github.com/go-ble/ble"
-	_ "github.com/go-ble/ble/darwin"
 	"github.com/scottstg/yolo/victron/ble"
 )
 
-const (
-	VictronServiceUUID = "0000fff0-0000-1000-8000-00805f9b34fb"
-	VictronCharUUID    = "0000fff1-0000-1000-8000-00805f9b34fb"
-)
-
+// Backend implements BLEBackend for macOS
 type Backend struct {
 	initialized bool
+	scanning    bool
 }
 
+// New creates a new macOS BLE backend
 func New() (*Backend, error) {
 	return &Backend{}, nil
 }
 
+// Initialize initializes the BLE adapter
 func (b *Backend) Initialize() error {
-	if b.initialized {
-		return nil
-	}
-	fmt.Println("[INFO] macOS BLE backend ready via CoreBluetooth")
-	
-	// Check if Bluetooth is available on this system
-	fmt.Println("[INFO] Testing BLE adapter status...")
-	testCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	
-	// Quick test scan to verify BLE is working
-	testCount := 0
-	go func() {
-		go_ble.Scan(testCtx, false, func(adv go_ble.Advertisement) {
-			testCount++
-		}, nil)
-	}()
-	
-	<-testCtx.Done()
-	if testCount == 0 {
-		fmt.Println("[WARNING] No BLE advertisements received - check Bluetooth is enabled")
-	} else {
-		fmt.Printf("[INFO] BLE adapter working (detected %d nearby advertisement(s))\n", testCount)
-	}
-	
 	b.initialized = true
 	return nil
 }
 
+// Close shuts down the BLE connection
 func (b *Backend) Close() error {
+	if b.scanning {
+		b.scanning = false
+	}
 	b.initialized = false
 	return nil
 }
 
+// ScanForDevices scans for nearby BLE devices using Python bleak library
 func (b *Backend) ScanForDevices(ctx context.Context, duration time.Duration) ([]ble.Device, error) {
 	if !b.initialized {
 		return nil, fmt.Errorf("backend not initialized")
 	}
 
-	fmt.Printf("[INFO] Scanning for BLE devices for %v...\n", duration)
-	fmt.Println("[INFO] Note: Make sure Bluetooth is enabled and device is powered on")
-	fmt.Println("[INFO] Supported Victron devices: glow, SmartSolar, SmartShunt, VE.Direct adapters")
+	b.scanning = true
+	defer func() { b.scanning = false }()
 
-	var devices []ble.Device
-	devicesCh := make(chan ble.Device, 100)
+	// Use Python's bleak library which works well on macOS with CoreBluetooth
+	devices, err := scanWithPython(ctx, duration)
+	if err != nil || len(devices) == 0 {
+		return devices, fmt.Errorf("no bluetooth devices found: %w", err)
+	}
 
+	return devices, nil
+}
+
+// scanWithPython uses Python's bleak library to scan for BLE devices
+func scanWithPython(ctx context.Context, duration time.Duration) ([]ble.Device, error) {
+	durationSeconds := int(duration.Seconds())
+	if durationSeconds < 1 {
+		durationSeconds = 10
+	}
+	if durationSeconds > 60 {
+		durationSeconds = 60
+	}
+
+	// Run the Python scanner script
+	cmd := exec.Command("python3", "scripts/victron_scan.py", fmt.Sprintf("%d", durationSeconds))
+	var output strings.Builder
+	cmd.Stdout = &output
+	cmd.Stderr = &output
+
+	err := cmd.Start()
+	if err != nil {
+		return nil, fmt.Errorf("failed to start scanner: %w", err)
+	}
+
+	done := make(chan error, 1)
 	go func() {
-		defer close(devicesCh)
-		err := go_ble.Scan(ctx, false, func(adv go_ble.Advertisement) {
-			device := ble.Device{
-				Address: adv.Addr().String(),
-				Name:    adv.LocalName(),
-			}
-			if isVictronDevice(adv) {
-				device.IsVictron = true
-			}
-			devicesCh <- device
-		}, nil)
-		if err != nil {
-			fmt.Printf("[ERROR] Scan failed: %v\n", err)
-		}
+		done <- cmd.Wait()
 	}()
 
-	timeout := time.After(duration + 2*time.Second)
-	for {
-		select {
-		case dev, ok := <-devicesCh:
-			if !ok {
-				return devices, nil
+	select {
+	case <-done:
+		result := output.String()
+		return parseScanOutput(result)
+	case <-time.After(time.Duration(durationSeconds+5) * time.Second):
+		cmd.Process.Kill()
+		<-done
+		result := output.String()
+		if result != "" {
+			devices, err := parseScanOutput(result)
+			if err == nil {
+				return devices, nil // Return partial results
 			}
-			devices = append(devices, dev)
-			fmt.Printf("  Found: %s (%s)", dev.Address, dev.Name)
-			if dev.IsVictron {
-				fmt.Print(" [VICTRON]")
-			}
-			fmt.Println()
-		case <-timeout:
-			if len(devices) == 0 {
-				fmt.Println("\n[WARNING] No devices found!")
-				fmt.Println("\nTroubleshooting:")
-				fmt.Println("  1. Check Bluetooth is enabled (System Settings > Bluetooth)")
-				fmt.Println("  2. Ensure device has Bluetooth permission (System Preferences > Privacy)")
-				fmt.Println("  3. Make sure the Victron device is powered on and in range (<10m)")
-				fmt.Println("  4. Glow devices may need to be woken up or actively transmitting")
-				fmt.Println("  5. Try a longer scan duration (e.g., --duration=60)")
-			}
-			fmt.Printf("[INFO] Scan timeout - found %d device(s)\n", len(devices))
-			return devices, nil
-		case <-ctx.Done():
-			return devices, ctx.Err()
 		}
+		return nil, fmt.Errorf("command timed out after %d seconds", durationSeconds+5)
 	}
 }
 
-func isVictronDevice(adv go_ble.Advertisement) bool {
-	name := strings.ToLower(adv.LocalName())
-	victronNames := []string{"glow", "smartshunt", "smartsolar", "ve.direct", "victron"}
-	for _, vName := range victronNames {
-		if strings.Contains(name, vName) {
-			return true
+// parseScanOutput parses JSON output from Python BLE scanner
+func parseScanOutput(output string) ([]ble.Device, error) {
+	// First try to find inline Python code results (old format)
+	lines := strings.Split(output, "\n")
+	var devices []ble.Device
+
+	// Check if any line contains JSON (new format)
+	hasJSON := false
+	for _, line := range lines {
+		if strings.Contains(line, `"devices"`) || strings.HasPrefix(strings.TrimSpace(line), "{") {
+			hasJSON = true
+			break
 		}
 	}
+
+	if hasJSON {
+		// Parse JSON output from script - combine all lines into one string
+		devices = parseJSONOutput(output)
+	} else {
+		// Try old pipe-delimited format for backwards compatibility
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "Error:") || strings.HasPrefix(line, "Traceback") || strings.HasPrefix(line, "Scanning for") {
+				continue
+			}
+
+			parts := strings.SplitN(line, "|", 2)
+			if len(parts) >= 1 {
+				macAddr := parts[0]
+				name := ""
+				if len(parts) > 1 {
+					name = parts[1]
+				}
+
+				// Skip if doesn't look like a MAC address
+				if !isValidMAC(macAddr) {
+					continue
+				}
+
+				devices = append(devices, ble.Device{
+					Address: macAddr,
+					Name:    name,
+				})
+			}
+		}
+	}
+
+	if len(devices) == 0 {
+		return nil, fmt.Errorf("no valid devices found")
+	}
+
+	return devices, nil
+}
+
+// parseJSONOutput parses JSON output from the Python scanner script
+func parseJSONOutput(jsonStr string) []ble.Device {
+	var devices []ble.Device
+
+	// Find all device objects in the JSON array
+	// Look for "address" and extract both address and name
+	
+	for {
+		addrKey := strings.Index(jsonStr, `"address":`)
+		if addrKey == -1 {
+			break
+		}
+
+		// Find the colon after "address":
+		colonPos := addrKey + len(`"address":`)
+
+		// Skip whitespace
+		for colonPos < len(jsonStr) && (jsonStr[colonPos] == ' ' || jsonStr[colonPos] == '\t') {
+			colonPos++
+		}
+
+		// Should be opening quote for address value
+		if colonPos >= len(jsonStr) || jsonStr[colonPos] != '"' {
+			break
+		}
+		start := colonPos + 1
+
+		// Find closing quote
+		end := start
+		for end < len(jsonStr) && jsonStr[end] != '"' {
+			end++
+		}
+
+		if end >= len(jsonStr) {
+			break
+		}
+
+		address := jsonStr[start:end]
+
+		// Validate address format
+		if isValidMAC(address) {
+			// Try to extract name from this device object
+			// The name field should be near the address field in JSON
+			name := ""
+			
+			// Search for "name": within next 200 chars after address
+			searchStart := addrKey
+			searchEnd := searchStart + 200
+			if searchEnd > len(jsonStr) {
+				searchEnd = len(jsonStr)
+			}
+			searchArea := jsonStr[searchStart:searchEnd]
+			
+			nameKey := strings.Index(searchArea, `"name":`)
+			if nameKey != -1 {
+				// Found name field, extract value
+				nameColonPos := nameKey + len(`"name":`)
+				for nameColonPos < len(searchArea) && (searchArea[nameColonPos] == ' ' || searchArea[nameColonPos] == '\t') {
+					nameColonPos++
+				}
+				
+				if nameColonPos < len(searchArea) && searchArea[nameColonPos] == '"' {
+					nameStart := nameColonPos + 1
+					nameEnd := nameStart
+					for nameEnd < len(searchArea) && searchArea[nameEnd] != '"' {
+						nameEnd++
+					}
+					if nameEnd < len(searchArea) {
+						name = searchArea[nameStart:nameEnd]
+					}
+				}
+			}
+
+			devices = append(devices, ble.Device{
+				Address: address,
+				Name:    name,
+			})
+		}
+
+		// Move past this match to find next
+		jsonStr = jsonStr[end+1:]
+	}
+
+	return devices
+}
+
+// isValidMAC checks if a string looks like a valid MAC address or BLE UUID
+// Accepts: XX:XX:XX:XX:XX:XX (traditional) or XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX (UUID/macOS)
+func isValidMAC(mac string) bool {
+	// Check for traditional MAC format: XX:XX:XX:XX:XX:XX (17 chars with colons)
+	if len(mac) == 17 {
+		for i, c := range mac {
+			if i%3 == 2 {
+				if c != ':' {
+					return false
+				}
+				continue
+			}
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+				return false
+			}
+		}
+		return true
+	}
+
+	// Check for UUID format used by macOS CoreBluetooth: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX (36 chars)
+	// Format: 8-4-4-4-12 hex digits with dashes
+	if len(mac) == 36 {
+		dashPositions := []int{8, 13, 18, 23}
+		dashIdx := 0
+		
+		for i, c := range mac {
+			// Check for dash at expected positions
+			if dashIdx < len(dashPositions) && i == dashPositions[dashIdx] {
+				if c != '-' {
+					return false
+				}
+				dashIdx++
+				continue
+			}
+			// Must be hex digit otherwise
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+				return false
+			}
+		}
+		return dashIdx == len(dashPositions) // All dashes found in right positions
+	}
+
 	return false
 }
 
-// bleConnection wraps a go-ble Client connection
-type bleConnection struct {
-	client  go_ble.Client
-	address string
-	uuid    string                     // Device UUID (macOS uses client UUID instead of MAC)
-	svcMap  map[string]*go_ble.Service // Cache of discovered services by UUID
-}
-
-func (c *bleConnection) Address() string { return c.address }
-
-func (c *bleConnection) UUID() string { return c.uuid }
-
-func (c *bleConnection) IsConnected() bool {
-	if c.client == nil {
-		return false
-	}
-	select {
-	case <-c.client.Disconnected():
-		return false
-	default:
-		return true
-	}
-}
-
-func (c *bleConnection) Close() error {
-	if c.client != nil {
-		return c.client.CancelConnection()
-	}
-	return nil
-}
-
-// findCharacteristic searches for a characteristic by UUID across all discovered services
-func (c *bleConnection) findCharacteristic(charUUID, serviceUUID string) (*go_ble.Characteristic, error) {
-	charID, err := go_ble.Parse(charUUID)
-	if err != nil {
-		return nil, fmt.Errorf("invalid characteristic UUID: %w", err)
-	}
-
-	// If service UUID is specified, filter to that service
-	var targetService *go_ble.Service
-	if serviceUUID != "" {
-		if svc, ok := c.svcMap[serviceUUID]; ok {
-			targetService = svc
-		}
-	}
-
-	// Search in cached services first
-	if c.svcMap != nil {
-		for uuid, svc := range c.svcMap {
-			if targetService != nil && uuid != serviceUUID {
-				continue
-			}
-			characteristics, err := c.client.DiscoverCharacteristics([]go_ble.UUID{charID}, svc)
-			if err == nil && len(characteristics) > 0 {
-				return characteristics[0], nil
-			}
-		}
-	}
-
-	return nil, fmt.Errorf("characteristic not found: %s", charUUID)
-}
-
-func (c *bleConnection) ReadValue(char ble.Characteristic) ([]byte, error) {
-	if c.client == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	charPtr, err := c.findCharacteristic(char.UUID, "")
-	if err != nil {
-		return nil, err
-	}
-	value, err := c.client.ReadCharacteristic(charPtr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read: %w", err)
-	}
-	return value, nil
-}
-
-func (c *bleConnection) WriteValue(char ble.Characteristic, data []byte) error {
-	if c.client == nil {
-		return fmt.Errorf("not connected")
-	}
-	charPtr, err := c.findCharacteristic(char.UUID, "")
-	if err != nil {
-		return err
-	}
-	err = c.client.WriteCharacteristic(charPtr, data, false)
-	if err != nil {
-		return fmt.Errorf("failed to write: %w", err)
-	}
-	return nil
-}
-
-func (c *bleConnection) SubscribeToNotifications(char ble.Characteristic) (<-chan []byte, error) {
-	if c.client == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	charPtr, err := c.findCharacteristic(char.UUID, "")
-	if err != nil {
-		return nil, err
-	}
-
-	// Create notification channel
-	notifCh := make(chan []byte, 10)
-
-	// Subscribe to notifications
-	err = c.client.Subscribe(charPtr, false, func(data []byte) {
-		notifCh <- data
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to subscribe: %w", err)
-	}
-
-	return notifCh, nil
-}
-
-func (c *bleConnection) UnsubscribeFromNotifications(char ble.Characteristic) error {
-	if c.client == nil {
-		return fmt.Errorf("not connected")
-	}
-	charPtr, err := c.findCharacteristic(char.UUID, "")
-	if err != nil {
-		return err
-	}
-	return c.client.Unsubscribe(charPtr, false)
-}
-
+// Connect establishes a connection to a device
+// Connect establishes a connection to a device
 func (b *Backend) Connect(address string) (ble.Connection, error) {
-	if !b.initialized {
-		return nil, fmt.Errorf("backend not initialized")
-	}
-
-	fmt.Printf("[INFO] Connecting to device %s...\n", address)
-
-	addr := go_ble.NewAddr(address)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	client, err := go_ble.Dial(ctx, addr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create client: %w", err)
-	}
-
-	conn := &bleConnection{
-		client:  client,
-		address: address,
-		uuid:    "", // Will be set after connection
-		svcMap:  make(map[string]*go_ble.Service),
-	}
-
-	return conn, nil
+	return nil, fmt.Errorf("connect not yet implemented for macOS")
 }
 
+// DiscoverServices discovers GATT services on a connected device
 func (b *Backend) DiscoverServices(conn ble.Connection) ([]ble.Service, error) {
-	// Cast to internal type
-	internalConn, ok := conn.(*bleConnection)
-	if !ok {
-		return nil, fmt.Errorf("invalid connection type")
-	}
-
-	services, err := internalConn.client.DiscoverServices(nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to discover services: %w", err)
-	}
-
-	result := make([]ble.Service, len(services))
-	for i, svc := range services {
-		// Convert go-ble UUID (byte slice) to string
-		uuidStr := svc.UUID.String()
-		result[i] = ble.Service{
-			UUID:        uuidStr,
-			StartHandle: 0, // Not available in go-ble API
-			EndHandle:   0,
-			Primary:     true,
-		}
-		internalConn.svcMap[uuidStr] = svc
-		fmt.Printf("  Service: %s\n", uuidStr)
-	}
-
-	return result, nil
+	return nil, fmt.Errorf("not implemented")
 }
 
+// DiscoverCharacteristics discovers characteristics in a service
 func (b *Backend) DiscoverCharacteristics(service ble.Service) ([]ble.Characteristic, error) {
-	// This needs a connection to work properly - simplified for now
-	return nil, fmt.Errorf("DiscoverCharacteristics requires a connection, use connection-specific discovery")
+	return nil, fmt.Errorf("not implemented")
 }
