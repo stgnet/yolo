@@ -168,6 +168,22 @@ func (t *ToolExecutor) victronScan(args map[string]any) string {
 // inferDeviceType determines device type from name string
 func inferDeviceType(name string) string {
 	nameLower := strings.ToLower(name)
+	
+	// Check for ECO-LFP battery units (Victron Lithium batteries)
+	if strings.Contains(nameLower, "eco-lfp") || strings.Contains(nameLower, "ecolfp") {
+		return "ECOLFP_Battery"
+	}
+	
+	// Check for Glow devices (Glow monitoring systems)
+	if strings.Contains(nameLower, "glow") {
+		return "Glow"
+	}
+	
+	// Check for Solar devices
+	if strings.Contains(nameLower, "solar") && !strings.Contains(nameLower, "smartsolar") {
+		return "Solar_Charger"
+	}
+	
 	if strings.Contains(nameLower, "smartsolar") || strings.Contains(nameLower, "mppt") {
 		return "SmartSolar"
 	}
