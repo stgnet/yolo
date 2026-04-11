@@ -149,7 +149,12 @@ func (t *ToolExecutor) victronScan(args map[string]any) string {
 	}
 
 	if victronCount == 0 {
-		return fmt.Sprintf(`{"status":"success","message":"No Victron devices found (but found %d other BLE device(s))","devices":devices}`, otherCount)
+		resp := map[string]any{
+			"status":  "success",
+			"message": fmt.Sprintf("No Victron devices found (but found %d other BLE device(s))", otherCount),
+			"devices": devices,
+		}
+		return formatJSON(resp)
 	}
 
 	resp := map[string]any{

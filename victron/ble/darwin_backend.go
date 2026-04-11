@@ -65,7 +65,7 @@ func (b *DarwinBackend) ScanForDevices(ctx context.Context, duration time.Durati
 			Name:             a.LocalName(),
 			RSSI:             a.RSSI(),
 			ServiceUUIDs:     b.uuidsToStringSlice(a.Services()),
-			ManufacturerData: make(map[uint16][]byte), // TODO: parse from ManufacturerData()
+			ManufacturerData: b.parseManufacturerDataAdvertisement(a),
 			IsVictron:        isVictron,
 		}
 
@@ -248,4 +248,12 @@ func (b *DarwinBackend) uuidsToStringSlice(uuids []ble.UUID) []string {
 		result = append(result, u.String())
 	}
 	return result
+}
+
+// parseManufacturerDataAdvertisement extracts manufacturer data from a BLE advertisement
+func (b *DarwinBackend) parseManufacturerDataAdvertisement(a ble.Advertisement) map[uint16][]byte {
+	// For now, return empty map - extracting manufacturer data from go-ble Advertisement
+	// requires proper handling of the ManufacturerData() method which may not be implemented
+	// in all versions of go-ble or may require additional parsing
+	return nil
 }

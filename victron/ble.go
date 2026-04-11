@@ -29,6 +29,9 @@ var VictronAdvertisementPatterns = []string{
 	"SmartSolar",
 	"SmartShunt",
 	"Victron",
+	"Glow",      // Victron Glow Bluetooth transmitter
+	"ECO-",      // ECO battery series (Victron)
+	"Solar48",   // Victron Solar batteries
 }
 
 // GATTService represents a discovered GATT service
