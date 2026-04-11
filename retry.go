@@ -54,7 +54,7 @@ func calculateDelay(attempt int, config RetryConfig) time.Duration {
 
 // RetryWithBackoff executes an HTTP request with exponential backoff retry logic
 func RetryWithBackoff(ctx context.Context, url string, config RetryConfig) (*http.Response, error) {
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: 10 * time.Second}
 
 	for attempt := 0; attempt <= config.MaxRetries; attempt++ {
 		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
