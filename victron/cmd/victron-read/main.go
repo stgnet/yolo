@@ -12,14 +12,6 @@ import (
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		log.Printf("Usage: %s <device-mac>\n", os.Args[0])
-		log.Printf("Example: %s AA:BB:CC:DD:EE:FF\n", os.Args[0])
-		log.Printf("\nOr run without arguments to scan for nearby Victron devices:\n")
-		log.Printf("  %s\n", os.Args[0])
-		os.Exit(1)
-	}
-
 	// Initialize BLE backend first (required before scanning/connecting)
 	if err := victron.InitializeBackend(); err != nil {
 		log.Fatalf("Failed to initialize BLE backend: %v", err)
@@ -32,12 +24,8 @@ func main() {
 	// Create client
 	client := victron.NewClient()
 
-	if len(os.Args) == 2 {
-		// Direct connect mode: user specified a MAC address
-		mac := os.Args[1]
-		connectToDevice(client, mac)
-	} else {
-		// Scan mode: discover nearby Victron devices
+	if len(os.Args) == 1 {
+		// Scan mode: no arguments, discover nearby Victron devices
 		fmt.Println("\nScanning for nearby Victron devices...")
 
 		results, err := client.Scan(10 * time.Second)
@@ -67,7 +55,20 @@ func main() {
 			}
 			connectToDevice(client, victronDevices[choice-1].Address)
 		}
+		os.Exit(0)
 	}
+
+	if len(os.Args) != 2 {
+		log.Printf("Usage: %s <device-mac>\n", os.Args[0])
+		log.Printf("Example: %s AA:BB:CC:DD:EE:FF\n", os.Args[0])
+		log.Printf("\nOr run without arguments to scan for nearby Victron devices:\n")
+		log.Printf("  %s\n", os.Args[0])
+		os.Exit(1)
+	}
+
+	// Direct connect mode: user specified a MAC address
+	mac := os.Args[1]
+	connectToDevice(client, mac)
 
 	fmt.Println("\nSession complete. Disconnecting...")
 	time.Sleep(2 * time.Second)

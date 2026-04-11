@@ -423,7 +423,7 @@ func discoverServicesWithPython(address string) ([]ble.Service, error) {
 	}
 
 	if !result.Success {
-		return nil, fmt.Errorf(result.Error)
+		return nil, fmt.Errorf("%s", result.Error)
 	}
 
 	services := make([]ble.Service, 0, len(result.Services))
@@ -462,7 +462,7 @@ func readCharacteristicWithPython(address, charUUID string) ([]byte, error) {
 	}
 
 	if !result.Success {
-		return nil, fmt.Errorf(result.Error)
+		return nil, fmt.Errorf("%s", result.Error)
 	}
 
 	// Return the raw bytes
@@ -508,7 +508,7 @@ func ReadBatteryVoltage(address string) (map[string]float64, error) {
 	}
 
 	if result.Error != "" {
-		return nil, fmt.Errorf(result.Error)
+		return nil, fmt.Errorf("%s", result.Error)
 	}
 
 	voltages := make(map[string]float64)

@@ -84,7 +84,7 @@ type Device struct {
 	IsVictron        bool // Flag to identify Victron devices
 }
 
-// DetectAsVictron checks if the device appears to be a Victron product based on name, services, or manufacturer data
+// DetectAsVictron checks if the device appears to be a Victron product based on name or known service UUIDs
 func (d Device) DetectAsVictron() bool {
 	nameLower := stringToASCII(stringToLower(d.Name))
 	return contains(nameLower, "victron") ||
@@ -93,8 +93,24 @@ func (d Device) DetectAsVictron() bool {
 		contains(nameLower, "smartshunt") ||
 		contains(nameLower, "cerbo") ||
 		contains(nameLower, "venus") ||
-		len(d.ServiceUUIDs) > 0 ||
-		len(d.ManufacturerData) > 0
+		hasVictronServiceUUIDs(d.ServiceUUIDs)
+}
+
+// hasVictronServiceUUIDs checks if the device advertises known Victron service UUIDs
+func hasVictronServiceUUIDs(uuids []string) bool {
+	// Known Victron BLE service UUIDs (from VE.Direct protocol)
+	victronServiceUUIDs := map[string]bool{
+		"0000ff00-0000-1000-8000-00805f9b34fb": true, // Victron notification service
+		"ffe0":                                  true, // Short form
+	}
+	
+	for _, uuid := range uuids {
+		uuidLower := stringToLower(uuid)
+		if victronServiceUUIDs[uuidLower] || victronServiceUUIDs[stringToASCII(uuidLower)] {
+			return true
+		}
+	}
+	return false
 }
 
 // String returns a string representation of the service
