@@ -70,17 +70,17 @@ func scanWithPython(ctx context.Context, duration time.Duration) ([]BLEDevice, e
 	var output strings.Builder
 	cmd.Stdout = &output
 	cmd.Stderr = &output
-	
+
 	err := cmd.Start()
 	if err != nil {
 		return nil, fmt.Errorf("failed to start scanner: %w", err)
 	}
-	
+
 	done := make(chan error, 1)
 	go func() {
 		done <- cmd.Wait()
 	}()
-	
+
 	select {
 	case <-done:
 		result := output.String()
@@ -104,20 +104,20 @@ func parseScanOutput(output string) ([]BLEDevice, error) {
 	// First try to find inline Python code results (old format)
 	lines := strings.Split(output, "\n")
 	var devices []BLEDevice
-	
+
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "Error:") || strings.HasPrefix(line, "Traceback") || strings.HasPrefix(line, "Scanning for") {
 			continue
 		}
-		
+
 		// Check if it's JSON (new format)
 		if strings.HasPrefix(line, "{") && strings.Contains(line, "\"devices\"") {
 			// Parse JSON output from script
 			devices = parseJSONOutput(line)
 			break
 		}
-		
+
 		// Try old pipe-delimited format for backwards compatibility
 		parts := strings.SplitN(line, "|", 2)
 		if len(parts) >= 1 {
@@ -126,12 +126,12 @@ func parseScanOutput(output string) ([]BLEDevice, error) {
 			if len(parts) > 1 {
 				name = parts[1]
 			}
-			
+
 			// Skip if doesn't look like a MAC address
 			if !isValidMAC(macAddr) {
 				continue
 			}
-			
+
 			devices = append(devices, BLEDevice{
 				Address: macAddr,
 				Name:    name,
@@ -139,53 +139,53 @@ func parseScanOutput(output string) ([]BLEDevice, error) {
 			})
 		}
 	}
-	
+
 	if len(devices) == 0 {
 		return nil, fmt.Errorf("no valid devices found")
 	}
-	
+
 	return devices, nil
 }
 
 // parseJSONOutput parses JSON output from the Python scanner script
 func parseJSONOutput(jsonStr string) []BLEDevice {
 	var devices []BLEDevice
-	
+
 	// Simple JSON parsing without external dependencies
 	// Look for patterns like "address":"XX:XX:XX:XX:XX:XX" and extract them
-	
+
 	for {
 		addrKey := strings.Index(jsonStr, `"address":`)
 		if addrKey == -1 {
 			break
 		}
-		
+
 		// Find the colon after "address":
 		colonPos := addrKey + len(`"address":`)
-		
+
 		// Skip whitespace
 		for colonPos < len(jsonStr) && (jsonStr[colonPos] == ' ' || jsonStr[colonPos] == '\t') {
 			colonPos++
 		}
-		
+
 		// Should be opening quote for address value
 		if colonPos >= len(jsonStr) || jsonStr[colonPos] != '"' {
 			break
 		}
 		start := colonPos + 1
-		
+
 		// Find closing quote
 		end := start
 		for end < len(jsonStr) && jsonStr[end] != '"' {
 			end++
 		}
-		
+
 		if end >= len(jsonStr) {
 			break
 		}
-		
+
 		address := jsonStr[start:end]
-		
+
 		// Validate MAC address format
 		if isValidMAC(address) {
 			devices = append(devices, BLEDevice{
@@ -194,11 +194,11 @@ func parseJSONOutput(jsonStr string) []BLEDevice {
 				RSSI:    -80,
 			})
 		}
-		
+
 		// Move past this match to find next
 		jsonStr = jsonStr[end+1:]
 	}
-	
+
 	return devices
 }
 
@@ -207,7 +207,7 @@ func isValidMAC(mac string) bool {
 	if len(mac) != 17 { // XX:XX:XX:XX:XX:XX = 6*2 + 5 colons
 		return false
 	}
-	
+
 	for i, c := range mac {
 		if i%3 == 2 {
 			if c != ':' {
@@ -219,10 +219,9 @@ func isValidMAC(mac string) bool {
 			return false
 		}
 	}
-	
+
 	return true
 }
-
 
 // Connect establishes a connection to a device
 func (m *MacOSBackend) Connect(address string) (BLEConnection, error) {
@@ -234,7 +233,7 @@ func (m *MacOSBackend) DiscoverServices(conn BLEConnection) ([]BLEService, error
 	return nil, fmt.Errorf("not implemented")
 }
 
-// DiscoverCharacteristics discovers characteristics in a service  
+// DiscoverCharacteristics discovers characteristics in a service
 func (m *MacOSBackend) DiscoverCharacteristics(service BLEService) ([]BLECharacteristic, error) {
 	return nil, fmt.Errorf("not implemented")
 }
