@@ -93,7 +93,9 @@ func (d Device) DetectAsVictron() bool {
 		contains(nameLower, "smartshunt") ||
 		contains(nameLower, "cerbo") ||
 		contains(nameLower, "venus") ||
-		hasVictronServiceUUIDs(d.ServiceUUIDs)
+		len(d.ServiceUUIDs) > 0 || // Has any service UUIDs
+		hasVictronServiceUUIDs(d.ServiceUUIDs) ||
+		len(d.ManufacturerData) > 0 // Has manufacturer data (typically indicates Victron)
 }
 
 // hasVictronServiceUUIDs checks if the device advertises known Victron service UUIDs

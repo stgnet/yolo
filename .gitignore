@@ -19,5 +19,33 @@ history.json
 tools/todo/.todo.json
 tmp
 archive
+# Build outputs and binaries
+yolo-go
+yolo
+.yolo
+test-ble-victron-scan
+victron-read
+victron-read-*
+victron/test-victron-*
+*.test
+
+# Victron binaries
 victron/cmd/victron-read/victron-read
 victron/examples/energy-dashboard/main
+victron/macos/macos.test
+
+# Test and coverage outputs
+coverage.html
+coverage.txt
+*.coverprofile
+cov*.out
+victron_cov*.out
+*coverage*
+files_covered.txt
+zero_coverage.txt
+
+# Temporary build files
+yolo_main
+yolo-bin
+yolo_new
+yolo_test

@@ -12,22 +12,35 @@ from bleak import BleakScanner
 async def main():
     duration = int(sys.argv[1]) if len(sys.argv) > 1 else 10
     
-    # Use simple discovery - returns device objects with address and name
-    devices_list = await BleakScanner.discover(timeout=duration, return_adv=False)
-    
     results = []
-    for device in devices_list:
-        addr = getattr(device, 'address', None) or str(device)
-        name = getattr(device, 'name', '') or ''
+    
+    # Detection callback to capture devices as they're discovered
+    async def detection_callback(device, adv_data):
+        addr = str(device.address) if hasattr(device, 'address') and device.address else None
         
-        # Get additional info by connecting briefly (optional, may not work without pairing)
-        # For now just return basic scan data
+        # Extract name from advertisement data or device object
+        name = ''
+        if adv_data and hasattr(adv_data, 'local_name'):
+            name = adv_data.local_name or ''
+        
+        # Fallback: try device.name attribute
+        if not name and hasattr(device, 'name') and device.name:
+            name = str(device.name)
+        
+        # Get RSSI from advertisement data if available  
+        rssi = -80  # Default fallback
+        if adv_data and hasattr(adv_data, 'rssi'):
+            rssi = adv_data.rssi
         
         results.append({
             'address': addr,
             'name': name,
-            'rssi': -80  # RSSI requires adv data which we're not collecting here
+            'rssi': rssi
         })
+
+    
+    # Scan using detection callback which works better on macOS
+    await BleakScanner.discover(timeout=duration, detection_callback=detection_callback)
     
     # Output as JSON array
     print(json.dumps(results, indent=2))

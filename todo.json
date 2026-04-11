@@ -142,5 +142,41 @@
     "completed": false,
     "created_at": "2026-04-11T07:45:17.340427-05:00",
     "updated_at": "2026-04-11T07:45:17.340427-05:00"
+  },
+  {
+    "title": "Test todo item from command",
+    "completed": false,
+    "created_at": "2026-04-11T12:37:16.822303-05:00",
+    "updated_at": "2026-04-11T12:37:16.822303-05:00"
+  },
+  {
+    "title": "Test todo item from command",
+    "completed": false,
+    "created_at": "2026-04-11T12:50:45.444839-05:00",
+    "updated_at": "2026-04-11T12:50:45.444839-05:00"
+  },
+  {
+    "title": "Test todo item from command",
+    "completed": false,
+    "created_at": "2026-04-11T12:55:00.510398-05:00",
+    "updated_at": "2026-04-11T12:55:00.510398-05:00"
+  },
+  {
+    "title": "Test todo item from command",
+    "completed": false,
+    "created_at": "2026-04-11T13:01:56.400466-05:00",
+    "updated_at": "2026-04-11T13:01:56.400466-05:00"
+  },
+  {
+    "title": "Test todo item from command",
+    "completed": false,
+    "created_at": "2026-04-11T13:06:46.341027-05:00",
+    "updated_at": "2026-04-11T13:06:46.341027-05:00"
+  },
+  {
+    "title": "Test todo item from command",
+    "completed": false,
+    "created_at": "2026-04-11T13:08:08.722048-05:00",
+    "updated_at": "2026-04-11T13:08:08.722048-05:00"
   }
 ]

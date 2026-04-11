@@ -205,7 +205,7 @@ func parseJSONOutput(jsonStr string) []BLEDevice {
 			
 			// Search for "name": within next 200 chars after address
 			searchStart := addrKey
-			searchEnd := searchStart + 200
+			searchEnd := searchStart + 300
 			if searchEnd > len(jsonStr) {
 				searchEnd = len(jsonStr)
 			}
@@ -223,18 +223,52 @@ func parseJSONOutput(jsonStr string) []BLEDevice {
 					nameStart := nameColonPos + 1
 					nameEnd := nameStart
 					for nameEnd < len(searchArea) && searchArea[nameEnd] != '"' {
-						nameEnd++
+  					nameEnd++
+    				}
+  				if nameEnd < len(searchArea) {
+  					name = searchArea[nameStart:nameEnd]
+    				}
+				}
+			}
+
+			// Try to extract RSSI value (integer field)
+			rssi := -80  // Default fallback
+			rssiKey := strings.Index(searchArea, `"rssi":`)
+			if rssiKey != -1 {
+				// Found rssi field, extract integer value
+				rssiColonPos := rssiKey + len(`"rssi":`)
+				for rssiColonPos < len(searchArea) && (searchArea[rssiColonPos] == ' ' || searchArea[rssiColonPos] == '\t') {
+					rssiColonPos++
+				}
+				
+				// Parse integer value
+				if rssiColonPos < len(searchArea) {
+					endPos := rssiColonPos
+					hasDigit := false
+					for endPos < len(searchArea) && (searchArea[endPos] >= '0' && searchArea[endPos] <= '9' || searchArea[endPos] == '-') {
+						hasDigit = true
+						endPos++
 					}
-					if nameEnd < len(searchArea) {
-						name = searchArea[nameStart:nameEnd]
+					if hasDigit {
+						rssiStr := searchArea[rssiColonPos:endPos]
+						fmt.Sscanf(rssiStr, "%d", &rssi)
 					}
 				}
 			}
 
-			devices = append(devices, BLEDevice{
+			// Mark device as Victron if it matches known patterns
+			bleDevice := ble.Device{
 				Address: address,
 				Name:    name,
-				RSSI:    -80,
+				RSSI:    rssi,
+			}
+			bleDevice.IsVictron = bleDevice.DetectAsVictron()
+
+			devices = append(devices, BLEDevice{
+				Address:   bleDevice.Address,
+				Name:      bleDevice.Name,
+				RSSI:      bleDevice.RSSI,
+				IsVictron: bleDevice.IsVictron,
 			})
 		}
 
@@ -292,23 +326,8 @@ func isValidMAC(mac string) bool {
 
 // Connect establishes a connection to a device
 func (m *MacOSBackend) Connect(address string) (ble.Connection, error) {
-	if !m.initialized {
-		return nil, fmt.Errorf("backend not initialized")
-	}
-
-	conn := &MacOSConnection{
-		address: address,
-		closed:  false,
-	}
-
-	// Test connection by discovering services
-	services, err := discoverServicesWithPython(address)
-	if err != nil {
-		return nil, fmt.Errorf("failed to discover services: %w", err)
-	}
-
-	conn.services = services
-	return conn, nil
+	// TODO: Implement actual connection logic
+	return nil, fmt.Errorf("connect not yet implemented for macOS")
 }
 
 // MacOSConnection represents a BLE connection on macOS
@@ -378,12 +397,9 @@ func (mc *MacOSConnection) UnsubscribeFromNotifications(char ble.Characteristic)
 	return fmt.Errorf("not implemented")
 }
 
-// DiscoverServices discovers GATT services on a connected device
+// DiscoverServices discovers GATT services on a connected device (not yet implemented for macOS)
 func (m *MacOSBackend) DiscoverServices(conn ble.Connection) ([]ble.Service, error) {
-	if mc, ok := conn.(*MacOSConnection); ok {
-		return mc.services, nil
-	}
-	return nil, fmt.Errorf("invalid connection type")
+	return nil, fmt.Errorf("not implemented")
 }
 
 // DiscoverCharacteristics discovers characteristics in a service  

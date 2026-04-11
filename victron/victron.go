@@ -24,6 +24,7 @@ const (
 	DeviceTypeVEDirectAdapter            // VE.Direct to Bluetooth adapter
 	DeviceTypePhoenixInverter            // Phoenix inverter/charger
 	DeviceTypeMultiPlus                  // MultiPlus inverter/charger
+	DeviceTypeGlow                       // Glow battery monitor with cellular connectivity
 )
 
 func (dt DeviceType) String() string {
@@ -38,6 +39,8 @@ func (dt DeviceType) String() string {
 		return "Phoenix Inverter"
 	case DeviceTypeMultiPlus:
 		return "MultiPlus"
+	case DeviceTypeGlow:
+		return "Glow"
 	default:
 		return "Unknown"
 	}
