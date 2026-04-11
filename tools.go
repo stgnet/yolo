@@ -417,6 +417,9 @@ func (t *ToolExecutor) safePath(path string) (string, error) {
 
 // Execute dispatches a tool call by name.
 func (t *ToolExecutor) Execute(name string, args map[string]any) string {
+	if t == nil {
+		return "ToolExecutor not initialized"
+	}
 	switch name {
 	case "read_file":
 		return t.readFile(args)
