@@ -5,7 +5,7 @@ package macos
 import (
 	"testing"
 
-	"github.com/go-ble/ble"
+	"github.com/scottstg/yolo/victron/ble"
 )
 
 func TestNewBackend(t *testing.T) {
@@ -97,77 +97,48 @@ func TestBackendClose(t *testing.T) {
 	}
 }
 
-func TestIsVictronDevice(t *testing.T) {
+// Test for filtering Victron devices from scan results
+func TestFilterVictronDevices(t *testing.T) {
 	tests := []struct {
-		name       string
-		deviceName string
-		expected   bool
+		name     string
+		input    []ble.Device
+		expected int
 	}{
 		{
-			name:       "GLOW device",
-			deviceName: "GLOW 50/15",
-			expected:   true,
+			name: "all Victron devices",
+			input: []ble.Device{
+				{Name: "GLOW 50/15", Address: "AA:BB:CC:DD:EE:FF"},
+				{Name: "SmartShunt 500A", Address: "11:22:33:44:55:66"},
+			},
+			expected: 2,
 		},
 		{
-			name:       "SmartShunt device",
-			deviceName: "SmartShunt 500A",
-			expected:   true,
+			name: "mixed devices",
+			input: []ble.Device{
+				{Name: "Apple Watch", Address: "AA:BB:CC:DD:EE:FF"},
+				{Name: "SmartSolar MPPT", Address: "11:22:33:44:55:66"},
+				{Name: "JBL Speaker", Address: "77:88:99:AA:BB:CC"},
+			},
+			expected: 1,
 		},
 		{
-			name:       "SmartSolar device",
-			deviceName: "SmartSolar MPPT 150/35",
-			expected:   true,
-		},
-		{
-			name:       "VE.Direct device",
-			deviceName: "VE.Direct Adapter",
-			expected:   true,
-		},
-		{
-			name:       "victron lowercase",
-			deviceName: "victron energy",
-			expected:   true,
-		},
-		{
-			name:       "VICTRON uppercase",
-			deviceName: "VICTRON BATTERY",
-			expected:   true,
-		},
-		{
-			name:       "Mixed case glow",
-			deviceName: "My GLow Charger",
-			expected:   true,
-		},
-		{
-			name:       "Empty device name",
-			deviceName: "",
-			expected:   false,
-		},
-		{
-			name:       "Non-Victron device",
-			deviceName: "Apple Watch",
-			expected:   false,
-		},
-		{
-			name:       "Bluetooth speaker",
-			deviceName: "JBL Speaker",
-			expected:   false,
+			name:     "no Victron devices",
+			input:    []ble.Device{{Name: "Apple Watch", Address: "AA:BB:CC:DD:EE:FF"}},
+			expected: 0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a mock advertisement that returns the device name
-			mockAdv := &mockAdvertisement{name: tt.deviceName}
-			result := isVictronDevice(mockAdv)
-			if result != tt.expected {
-				t.Errorf("isVictronDevice(%q) = %v, expected %v", tt.deviceName, result, tt.expected)
+			result := filterVictronDevices(tt.input)
+			if len(result) != tt.expected {
+				t.Errorf("filterVictronDevices() returned %d devices, expected %d", len(result), tt.expected)
 			}
 		})
 	}
 }
 
-// mockAdvertisement implements ble.Advertisement for testing
+// mockAdvertisement implements ble.Advertisement for testing (placeholder)
 type mockAdvertisement struct {
 	name string
 	addr string
@@ -177,20 +148,12 @@ func (m *mockAdvertisement) LocalName() string {
 	return m.name
 }
 
-func (m *mockAdvertisement) Addr() ble.Addr {
-	if m.addr == "" {
-		m.addr = "00:00:00:00:00:00"
-	}
-	addr := ble.NewAddr(m.addr)
-	return addr
-}
-
 // Other required methods for ble.Advertisement interface (stubs)
-func (m *mockAdvertisement) ManufacturerData() []byte       { return nil }
-func (m *mockAdvertisement) ServiceData() []ble.ServiceData { return nil }
-func (m *mockAdvertisement) Services() []ble.UUID           { return nil }
-func (m *mockAdvertisement) OverflowService() []ble.UUID    { return nil }
-func (m *mockAdvertisement) TxPowerLevel() int              { return 0 }
-func (m *mockAdvertisement) Connectable() bool              { return true }
-func (m *mockAdvertisement) SolicitedService() []ble.UUID   { return nil }
-func (m *mockAdvertisement) RSSI() int                      { return -70 }
+func (m *mockAdvertisement) ManufacturerData() []byte         { return nil }
+func (m *mockAdvertisement) ServiceData() map[interface{}][]byte { return nil }
+func (m *mockAdvertisement) Services() []interface{}          { return nil }
+func (m *mockAdvertisement) OverflowService() []interface{}   { return nil }
+func (m *mockAdvertisement) TxPowerLevel() int                { return 0 }
+func (m *mockAdvertisement) Connectable() bool                { return true }
+func (m *mockAdvertisement) SolicitedService() []interface{}  { return nil }
+func (m *mockAdvertisement) RSSI() int                        { return -70 }

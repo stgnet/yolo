@@ -713,22 +713,117 @@ func TestConvertParamValue(t *testing.T) {
 // TestStripTextToolCalls tests removing tool calls from text
 func TestStripTextToolCalls(t *testing.T) {
 	tests := []struct {
-		name  string
-		input string
+		name     string
+		input    string
+		expected string
 	}{
-		{"no tool calls", "hello world"},
-		{"empty", ""},
+		{
+			name:     "no tool call markers",
+			input:    "Hello world, this is a test.",
+			expected: "Hello world, this is a test.",
+		},
+		{
+			name:     "single text tool call marker",
+			input:    "Start [text]Middle[/text]End",
+			expected: "Start MiddleEnd",
+		},
+		{
+			name:     "multiple text markers",
+			input:    "[text]First[/text] and [text]second[/text]",
+			expected: "First and second",
+		},
+		{
+			name:     "tool call in brackets with parameters",
+			input:    "Use tool [file_edit path=\"test.txt\"]content[/file_edit] done",
+			expected: "Use tool content done",
+		},
+		{
+			name:     "nested-like structure",
+			input:    "[text]Outer [inner]Nested[/inner] Outer[/text]",
+			expected: "Outer Nested Outer",
+		},
+		{
+			name:     "empty text content",
+			input:    "Before [text][/text] After",
+			expected: "Before  After",
+		},
+		{
+			name:     "only tool call marker",
+			input:    "[tool param=\"value\"]content[/tool]",
+			expected: "content",
+		},
+		{
+			name:     "complex multi-line tool call",
+			input:    `Start
+[run_command command="ls -la"]result output here[/run_command]
+End`,
+			expected: `Start
+result output here
+End`,
+		},
+		{
+			name:     "unclosed tool call (no end tag)",
+			input:    "Tool [file_read path=\"test.txt\"]content without end",
+			expected: "Tool content without end",
+		},
+		{
+			name:     "unopened closing tag",
+			input:    "Text[/orphan]more text",
+			expected: "Text[/orphan]more text", // Only strips opening tags and their content, preserves orphaned closing
+		},
+		{
+			name:     "empty input",
+			input:    "",
+			expected: "",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := stripTextToolCalls(tt.input)
-			if len(result) < 0 {
-				t.Error("Expected non-negative result length")
+			if result != tt.expected {
+				t.Errorf("stripTextToolCalls() mismatch:\ninput:    %q\nexpected: %q\ngot:      %q",
+					tt.input, tt.expected, result)
 			}
 		})
 	}
 }
+
+// TestCombinedTagProcessing tests the complete tag processing pipeline
+func TestCombinedTagProcessing(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name: "orphaned closing tags followed by tool call markers",
+			input: "[text]Content[/text][/orphan][tool]More[/tool]",
+			expected: "ContentMore",
+		},
+		{
+			name:     "self-closing with proper nesting",
+			input:    "<div>Text<br/>More</div>",
+			expected: "<div>Text<br/>More</div>", // Self-closing tags preserved
+		},
+		{
+			name:     "mixed self-closing and non-self-closing",
+			input:    "[text]<img src=\"x\"/>[file]content[/file]</text>",
+			expected: "<img src=\"x\"/>content",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := stripOrphanedCloseTags(stripTextToolCalls(tt.input))
+			if result != tt.expected {
+				t.Errorf("Combined processing mismatch:\ninput:    %q\nexpected: %q\ngot:      %q",
+					tt.input, tt.expected, result)
+			}
+		})
+	}
+}
+
 
 // TestShowPrompt tests prompt display
 func TestShowPrompt(t *testing.T) {

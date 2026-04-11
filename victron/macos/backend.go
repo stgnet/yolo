@@ -286,6 +286,38 @@ func isValidMAC(mac string) bool {
 	return false
 }
 
+// isVictronDeviceName checks if a device name indicates it's a Victron product
+func isVictronDeviceName(name string) bool {
+	name = strings.ToUpper(name)
+	victronKeywords := []string{
+		"GLOW",
+		"SMARTSHUNT",
+		"SMARTSOLAR",
+		"MPPT",
+		"VE.DIRECT",
+		"VICTRON",
+	}
+	
+	for _, keyword := range victronKeywords {
+		if strings.Contains(name, keyword) {
+			return true
+		}
+	}
+	
+	return false
+}
+
+// filterVictronDevices filters a list of devices to only include Victron products
+func filterVictronDevices(devices []ble.Device) []ble.Device {
+	var filtered []ble.Device
+	for _, device := range devices {
+		if isVictronDeviceName(device.Name) {
+			filtered = append(filtered, device)
+		}
+	}
+	return filtered
+}
+
 // Connect establishes a connection to a device
 // Connect establishes a connection to a device
 func (b *Backend) Connect(address string) (ble.Connection, error) {
