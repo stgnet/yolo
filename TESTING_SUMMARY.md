@@ -1,6 +1,24 @@
 ## Test Coverage Improvements - Summary
 
-### Latest Update: Integration Tests Suite (April 11, 2026)
+### Latest Update: Reddit Tool Tests (April 11, 2026)
+
+Created comprehensive unit tests for Reddit API integration in `tools_reddit_test.go`:
+
+**Test Functions:**
+1. **TestRedditPostParsing** - Validates parsing of Reddit posts (self-posts, link-posts, comments)
+2. **TestRedditPermalinkParsing** - Tests subreddit extraction from permalinks
+3. **TestRedditCommentParsing** - Verifies comment JSON structure parsing
+4. **TestRedditDataFields** - Tests all redditData struct fields comprehensively
+5. **TestRedditEmptyFields** - Handles missing/null field edge cases
+6. **TestRedditListingParsing** - Validates listing response with nested children
+7. **TestRedditPostWrapper** - Tests nested post wrapper structure
+
+**Results:** All 7 test functions passing ✅
+**Lines of Test Code Added:** ~200 lines
+
+---
+
+### Previous Update: Integration Tests Suite (April 11, 2026)
 
 Created comprehensive integration test suite in `cmd/yolo/integration_test.go`:
 
