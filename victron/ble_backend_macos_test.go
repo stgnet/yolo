@@ -164,3 +164,181 @@ func TestMacOSBackend_InterfaceImplementation(t *testing.T) {
 		var _ BLEBackend = &MacOSBackend{}
 	})
 }
+
+// Test isValidMAC for traditional MAC addresses
+func TestIsValidMactraditional(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected bool
+	}{
+		{"valid lowercase", "AA:BB:CC:DD:EE:FF", true},
+		{"valid uppercase", "aa:bb:cc:dd:ee:ff", true},
+		{"valid mixed case", "Aa:Bb:Cc:Dd:Ee:Ff", true},
+		{"invalid length short", "AA:BB:CC:DD:EE", false},
+		{"invalid length long", "AA:BB:CC:DD:EE:FF:GG", false},
+		{"invalid chars", "GH:IJ:KL:MN:OP:QR", false},
+		{"missing colon", "AABB:CCDD:EEFF", false},
+		{"extra colons", "AA:BB:CC:DD:EE:FF:", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isValidMAC(tt.input)
+			if result != tt.expected {
+				t.Errorf("isValidMAC(%q) = %v, expected %v", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+// Test isValidMAC for UUID format (macOS CoreBluetooth)
+func TestIsValidMacUUID(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected bool
+	}{
+		{"valid UUID", "12345678-ABCD-EF01-2345-6789ABCDEF01", true},
+		{"valid lowercase UUID", "abcd1234-5678-9abc-def0-123456789abc", true},
+		{"invalid UUID length short", "12345678-ABCD-EF01-2345-6789ABCDEF", false},
+		{"invalid UUID missing dash", "12345678ABCD-EF01-2345-6789ABCDEF01", false},
+		{"invalid UUID extra dash", "12-345678-ABCD-EF01-2345-6789ABCDEF01", false},
+		{"invalid chars in UUID", "12345678-GHIJ-KLMN-OPQR-STUVWXYZ123456", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isValidMAC(tt.input)
+			if result != tt.expected {
+				t.Errorf("isValidMAC(%q) = %v, expected %v", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+// Test parseJSONOutput for JSON parsing
+func TestParseJSONOutput(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected int // expected number of devices
+	}{
+		{
+			name: "single device with name",
+			input: `{
+				"devices": [
+					{"address": "AA:BB:CC:DD:EE:FF", "name": "GLOW 50/15"}
+				]
+			}`,
+			expected: 1,
+		},
+		{
+			name: "multiple devices",
+			input: `{
+				"devices": [
+					{"address": "AA:BB:CC:DD:EE:FF", "name": "GLOW 50/15"},
+					{"address": "11:22:33:44:55:66", "name": "SmartShunt"}
+				]
+			}`,
+			expected: 2,
+		},
+		{
+			name: "device without name",
+			input: `{
+				"devices": [
+					{"address": "AA:BB:CC:DD:EE:FF"}
+				]
+			}`,
+			expected: 1,
+		},
+		{
+			name:     "empty devices array",
+			input:    `{"devices": []}`,
+			expected: 0,
+		},
+		{
+			name:     "malformed JSON",
+			input:    `{invalid json}`,
+			expected: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := parseJSONOutput(tt.input)
+			if len(result) != tt.expected {
+				t.Errorf("parseJSONOutput() returned %d devices, expected %d", len(result), tt.expected)
+			}
+			if tt.expected > 0 && len(result) == 0 {
+				t.Logf("Input was: %s", tt.input)
+			}
+		})
+	}
+}
+
+// Test parseScanOutput for both JSON and legacy formats
+func TestParseScanOutput(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		expectErr bool
+		minCount  int // minimum expected devices (0 is OK if no error)
+	}{
+		{
+			name: "JSON format with Victron device",
+			input: `{
+				"devices": [
+					{"address": "AA:BB:CC:DD:EE:FF", "name": "GLOW 50/15"}
+				]
+			}`,
+			expectErr: false,
+			minCount:  1,
+		},
+		{
+			name: "legacy pipe-delimited format",
+			input: `Scanning for devices...
+AA:BB:CC:DD:EE:FF|GLOW 50/15
+11:22:33:44:55:66|SmartShunt`,
+			expectErr: false,
+			minCount:  2,
+		},
+		{
+			name: "mixed with error lines",
+			input: `Scanning for devices...
+Error: connection failed
+AA:BB:CC:DD:EE:FF|GLOW 50/15
+Traceback (most recent call last):
+11:22:33:44:55:66|SmartShunt`,
+			expectErr: false,
+			minCount:  2,
+		},
+		{
+			name:      "invalid MAC address",
+			input:     `INVALID_MAC|SomeDevice`,
+			expectErr: true,
+			minCount:  0,
+		},
+		{
+			name:      "empty output",
+			input:     "",
+			expectErr: true,
+			minCount:  0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := parseScanOutput(tt.input)
+			if tt.expectErr && err == nil {
+				t.Error("parseScanOutput() expected error but got nil")
+			}
+			if !tt.expectErr && err != nil {
+				t.Errorf("parseScanOutput() returned unexpected error: %v", err)
+			}
+			if !tt.expectErr && len(result) < tt.minCount {
+				t.Errorf("parseScanOutput() returned %d devices, expected at least %d", len(result), tt.minCount)
+			}
+		})
+	}
+}
