@@ -40,7 +40,7 @@ func TestMacOSBackend_Close(t *testing.T) {
 	t.Run("closes backend and clears state", func(t *testing.T) {
 		m := &MacOSBackend{
 			initialized: true,
-			scanResults: []BLEDevice{{Name: "test"}},
+			scanning:    true,
 		}
 
 		err := m.Close()
@@ -52,8 +52,8 @@ func TestMacOSBackend_Close(t *testing.T) {
 			t.Error("expected initialized to be false after close")
 		}
 
-		if m.scanResults != nil {
-			t.Error("expected scanResults to be nil after close")
+		if m.scanning {
+			t.Error("expected scanning to be false after close")
 		}
 	})
 }
@@ -112,7 +112,7 @@ func TestMacOSBackend_Connect(t *testing.T) {
 			t.Error("expected nil connection for unimplemented method")
 		}
 
-		expectedMsg := "macOS backend: connect not implemented yet - requires CoreBluetooth framework integration"
+		expectedMsg := "connect not yet implemented for macOS"
 		if err.Error() != expectedMsg {
 			t.Errorf("expected error message %q, got %q", expectedMsg, err.Error())
 		}

@@ -16,6 +16,14 @@ Tested with Victron Energy SmartSolar MPPT charge controllers. The library shoul
 - Bluetooth Low Energy (BLE) advertising
 - VE.Direct protocol over BLE
 
+### Device Types
+
+| Device | Detection Method | Notes |
+|--------|-----------------|-------|
+| SmartSolar MPPT | Name contains "SmartSolar" or service UUID `0xfdcd` | Most common device |
+| SmartShunt | Name contains "SmartShunt" | Battery monitor |
+| VE.Direct Adapter | Service UUID `0xffe0` | Generic adapter |
+
 ## Installation
 
 ```bash
@@ -208,7 +216,33 @@ type (
 )
 ```
 
-## Troubleshooting
+## Platform-Specific Backends
+
+The library supports multiple platforms through backend implementations:
+
+### macOS / Apple Silicon (arm64)
+
+On macOS, the library uses native CoreBluetooth via CGO for BLE operations. This provides optimal performance and battery efficiency on Apple devices.
+
+**Requirements:**
+- macOS 10.15+ or iPadOS
+- Bluetooth hardware enabled
+- Xcode Command Line Tools installed (`xcode-select --install`)
+
+**Granting Permissions:**
+The first time you run the program, macOS will prompt for Bluetooth permissions. Grant access to allow device scanning and connections.
+
+### Other Platforms (TODO)
+
+For Linux and Windows, a Python-based backend using the `bleak` library is planned. This provides cross-platform compatibility but may have slightly higher latency than native implementations.
+
+To enable the Python backend:
+```bash
+pip3 install bleak
+export VICTRON_BACKEND=python
+```
+
+See `victron/ble_backend_macos.go` for the macOS implementation and `victron/test_ble_scan.py` for a Python test harness.
 
 ### No Devices Found
 

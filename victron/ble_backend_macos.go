@@ -1,22 +1,20 @@
 //go:build darwin
 
-// macOS-specific BLE backend implementation using AppleScript/System Events
+// macOS-specific BLE backend implementation using Python bleak library
 package victron
 
 import (
 	"context"
 	"fmt"
 	"os/exec"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 )
 
-// MacOSBackend implements BLEBackend for macOS using native tools
+// MacOSBackend implements BLEBackend for macOS
 type MacOSBackend struct {
 	initialized bool
-	scanResults []BLEDevice
+	scanning    bool
 }
 
 // NewMacOSBackend creates a new macOS BLE backend
@@ -27,117 +25,208 @@ func NewMacOSBackend() (BLEBackend, error) {
 // Initialize initializes the BLE adapter
 func (m *MacOSBackend) Initialize() error {
 	m.initialized = true
-
-	// Check if Bluetooth is enabled
-	cmd := exec.Command("osascript", "-e",
-		`tell application "System Events" to get (number of every bluetooth device)`)
-	output, err := cmd.Output()
-	if err != nil {
-		return fmt.Errorf("failed to check Bluetooth status: %w", err)
-	}
-
-	countStr := strings.TrimSpace(string(output))
-	count, err := strconv.Atoi(countStr)
-	if err != nil || count < 0 {
-		// Even if there are no devices, that's OK - just means Bluetooth might be off or no devices nearby
-		return nil
-	}
-
 	return nil
 }
 
 // Close shuts down the BLE connection
 func (m *MacOSBackend) Close() error {
+	if m.scanning {
+		m.scanning = false
+	}
 	m.initialized = false
-	m.scanResults = nil
 	return nil
 }
 
-// ScanForDevices scans for nearby BLE devices using AppleScript
+// ScanForDevices scans for nearby BLE devices using Python bleak library
 func (m *MacOSBackend) ScanForDevices(ctx context.Context, duration time.Duration) ([]BLEDevice, error) {
 	if !m.initialized {
 		return nil, fmt.Errorf("backend not initialized")
 	}
 
-	m.scanResults = nil
+	m.scanning = true
+	defer func() { m.scanning = false }()
 
-	// Start scan in background
-	cmd := exec.CommandContext(ctx, "osascript", "-e", `
-		set foundDevices to {}
-		repeat with timeout of `+strconv.Itoa(int(duration.Seconds()))+` seconds
-			try
-				set devices to every bluetooth device of (first network area) of (system info)
-				repeat with aDevice in devices
-					set nameProp to (name of aDevice) as string
-					-- Check if this might be a Victron device
-					if nameProp contains "Victron" or nameProp contains "SmartSolar" or nameProp contains "SmartShunt" or nameProp contains "VE.Direct" then
-						set foundDevices to foundDevices & {nameProp}
-					end if
-				end repeat
-			end try
-			delay 1
-		end repeat
-		return foundDevices
-	`)
-
-	output, err := cmd.Output()
-	if err != nil && err.Error() != "signal: killed" && !strings.Contains(err.Error(), "context deadline exceeded") {
-		// Try alternative approach - list all Bluetooth devices
-		output2, err2 := exec.CommandContext(ctx, "osascript", "-e",
-			`tell application "System Events" to get name of every bluetooth device`).Output()
-
-		if err2 != nil {
-			return nil, fmt.Errorf("scan failed: %w", err)
-		}
-		output = output2
+	// Use Python's bleak library which works well on macOS with CoreBluetooth
+	devices, err := scanWithPython(ctx, duration)
+	if err != nil || len(devices) == 0 {
+		return devices, fmt.Errorf("no bluetooth devices found: %w", err)
 	}
 
-	// Parse results - AppleScript returns delimited list like {"device1", "device2"}
-	resultStr := strings.TrimSpace(string(output))
-	if resultStr == "" || resultStr == "{}" {
-		return []BLEDevice{}, nil
-	}
-
-	// Extract device names from AppleScript output
-	re := regexp.MustCompile(`"(.*?)"`)
-	matches := re.FindAllStringSubmatch(resultStr, -1)
-
-	devices := make([]BLEDevice, 0, len(matches))
-	for i, match := range matches {
-		if len(match) > 1 {
-			name := match[1]
-
-			// Check if this looks like a Victron device
-			isVictron := false
-			for _, pattern := range VictronAdvertisementPatterns {
-				if strings.Contains(strings.ToLower(name), strings.ToLower(pattern)) {
-					isVictron = true
-					break
-				}
-			}
-
-			// Estimate RSSI based on order (first results typically have stronger signal)
-			rssi := -70 - (i * 5)
-
-			device := BLEDevice{
-				Address: fmt.Sprintf("macos-bt-%d", i),
-				Name:    name,
-				RSSI:    rssi,
-			}
-
-			if isVictron {
-				devices = append(devices, device)
-			}
-		}
-	}
-
-	m.scanResults = devices
 	return devices, nil
 }
 
+// scanWithPython uses Python's bleak library to scan for BLE devices
+func scanWithPython(ctx context.Context, duration time.Duration) ([]BLEDevice, error) {
+	durationSeconds := int(duration.Seconds())
+	if durationSeconds < 1 {
+		durationSeconds = 10
+	}
+	if durationSeconds > 60 {
+		durationSeconds = 60
+	}
+
+	// Run the Python scanner script
+	cmd := exec.Command("python3", "scripts/victron_scan.py", fmt.Sprintf("%d", durationSeconds))
+	var output strings.Builder
+	cmd.Stdout = &output
+	cmd.Stderr = &output
+	
+	err := cmd.Start()
+	if err != nil {
+		return nil, fmt.Errorf("failed to start scanner: %w", err)
+	}
+	
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+	
+	select {
+	case <-done:
+		result := output.String()
+		return parseScanOutput(result)
+	case <-time.After(time.Duration(durationSeconds+5) * time.Second):
+		cmd.Process.Kill()
+		<-done
+		result := output.String()
+		if result != "" {
+			devices, err := parseScanOutput(result)
+			if err == nil {
+				return devices, nil // Return partial results
+			}
+		}
+		return nil, fmt.Errorf("command timed out after %d seconds", durationSeconds+5)
+	}
+}
+
+// parseScanOutput parses JSON output from Python BLE scanner
+func parseScanOutput(output string) ([]BLEDevice, error) {
+	// First try to find inline Python code results (old format)
+	lines := strings.Split(output, "\n")
+	var devices []BLEDevice
+	
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "Error:") || strings.HasPrefix(line, "Traceback") || strings.HasPrefix(line, "Scanning for") {
+			continue
+		}
+		
+		// Check if it's JSON (new format)
+		if strings.HasPrefix(line, "{") && strings.Contains(line, "\"devices\"") {
+			// Parse JSON output from script
+			devices = parseJSONOutput(line)
+			break
+		}
+		
+		// Try old pipe-delimited format for backwards compatibility
+		parts := strings.SplitN(line, "|", 2)
+		if len(parts) >= 1 {
+			macAddr := parts[0]
+			name := ""
+			if len(parts) > 1 {
+				name = parts[1]
+			}
+			
+			// Skip if doesn't look like a MAC address
+			if !isValidMAC(macAddr) {
+				continue
+			}
+			
+			devices = append(devices, BLEDevice{
+				Address: macAddr,
+				Name:    name,
+				RSSI:    -80, // Default RSSI
+			})
+		}
+	}
+	
+	if len(devices) == 0 {
+		return nil, fmt.Errorf("no valid devices found")
+	}
+	
+	return devices, nil
+}
+
+// parseJSONOutput parses JSON output from the Python scanner script
+func parseJSONOutput(jsonStr string) []BLEDevice {
+	var devices []BLEDevice
+	
+	// Simple JSON parsing without external dependencies
+	// Look for patterns like "address":"XX:XX:XX:XX:XX:XX" and extract them
+	
+	for {
+		addrKey := strings.Index(jsonStr, `"address":`)
+		if addrKey == -1 {
+			break
+		}
+		
+		// Find the colon after "address":
+		colonPos := addrKey + len(`"address":`)
+		
+		// Skip whitespace
+		for colonPos < len(jsonStr) && (jsonStr[colonPos] == ' ' || jsonStr[colonPos] == '\t') {
+			colonPos++
+		}
+		
+		// Should be opening quote for address value
+		if colonPos >= len(jsonStr) || jsonStr[colonPos] != '"' {
+			break
+		}
+		start := colonPos + 1
+		
+		// Find closing quote
+		end := start
+		for end < len(jsonStr) && jsonStr[end] != '"' {
+			end++
+		}
+		
+		if end >= len(jsonStr) {
+			break
+		}
+		
+		address := jsonStr[start:end]
+		
+		// Validate MAC address format
+		if isValidMAC(address) {
+			devices = append(devices, BLEDevice{
+				Address: address,
+				Name:    "", // Extracting name requires more complex JSON parsing
+				RSSI:    -80,
+			})
+		}
+		
+		// Move past this match to find next
+		jsonStr = jsonStr[end+1:]
+	}
+	
+	return devices
+}
+
+// isValidMAC checks if a string looks like a valid MAC address (XX:XX:XX:XX:XX:XX format)
+func isValidMAC(mac string) bool {
+	if len(mac) != 17 { // XX:XX:XX:XX:XX:XX = 6*2 + 5 colons
+		return false
+	}
+	
+	for i, c := range mac {
+		if i%3 == 2 {
+			if c != ':' {
+				return false
+			}
+			continue
+		}
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	
+	return true
+}
+
+
 // Connect establishes a connection to a device
 func (m *MacOSBackend) Connect(address string) (BLEConnection, error) {
-	return nil, fmt.Errorf("macOS backend: connect not implemented yet - requires CoreBluetooth framework integration")
+	return nil, fmt.Errorf("connect not yet implemented for macOS")
 }
 
 // DiscoverServices discovers GATT services on a connected device
@@ -145,7 +234,7 @@ func (m *MacOSBackend) DiscoverServices(conn BLEConnection) ([]BLEService, error
 	return nil, fmt.Errorf("not implemented")
 }
 
-// DiscoverCharacteristics discovers characteristics in a service
+// DiscoverCharacteristics discovers characteristics in a service  
 func (m *MacOSBackend) DiscoverCharacteristics(service BLEService) ([]BLECharacteristic, error) {
 	return nil, fmt.Errorf("not implemented")
 }
