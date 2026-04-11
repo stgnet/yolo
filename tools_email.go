@@ -90,7 +90,11 @@ func parseAttachmentArg(args map[string]any) []string {
 	var paths []string
 	switch v := attachmentArg.(type) {
 	case []string:
-		paths = v
+		for _, path := range v {
+			if path != "" {
+				paths = append(paths, path)
+			}
+		}
 	case []interface{}:
 		for _, item := range v {
 			if str, ok := item.(string); ok && str != "" {
